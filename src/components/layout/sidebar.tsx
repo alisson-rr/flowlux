@@ -16,6 +16,7 @@ import {
   ChevronRight,
   GraduationCap,
   FolderOpen,
+  Headset,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -114,6 +115,16 @@ export function Sidebar() {
           )}
           {!collapsed && <span className="truncate">{user?.name || "Meu Perfil"}</span>}
         </Link>
+
+        <a
+          href="https://wa.me/5551994408307?text=Olá! Preciso de suporte com o FlowLux."
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-green-400 hover:bg-sidebar-hover transition-colors w-full"
+        >
+          <Headset className="h-5 w-5 shrink-0" />
+          {!collapsed && <span>Suporte</span>}
+        </a>
 
         <button
           onClick={handleLogout}

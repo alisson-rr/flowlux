@@ -58,11 +58,15 @@ interface Template {
   category: string;
 }
 
+interface Instance { id: string; instance_name: string; }
+
 export default function AutomacaoPage() {
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [massMessages, setMassMessages] = useState<MassMessage[]>([]);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledMsg[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [leads, setLeads] = useState<{ id: string; name: string; phone: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddTrigger, setShowAddTrigger] = useState(false);
   const [showAddMass, setShowAddMass] = useState(false);
@@ -72,23 +76,27 @@ export default function AutomacaoPage() {
   const [editingMassId, setEditingMassId] = useState<string | null>(null);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
-  const [newTrigger, setNewTrigger] = useState({ name: "", type: "keyword" as const, keywords: "", message_template: "" });
-  const [newMass, setNewMass] = useState({ name: "", message: "", scheduled_at: "" });
+  const [newTrigger, setNewTrigger] = useState({ name: "", type: "keyword" as const, keywords: "", message_template: "", instance_id: "" });
+  const [newMass, setNewMass] = useState({ name: "", message: "", scheduled_at: "", instance_id: "" });
   const [newTemplate, setNewTemplate] = useState({ name: "", content: "", category: "geral" });
-  const [newScheduled, setNewScheduled] = useState({ lead_id: "", message: "", scheduled_at: "" });
+  const [newScheduled, setNewScheduled] = useState({ lead_id: "", message: "", scheduled_at: "", instance_id: "" });
 
   const loadData = useCallback(async () => {
     try {
-      const [trigRes, massRes, schedRes, tempRes] = await Promise.all([
+      const [trigRes, massRes, schedRes, tempRes, instRes, leadsRes] = await Promise.all([
         supabase.from("automation_triggers").select("*").order("created_at", { ascending: false }),
         supabase.from("mass_messages").select("*").order("created_at", { ascending: false }),
         supabase.from("scheduled_messages").select("*, leads(name)").order("scheduled_at", { ascending: true }),
         supabase.from("message_templates").select("*").order("name"),
+        supabase.from("whatsapp_instances").select("id, instance_name"),
+        supabase.from("leads").select("id, name, phone").eq("archived", false).is("deleted_at", null),
       ]);
       if (trigRes.data) setTriggers(trigRes.data);
       if (massRes.data) setMassMessages(massRes.data);
       if (schedRes.data) setScheduledMessages(schedRes.data.map((s: any) => ({ ...s, lead_name: s.leads?.name })));
       if (tempRes.data) setTemplates(tempRes.data);
+      if (instRes.data) setInstances(instRes.data);
+      if (leadsRes.data) setLeads(leadsRes.data);
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
@@ -98,14 +106,45 @@ export default function AutomacaoPage() {
 
   const openEditTrigger = (t: Trigger) => {
     setEditingTriggerId(t.id);
-    setNewTrigger({ name: t.name, type: t.type as "keyword", keywords: t.keywords?.join(", ") || "", message_template: t.message_template });
+    setNewTrigger({ name: t.name, type: t.type as "keyword", keywords: t.keywords?.join(", ") || "", message_template: t.message_template, instance_id: (t as any).instance_id || "" });
     setShowAddTrigger(true);
   };
 
   const openEditMass = (m: MassMessage) => {
     setEditingMassId(m.id);
-    setNewMass({ name: m.name, message: m.message, scheduled_at: m.scheduled_at || "" });
+    setNewMass({ name: m.name, message: m.message, scheduled_at: m.scheduled_at || "", instance_id: (m as any).instance_id || "" });
     setShowAddMass(true);
+  };
+
+  const deleteMassMessage = async (id: string) => {
+    await supabase.from("mass_messages").delete().eq("id", id);
+    setMassMessages((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const deleteScheduledMessage = async (id: string) => {
+    await supabase.from("scheduled_messages").delete().eq("id", id);
+    setScheduledMessages((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleAddScheduled = async () => {
+    if (!newScheduled.message || !newScheduled.scheduled_at || !newScheduled.lead_id) return;
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    const { data, error } = await supabase.from("scheduled_messages").insert({
+      user_id: userData.user.id,
+      lead_id: newScheduled.lead_id,
+      instance_id: newScheduled.instance_id || null,
+      message: newScheduled.message,
+      scheduled_at: newScheduled.scheduled_at,
+      status: "pending",
+    }).select("*, leads(name)").single();
+
+    if (!error && data) {
+      setScheduledMessages((prev) => [...prev, { ...data, lead_name: (data as any).leads?.name }]);
+    }
+    setNewScheduled({ lead_id: "", message: "", scheduled_at: "", instance_id: "" });
+    setShowAddScheduled(false);
   };
 
   const openEditTemplate = (t: Template) => {
@@ -137,7 +176,7 @@ export default function AutomacaoPage() {
       if (!error && data) setTriggers((prev) => [data, ...prev]);
     }
 
-    setNewTrigger({ name: "", type: "keyword", keywords: "", message_template: "" });
+    setNewTrigger({ name: "", type: "keyword", keywords: "", message_template: "", instance_id: "" });
     setShowAddTrigger(false);
   };
 
@@ -175,7 +214,7 @@ export default function AutomacaoPage() {
       if (!error && data) setMassMessages((prev) => [data, ...prev]);
     }
 
-    setNewMass({ name: "", message: "", scheduled_at: "" });
+    setNewMass({ name: "", message: "", scheduled_at: "", instance_id: "" });
     setShowAddMass(false);
   };
 
@@ -322,6 +361,9 @@ export default function AutomacaoPage() {
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditMass(mm)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteMassMessage(mm.id)}>
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -355,7 +397,12 @@ export default function AutomacaoPage() {
                           {new Date(sm.scheduled_at).toLocaleString("pt-BR")}
                         </p>
                       </div>
-                      <Badge variant={statusColors[sm.status] as any}>{statusLabels[sm.status] || sm.status}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={statusColors[sm.status] as any}>{statusLabels[sm.status] || sm.status}</Badge>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteScheduledMessage(sm.id)}>
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -401,7 +448,7 @@ export default function AutomacaoPage() {
       </Tabs>
 
       {/* Add/Edit Trigger Dialog */}
-      <Dialog open={showAddTrigger} onOpenChange={(open) => { setShowAddTrigger(open); if (!open) { setEditingTriggerId(null); setNewTrigger({ name: "", type: "keyword", keywords: "", message_template: "" }); } }}>
+      <Dialog open={showAddTrigger} onOpenChange={(open) => { setShowAddTrigger(open); if (!open) { setEditingTriggerId(null); setNewTrigger({ name: "", type: "keyword", keywords: "", message_template: "", instance_id: "" }); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingTriggerId ? "Editar Gatilho" : "Novo Gatilho"}</DialogTitle>
@@ -433,6 +480,18 @@ export default function AutomacaoPage() {
               <Label>Mensagem de resposta</Label>
               <Textarea placeholder="Mensagem automática..." value={newTrigger.message_template} onChange={(e) => setNewTrigger({ ...newTrigger, message_template: e.target.value })} />
             </div>
+            {instances.length > 0 && (
+              <div className="space-y-2">
+                <Label>WhatsApp (instância)</Label>
+                <Select value={newTrigger.instance_id || "none"} onValueChange={(v) => setNewTrigger({ ...newTrigger, instance_id: v === "none" ? "" : v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecionar instância" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Todas</SelectItem>
+                    {instances.map((inst) => <SelectItem key={inst.id} value={inst.id}>{inst.instance_name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddTrigger(false)}>Cancelar</Button>
@@ -442,7 +501,7 @@ export default function AutomacaoPage() {
       </Dialog>
 
       {/* Add/Edit Mass Message Dialog */}
-      <Dialog open={showAddMass} onOpenChange={(open) => { setShowAddMass(open); if (!open) { setEditingMassId(null); setNewMass({ name: "", message: "", scheduled_at: "" }); } }}>
+      <Dialog open={showAddMass} onOpenChange={(open) => { setShowAddMass(open); if (!open) { setEditingMassId(null); setNewMass({ name: "", message: "", scheduled_at: "", instance_id: "" }); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingMassId ? "Editar Disparo" : "Novo Disparo em Massa"}</DialogTitle>
@@ -457,14 +516,72 @@ export default function AutomacaoPage() {
               <Label>Mensagem</Label>
               <Textarea placeholder="Conteúdo da mensagem..." value={newMass.message} onChange={(e) => setNewMass({ ...newMass, message: e.target.value })} />
             </div>
+            {instances.length > 0 && (
+              <div className="space-y-2">
+                <Label>WhatsApp (instância)</Label>
+                <Select value={newMass.instance_id || "none"} onValueChange={(v) => setNewMass({ ...newMass, instance_id: v === "none" ? "" : v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecionar instância" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Todas</SelectItem>
+                    {instances.map((inst) => <SelectItem key={inst.id} value={inst.id}>{inst.instance_name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Agendar para (opcional)</Label>
-              <Input type="datetime-local" value={newMass.scheduled_at} onChange={(e) => setNewMass({ ...newMass, scheduled_at: e.target.value })} />
+              <Input type="datetime-local" value={newMass.scheduled_at || ""} onChange={(e) => setNewMass({ ...newMass, scheduled_at: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddMass(false)}>Cancelar</Button>
             <Button onClick={handleAddMassMessage}>{editingMassId ? "Salvar" : "Criar Disparo"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Scheduled Message Dialog */}
+      <Dialog open={showAddScheduled} onOpenChange={(open) => { setShowAddScheduled(open); if (!open) setNewScheduled({ lead_id: "", message: "", scheduled_at: "", instance_id: "" }); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Agendar Mensagem</DialogTitle>
+            <DialogDescription>Agende uma mensagem para ser enviada a um lead</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Lead *</Label>
+              <Select value={newScheduled.lead_id || "none"} onValueChange={(v) => setNewScheduled({ ...newScheduled, lead_id: v === "none" ? "" : v })}>
+                <SelectTrigger><SelectValue placeholder="Selecionar lead" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Selecione...</SelectItem>
+                  {leads.map((l) => <SelectItem key={l.id} value={l.id}>{l.name} - {l.phone}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Mensagem *</Label>
+              <Textarea placeholder="Conteúdo da mensagem..." value={newScheduled.message} onChange={(e) => setNewScheduled({ ...newScheduled, message: e.target.value })} />
+            </div>
+            {instances.length > 0 && (
+              <div className="space-y-2">
+                <Label>WhatsApp (instância)</Label>
+                <Select value={newScheduled.instance_id || "none"} onValueChange={(v) => setNewScheduled({ ...newScheduled, instance_id: v === "none" ? "" : v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecionar instância" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Padrão</SelectItem>
+                    {instances.map((inst) => <SelectItem key={inst.id} value={inst.id}>{inst.instance_name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Data e hora *</Label>
+              <Input type="datetime-local" value={newScheduled.scheduled_at} onChange={(e) => setNewScheduled({ ...newScheduled, scheduled_at: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddScheduled(false)}>Cancelar</Button>
+            <Button onClick={handleAddScheduled}>Agendar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

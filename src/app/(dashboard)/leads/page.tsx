@@ -200,9 +200,8 @@ export default function LeadsPage() {
   };
 
   const handleDeleteLead = async (leadId: string) => {
-    await supabase.from("lead_tags").delete().eq("lead_id", leadId);
-    await supabase.from("notes").delete().eq("lead_id", leadId);
-    await supabase.from("leads").delete().eq("id", leadId);
+    // Soft delete - set deleted_at instead of removing
+    await supabase.from("leads").update({ deleted_at: new Date().toISOString() }).eq("id", leadId);
     setLeads((prev) => prev.filter((l) => l.id !== leadId));
     setShowLeadDetail(false);
     setSelectedLead(null);

@@ -356,8 +356,15 @@ export default function ConfiguracoesPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/api/webhooks/hotmart`);
+                    onClick={async () => {
+                      try {
+                        const url = `${window.location.origin}/api/webhooks/hotmart`;
+                        await navigator.clipboard.writeText(url);
+                        alert("URL copiada!");
+                      } catch {
+                        const input = document.querySelector('input[readonly]') as HTMLInputElement;
+                        if (input) { input.select(); document.execCommand("copy"); alert("URL copiada!"); }
+                      }
                     }}
                   >
                     Copiar

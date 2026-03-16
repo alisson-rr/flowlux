@@ -25,6 +25,8 @@ interface MediaItem { id: string; file_name: string; file_type: string; file_url
 
 const TAG_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EF4444", "#EC4899", "#06B6D4", "#EAB308"];
 
+interface InstanceOption { id: string; instance_name: string; }
+
 export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
@@ -36,6 +38,10 @@ export default function ChatPage() {
   const [showNewConv, setShowNewConv] = useState(false);
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [leadSearch, setLeadSearch] = useState("");
+
+  // Instance selector
+  const [instances, setInstances] = useState<InstanceOption[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>("");
 
   // Right panel state: "lead" | "media" | null
   const [rightPanel, setRightPanel] = useState<"lead" | "media" | null>(null);
@@ -49,6 +55,9 @@ export default function ChatPage() {
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const [convLeadTags, setConvLeadTags] = useState<Record<string, string[]>>({});
 
+  // Media attachment to send with message
+  const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
@@ -56,19 +65,21 @@ export default function ChatPage() {
   // === DATA LOADING (all parallel) ===
   const loadInitialData = useCallback(async () => {
     try {
-      const [convsRes, leadsRes, templatesRes, mediaRes, tagsRes, leadTagsRes] = await Promise.all([
+      const [convsRes, leadsRes, templatesRes, mediaRes, tagsRes, leadTagsRes, instRes] = await Promise.all([
         supabase.from("conversations").select("*").order("last_message_at", { ascending: false }),
         supabase.from("leads").select("id, name, phone"),
         supabase.from("message_templates").select("id, name, content"),
         supabase.from("media").select("id, file_name, file_type, file_url, file_size").order("created_at", { ascending: false }),
         supabase.from("tags").select("id, name, color"),
         supabase.from("leads").select("phone, lead_tags(tag_id)"),
+        supabase.from("whatsapp_instances").select("id, instance_name"),
       ]);
       if (convsRes.data) setConversations(convsRes.data);
       if (leadsRes.data) setLeads(leadsRes.data);
       if (templatesRes.data) setTemplates(templatesRes.data);
       if (mediaRes.data) setMediaItems(mediaRes.data);
       if (tagsRes.data) setAllTags(tagsRes.data);
+      if (instRes.data) setInstances(instRes.data);
       if (leadTagsRes.data) {
         const map: Record<string, string[]> = {};
         leadTagsRes.data.forEach((l: any) => {
@@ -219,6 +230,7 @@ export default function ChatPage() {
   const filteredConversations = conversations.filter((c) => {
     const matchesSearch = c.contact_name?.toLowerCase().includes(searchTerm.toLowerCase()) || c.contact_phone?.includes(searchTerm);
     if (!matchesSearch) return false;
+    if (selectedInstanceId && c.instance_id !== selectedInstanceId) return false;
     if (!filterTag) return true;
     const phone = c.contact_phone?.replace(/\D/g, "") || "";
     return convLeadTags[phone]?.includes(filterTag);
@@ -262,11 +274,20 @@ export default function ChatPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Buscar conversas..." className="pl-10 bg-muted/50" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
+            {instances.length > 0 && (
+              <Select value={selectedInstanceId || "all"} onValueChange={(v) => setSelectedInstanceId(v === "all" ? "" : v)}>
+                <SelectTrigger className="h-8 text-xs"><MessageSquare className="h-3 w-3 mr-1" /><SelectValue placeholder="WhatsApp" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os WhatsApp</SelectItem>
+                  {instances.map((inst) => <SelectItem key={inst.id} value={inst.id}>{inst.instance_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
             {allTags.length > 0 && (
               <Select value={filterTag || "all"} onValueChange={(v) => setFilterTag(v === "all" ? "" : v)}>
                 <SelectTrigger className="h-8 text-xs"><Filter className="h-3 w-3 mr-1" /><SelectValue placeholder="Filtrar por tag" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="all">Todas as tags</SelectItem>
                   {allTags.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -340,14 +361,31 @@ export default function ChatPage() {
                   </div>
 
                   {/* Input */}
-                  <div className="p-3 border-t border-border bg-card">
-                    <div className="flex items-center gap-2">
+                  <div className="border-t border-border bg-card">
+                    {/* Selected media thumbnail */}
+                    {selectedMedia && (
+                      <div className="px-3 pt-2 flex items-center gap-2">
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted text-xs">
+                          {selectedMedia.file_type === "image" ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={selectedMedia.file_url} alt="" className="h-10 w-10 rounded object-cover" />
+                          ) : (
+                            <div className="h-10 w-10 rounded bg-muted-foreground/10 flex items-center justify-center">
+                              {selectedMedia.file_type === "video" ? <Video className="h-4 w-4 text-blue-400" /> : selectedMedia.file_type === "audio" ? <Music className="h-4 w-4 text-purple-400" /> : <FileUp className="h-4 w-4 text-orange-400" />}
+                            </div>
+                          )}
+                          <span className="truncate max-w-[150px]">{selectedMedia.file_name}</span>
+                          <button onClick={() => setSelectedMedia(null)} className="text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="p-3 flex items-center gap-2">
                       <Button variant="ghost" size="icon" onClick={() => { setRightPanel(rightPanel === "media" ? null : "media"); setMediaTab("templates"); }}>
                         <Paperclip className="h-4 w-4" />
                       </Button>
                       <Input placeholder="Digite uma mensagem..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()} className="flex-1" />
-                      <Button onClick={handleSendMessage} disabled={sendingMessage || !newMessage.trim()}>
+                      <Button onClick={handleSendMessage} disabled={sendingMessage || (!newMessage.trim() && !selectedMedia)}>
                         {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                       </Button>
                     </div>
@@ -482,15 +520,13 @@ export default function ChatPage() {
                             <p className="text-xs text-muted-foreground text-center py-4">Nenhum arquivo. Faça upload em Mídia.</p>
                           ) : (
                             getMediaByType(mediaTab).map((item) => (
-                              <div key={item.id} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-border hover:border-primary/40 transition-colors">
+                              <button key={item.id} onClick={() => { setSelectedMedia(item); setRightPanel(null); }}
+                                className="w-full flex items-center gap-2.5 p-2.5 rounded-lg border border-border hover:border-primary/40 transition-colors text-left">
                                 {getTypeIcon(item.file_type)}
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs font-medium truncate">{item.file_name}</p>
                                 </div>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => window.open(item.file_url, "_blank")}>
-                                  <Download className="h-3 w-3" />
-                                </Button>
-                              </div>
+                              </button>
                             ))
                           )}
                         </div>
