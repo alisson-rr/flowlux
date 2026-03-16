@@ -191,12 +191,16 @@ export default function AutomacaoPage() {
   };
 
   const handleAddMassMessage = async () => {
-    if (!newMass.name || !newMass.message) return;
+    if (!newMass.name || !newMass.message || !newMass.instance_id) {
+      if (!newMass.instance_id) alert("Selecione um WhatsApp para o disparo.");
+      return;
+    }
 
     const payload = {
       name: newMass.name,
       message: newMass.message,
       scheduled_at: newMass.scheduled_at || null,
+      instance_id: newMass.instance_id,
     };
 
     if (editingMassId) {

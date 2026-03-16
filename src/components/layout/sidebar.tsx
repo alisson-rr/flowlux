@@ -17,12 +17,14 @@ import {
   GraduationCap,
   FolderOpen,
   Headset,
+  Kanban,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Chat", href: "/chat", icon: MessageSquare },
+  { label: "Funil", href: "/funil", icon: Kanban },
   { label: "Leads", href: "/leads", icon: Users },
   { label: "Automação", href: "/automacao", icon: Zap },
   { label: "Mídia", href: "/midia", icon: FolderOpen },

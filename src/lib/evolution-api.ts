@@ -58,14 +58,15 @@ export const evolutionApi = {
       }),
     }),
 
-  sendMedia: (instanceName: string, number: string, mediaUrl: string, caption?: string) =>
+  sendMedia: (instanceName: string, number: string, mediaUrl: string, mediaType: string, caption?: string, fileName?: string) =>
     evolutionFetch(`/message/sendMedia/${instanceName}`, {
       method: "POST",
       body: JSON.stringify({
         number,
-        mediatype: "image",
+        mediatype: mediaType === "image" ? "image" : mediaType === "video" ? "video" : mediaType === "audio" ? "audio" : "document",
         media: mediaUrl,
         caption: caption || "",
+        fileName: fileName || "",
       }),
     }),
 

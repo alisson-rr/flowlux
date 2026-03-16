@@ -153,12 +153,13 @@ export default function ChatPage() {
     const phone = lead.phone.replace(/\D/g, "");
     const remoteJid = phone.startsWith("55") ? `${phone}@s.whatsapp.net` : `55${phone}@s.whatsapp.net`;
 
-    const existing = conversations.find((c) => c.remote_jid === remoteJid);
+    if (!selectedInstanceId) { alert("Selecione um WhatsApp primeiro."); return; }
+
+    const existing = conversations.find((c) => c.remote_jid === remoteJid && c.instance_id === selectedInstanceId);
     if (existing) { handleSelectConversation(existing); setShowNewConv(false); setLeadSearch(""); return; }
 
-    const { data: instance } = await supabase.from("whatsapp_instances").select("id").eq("user_id", userData.user.id).limit(1).single();
     const { data: conv } = await supabase.from("conversations").insert({
-      user_id: userData.user.id, instance_id: instance?.id || null, remote_jid: remoteJid,
+      user_id: userData.user.id, instance_id: selectedInstanceId, remote_jid: remoteJid,
       contact_name: lead.name, contact_phone: phone, unread_count: 0,
     }).select().single();
 
@@ -177,13 +178,30 @@ export default function ChatPage() {
   };
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConv) return;
+    if ((!newMessage.trim() && !selectedMedia) || !selectedConv || !selectedInstanceId) return;
     setSendingMessage(true);
     try {
-      const { data: instance } = await supabase.from("whatsapp_instances").select("instance_name").eq("id", selectedConv.instance_id).single();
-      if (instance) { await evolutionApi.sendText(instance.instance_name, selectedConv.remote_jid, newMessage); }
-      await supabase.from("messages").insert({ conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true, message_type: "text", content: newMessage, status: "sent" });
-      await supabase.from("conversations").update({ last_message: newMessage, last_message_at: new Date().toISOString() }).eq("id", selectedConv.id);
+      const inst = instances.find((i) => i.id === selectedInstanceId);
+      if (!inst) { alert("Selecione um WhatsApp primeiro."); setSendingMessage(false); return; }
+
+      // Send media if selected
+      if (selectedMedia) {
+        await evolutionApi.sendMedia(inst.instance_name, selectedConv.remote_jid, selectedMedia.file_url, selectedMedia.file_type, newMessage || "", selectedMedia.file_name);
+        await supabase.from("messages").insert({
+          conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
+          message_type: selectedMedia.file_type, content: newMessage || selectedMedia.file_name, media_url: selectedMedia.file_url, status: "sent",
+        });
+        setSelectedMedia(null);
+      } else {
+        // Text only
+        await evolutionApi.sendText(inst.instance_name, selectedConv.remote_jid, newMessage);
+        await supabase.from("messages").insert({
+          conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
+          message_type: "text", content: newMessage, status: "sent",
+        });
+      }
+
+      await supabase.from("conversations").update({ last_message: newMessage || "[Mídia]", last_message_at: new Date().toISOString() }).eq("id", selectedConv.id);
       setNewMessage("");
     } catch (err) { console.error("Error sending message:", err); } finally { setSendingMessage(false); }
   };
@@ -274,15 +292,21 @@ export default function ChatPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Buscar conversas..." className="pl-10 bg-muted/50" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
-            {instances.length > 0 && (
-              <Select value={selectedInstanceId || "all"} onValueChange={(v) => setSelectedInstanceId(v === "all" ? "" : v)}>
-                <SelectTrigger className="h-8 text-xs"><MessageSquare className="h-3 w-3 mr-1" /><SelectValue placeholder="WhatsApp" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os WhatsApp</SelectItem>
-                  {instances.map((inst) => <SelectItem key={inst.id} value={inst.id}>{inst.instance_name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
+            {/* WhatsApp Instance - REQUIRED */}
+            <div className={cn("rounded-lg border-2 p-2", selectedInstanceId ? "border-primary/50 bg-primary/5" : "border-destructive/50 bg-destructive/5")}>
+              <p className="text-[10px] text-muted-foreground mb-1.5 font-medium">WhatsApp ativo *</p>
+              {instances.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhum WhatsApp configurado</p>
+              ) : (
+                <Select value={selectedInstanceId || "none"} onValueChange={(v) => { setSelectedInstanceId(v === "none" ? "" : v); setSelectedConv(null); setMessages([]); }}>
+                  <SelectTrigger className="h-8 text-xs"><MessageSquare className="h-3 w-3 mr-1.5" /><SelectValue placeholder="Selecione um WhatsApp" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Selecione...</SelectItem>
+                    {instances.map((inst) => <SelectItem key={inst.id} value={inst.id}>{inst.instance_name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
             {allTags.length > 0 && (
               <Select value={filterTag || "all"} onValueChange={(v) => setFilterTag(v === "all" ? "" : v)}>
                 <SelectTrigger className="h-8 text-xs"><Filter className="h-3 w-3 mr-1" /><SelectValue placeholder="Filtrar por tag" /></SelectTrigger>
