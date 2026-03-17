@@ -48,14 +48,21 @@ export default function ConfiguracoesPage() {
   const { toast } = useToast();
 
   const HOTMART_EVENTS = [
-    { key: "PURCHASE_COMPLETE", label: "Compra Aprovada" },
+    { key: "PURCHASE_APPROVED", label: "Compra Aprovada" },
+    { key: "PURCHASE_COMPLETE", label: "Compra Completa" },
     { key: "PURCHASE_CANCELED", label: "Compra Cancelada" },
-    { key: "PURCHASE_REFUNDED", label: "Reembolso" },
-    { key: "PURCHASE_CHARGEBACK", label: "Chargeback" },
+    { key: "PURCHASE_REFUNDED", label: "Compra Reembolsada" },
     { key: "PURCHASE_EXPIRED", label: "Compra Expirada" },
-    { key: "PURCHASE_DELAYED", label: "Pagamento Atrasado" },
-    { key: "SUBSCRIPTION_CANCELLATION", label: "Cancelamento Assinatura" },
+    { key: "PURCHASE_DELAYED", label: "Compra Atrasada" },
+    { key: "PURCHASE_PROTEST", label: "Pedido de Reembolso" },
+    { key: "PURCHASE_CHARGEBACK", label: "Chargeback" },
+    { key: "PURCHASE_WAITING_PAYMENT", label: "Aguardando Pagamento" },
+    { key: "SUBSCRIPTION_CANCELLATION", label: "Cancelamento de Assinatura" },
     { key: "SWITCH_PLAN", label: "Troca de Plano" },
+    { key: "PURCHASE_FIRST_ACCESS", label: "Primeiro Acesso" },
+    { key: "MODULE_COMPLETE", label: "Módulo Completo" },
+    { key: "CART_ABANDONMENT", label: "Abandono de Carrinho" },
+    { key: "SUBSCRIPTION_CHARGE_DATE_UPDATED", label: "Atualização Data Cobrança" },
   ];
 
   const loadData = useCallback(async () => {
@@ -90,7 +97,7 @@ export default function ConfiguracoesPage() {
         const defaultFunnel = loadedFunnels[0].id;
         const defaultStage = loadedStages.find((s: any) => s.funnel_id === defaultFunnel)?.id || "";
         const defaults: Record<string, { funnel_id: string; stage_id: string; tag_id: string }> = {};
-        ["PURCHASE_COMPLETE","PURCHASE_CANCELED","PURCHASE_REFUNDED","PURCHASE_CHARGEBACK","PURCHASE_EXPIRED","PURCHASE_DELAYED","SUBSCRIPTION_CANCELLATION","SWITCH_PLAN"].forEach((k) => {
+        ["PURCHASE_APPROVED","PURCHASE_COMPLETE","PURCHASE_CANCELED","PURCHASE_REFUNDED","PURCHASE_EXPIRED","PURCHASE_DELAYED","PURCHASE_PROTEST","PURCHASE_CHARGEBACK","PURCHASE_WAITING_PAYMENT","SUBSCRIPTION_CANCELLATION","SWITCH_PLAN","PURCHASE_FIRST_ACCESS","MODULE_COMPLETE","CART_ABANDONMENT","SUBSCRIPTION_CHARGE_DATE_UPDATED"].forEach((k) => {
           defaults[k] = { funnel_id: defaultFunnel, stage_id: defaultStage, tag_id: "" };
         });
         setHotmartEvents(defaults);
