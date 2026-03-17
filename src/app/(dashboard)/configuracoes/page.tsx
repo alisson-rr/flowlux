@@ -13,7 +13,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Smartphone, Plus, QrCode, RefreshCw, Power, PowerOff, Trash2, Loader2, CheckCircle, XCircle, Wifi, WifiOff, ShoppingCart, Webhook,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Smartphone, Plus, QrCode, RefreshCw, Power, PowerOff, Trash2, Loader2, CheckCircle, XCircle, Wifi, WifiOff, ShoppingCart, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -38,23 +41,60 @@ export default function ConfiguracoesPage() {
   const [hotmartToken, setHotmartToken] = useState("");
   const [hotmartSaving, setHotmartSaving] = useState(false);
   const [hotmartSaved, setHotmartSaved] = useState(false);
+  const [hotmartEvents, setHotmartEvents] = useState<Record<string, { funnel_id: string; stage_id: string; tag_id: string }>>({});
+  const [funnels, setFunnels] = useState<{ id: string; name: string }[]>([]);
+  const [stages, setStages] = useState<{ id: string; name: string; funnel_id: string }[]>([]);
+  const [tags, setTags] = useState<{ id: string; name: string }[]>([]);
   const { toast } = useToast();
+
+  const HOTMART_EVENTS = [
+    { key: "PURCHASE_COMPLETE", label: "Compra Aprovada" },
+    { key: "PURCHASE_CANCELED", label: "Compra Cancelada" },
+    { key: "PURCHASE_REFUNDED", label: "Reembolso" },
+    { key: "PURCHASE_CHARGEBACK", label: "Chargeback" },
+    { key: "PURCHASE_EXPIRED", label: "Compra Expirada" },
+    { key: "PURCHASE_DELAYED", label: "Pagamento Atrasado" },
+    { key: "SUBSCRIPTION_CANCELLATION", label: "Cancelamento Assinatura" },
+    { key: "SWITCH_PLAN", label: "Troca de Plano" },
+  ];
 
   const loadData = useCallback(async () => {
     try {
       const { data: userData } = await supabase.auth.getUser();
 
-      const [instancesRes, hotmartRes] = await Promise.all([
+      const [instancesRes, hotmartRes, funnelsRes, stagesRes, tagsRes] = await Promise.all([
         userData.user
           ? supabase.from("whatsapp_instances").select("*").eq("user_id", userData.user.id).is("deleted_at", null).order("created_at")
           : Promise.resolve({ data: [] }),
         userData.user
-          ? supabase.from("integrations").select("api_key").eq("user_id", userData.user.id).eq("type", "hotmart").single()
+          ? supabase.from("integrations").select("api_key, config").eq("user_id", userData.user.id).eq("type", "hotmart").single()
           : Promise.resolve({ data: null }),
+        userData.user ? supabase.from("funnels").select("id, name").eq("user_id", userData.user.id) : Promise.resolve({ data: [] }),
+        userData.user ? supabase.from("funnel_stages").select("id, name, funnel_id").eq("user_id", userData.user.id).order("order") : Promise.resolve({ data: [] }),
+        userData.user ? supabase.from("tags").select("id, name").eq("user_id", userData.user.id) : Promise.resolve({ data: [] }),
       ]);
 
       if (instancesRes.data) setInstances(instancesRes.data);
-      if (hotmartRes.data) setHotmartToken((hotmartRes.data as any)?.api_key || "");
+      if (hotmartRes.data) {
+        setHotmartToken((hotmartRes.data as any)?.api_key || "");
+        if ((hotmartRes.data as any)?.config?.events) setHotmartEvents((hotmartRes.data as any).config.events);
+      }
+      const loadedFunnels = (funnelsRes.data || []) as any[];
+      const loadedStages = (stagesRes.data || []) as any[];
+      setFunnels(loadedFunnels);
+      setStages(loadedStages);
+      if (tagsRes.data) setTags(tagsRes.data as any);
+
+      // Pre-set defaults for hotmart events if not yet configured
+      if (loadedFunnels.length > 0 && !(hotmartRes.data as any)?.config?.events) {
+        const defaultFunnel = loadedFunnels[0].id;
+        const defaultStage = loadedStages.find((s: any) => s.funnel_id === defaultFunnel)?.id || "";
+        const defaults: Record<string, { funnel_id: string; stage_id: string; tag_id: string }> = {};
+        ["PURCHASE_COMPLETE","PURCHASE_CANCELED","PURCHASE_REFUNDED","PURCHASE_CHARGEBACK","PURCHASE_EXPIRED","PURCHASE_DELAYED","SUBSCRIPTION_CANCELLATION","SWITCH_PLAN"].forEach((k) => {
+          defaults[k] = { funnel_id: defaultFunnel, stage_id: defaultStage, tag_id: "" };
+        });
+        setHotmartEvents(defaults);
+      }
 
       // Check Evolution status in PARALLEL (not sequential)
       if (instancesRes.data && instancesRes.data.length > 0) {
@@ -93,7 +133,7 @@ export default function ConfiguracoesPage() {
     setCreatingInstance(true);
 
     try {
-      const result = await evolutionApi.createInstance(newInstanceName);
+      const result = await evolutionApi.createInstance(newInstanceName, "https://webhook.devnoflow.com.br/webhook/flowlux-webhook");
 
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
@@ -108,14 +148,7 @@ export default function ConfiguracoesPage() {
         setInstances((prev) => [...prev, inst]);
       }
 
-      // Configure webhook for receiving messages
-      try {
-        await evolutionApi.setWebhook(newInstanceName, "https://webhook.devnoflow.com.br/webhook/flowlux-webhook");
-        toast("Webhook configurado com sucesso!", "success");
-      } catch (webhookErr: any) {
-        console.error("Webhook config failed:", webhookErr);
-        toast("Falha ao configurar webhook: " + (webhookErr?.message || "erro"), "error");
-      }
+      toast("Instância criada com webhook configurado!", "success");
 
       // Show QR code if available
       if (result?.qrcode?.base64) {
@@ -129,19 +162,6 @@ export default function ConfiguracoesPage() {
       console.error("Error creating instance:", err);
     } finally {
       setCreatingInstance(false);
-    }
-  };
-
-  const handleConfigureWebhook = async (instanceName: string) => {
-    setActionLoading(instanceName + "-webhook");
-    try {
-      await evolutionApi.setWebhook(instanceName, "https://webhook.devnoflow.com.br/webhook/flowlux-webhook");
-      toast("Webhook configurado!", "success");
-    } catch (err: any) {
-      console.error("Webhook error:", err);
-      toast("Erro ao configurar webhook: " + (err?.message || ""), "error");
-    } finally {
-      setActionLoading(null);
     }
   };
 
@@ -209,11 +229,20 @@ export default function ConfiguracoesPage() {
       type: "hotmart",
       api_key: hotmartToken,
       is_active: !!hotmartToken,
+      config: { events: hotmartEvents },
     }, { onConflict: "user_id,type" });
 
     setHotmartSaving(false);
     setHotmartSaved(true);
+    toast("Configuração Hotmart salva!", "success");
     setTimeout(() => setHotmartSaved(false), 3000);
+  };
+
+  const updateHotmartEvent = (eventKey: string, field: string, value: string) => {
+    setHotmartEvents((prev) => ({
+      ...prev,
+      [eventKey]: { ...prev[eventKey], [field]: value },
+    }));
   };
 
   if (loading) {
@@ -295,21 +324,6 @@ export default function ConfiguracoesPage() {
                             <QrCode className="h-4 w-4 mr-1" />
                           )}
                           QR Code
-                        </Button>
-
-                        {/* Webhook */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleConfigureWebhook(inst.instance_name)}
-                          disabled={!!actionLoading}
-                        >
-                          {actionLoading === inst.instance_name + "-webhook" ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Webhook className="h-4 w-4 mr-1" />
-                          )}
-                          Webhook
                         </Button>
 
                         {/* Restart */}
@@ -416,6 +430,48 @@ export default function ConfiguracoesPage() {
                   Configure este URL como webhook na Hotmart para receber eventos de compra
                 </p>
               </div>
+
+              {/* Event Mappings - Collapsible */}
+              <details className="pt-4 border-t border-border">
+                <summary className="cursor-pointer flex items-center gap-2 text-base font-semibold hover:text-primary transition-colors">
+                  <ChevronDown className="h-4 w-4" /> Personalizar Eventos
+                </summary>
+                <p className="text-xs text-muted-foreground mt-2 mb-3">Para cada evento, defina o funil, etapa e tag que serão aplicados ao lead</p>
+                <div className="space-y-3 mt-3">
+                  {HOTMART_EVENTS.map((evt) => {
+                    const cfg = hotmartEvents[evt.key] || { funnel_id: "", stage_id: "", tag_id: "" };
+                    const stagesForFunnel = stages.filter((s) => s.funnel_id === cfg.funnel_id);
+                    return (
+                      <div key={evt.key} className="p-3 rounded-lg border border-border bg-muted/30 space-y-2">
+                        <p className="text-sm font-medium">{evt.label} <span className="text-[10px] text-muted-foreground">({evt.key})</span></p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <Select value={cfg.funnel_id || "none"} onValueChange={(v) => updateHotmartEvent(evt.key, "funnel_id", v === "none" ? "" : v)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Funil" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Sem funil</SelectItem>
+                              {funnels.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <Select value={cfg.stage_id || "none"} onValueChange={(v) => updateHotmartEvent(evt.key, "stage_id", v === "none" ? "" : v)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Etapa" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Sem etapa</SelectItem>
+                              {(cfg.funnel_id ? stagesForFunnel : stages).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <Select value={cfg.tag_id || "none"} onValueChange={(v) => updateHotmartEvent(evt.key, "tag_id", v === "none" ? "" : v)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Tag" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Sem tag</SelectItem>
+                              {tags.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
 
               <Button onClick={handleSaveHotmart} disabled={hotmartSaving}>
                 {hotmartSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -1,5 +1,5 @@
-const EVOLUTION_API_URL = process.env.NEXT_PUBLIC_EVOLUTION_API_URL || "https://evo.devnoflow.com.br";
-const EVOLUTION_API_KEY = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || "gJRYf6JN8RsL2jrPolWZaI7LNOe6XDMC";
+const EVOLUTION_API_URL = process.env.NEXT_PUBLIC_EVOLUTION_API_URL || "";
+const EVOLUTION_API_KEY = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || "";
 
 async function evolutionFetch(endpoint: string, options: RequestInit = {}) {
   const res = await fetch(`${EVOLUTION_API_URL}${endpoint}`, {
@@ -21,13 +21,19 @@ async function evolutionFetch(endpoint: string, options: RequestInit = {}) {
 
 export const evolutionApi = {
   // Instance management
-  createInstance: (instanceName: string) =>
+  createInstance: (instanceName: string, webhookUrl?: string) =>
     evolutionFetch("/instance/create", {
       method: "POST",
       body: JSON.stringify({
         instanceName,
         integration: "WHATSAPP-BAILEYS",
         qrcode: true,
+        webhook: webhookUrl ? {
+          url: webhookUrl,
+          byEvents: true,
+          base64: true,
+          events: ["MESSAGES_UPSERT"],
+        } : undefined,
       }),
     }),
 

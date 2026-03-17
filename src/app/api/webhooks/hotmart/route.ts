@@ -9,82 +9,102 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Hotmart sends event type in different fields depending on webhook version
     const event = body.event || body.data?.purchase?.status || "unknown";
     const buyerEmail = body.data?.buyer?.email || body.buyer?.email || "";
     const buyerName = body.data?.buyer?.name || body.buyer?.name || "";
     const buyerPhone = body.data?.buyer?.checkout_phone || body.buyer?.checkout_phone || "";
     const productName = body.data?.product?.name || body.product?.name || "";
-    const transactionId = body.data?.purchase?.transaction || body.purchase?.transaction || "";
 
-    // Find user by hotmart integration token match
-    // Hotmart sends hottok as query param or in headers
     const hottok = req.nextUrl.searchParams.get("hottok") || "";
 
+    // Find integration + config by hottok
     let userId: string | null = null;
+    let eventConfig: Record<string, { funnel_id?: string; stage_id?: string; tag_id?: string }> = {};
 
     if (hottok) {
       const { data: integration } = await supabase
         .from("integrations")
-        .select("user_id")
+        .select("user_id, config")
         .eq("type", "hotmart")
         .eq("api_key", hottok)
         .eq("is_active", true)
         .single();
       userId = integration?.user_id || null;
+      eventConfig = (integration?.config as any)?.events || {};
     }
 
-    // Log the webhook event
+    // Log webhook
     await supabase.from("hotmart_webhooks").insert({
-      user_id: userId,
-      event,
-      payload: body,
-      processed: false,
+      user_id: userId, event, payload: body, processed: false,
     });
 
-    // Process based on event type
-    if (userId && buyerPhone && (event === "PURCHASE_COMPLETE" || event === "PURCHASE_APPROVED" || event === "approved")) {
-      // Auto-create lead from purchase
-      const cleanPhone = buyerPhone.replace(/\D/g, "");
-
-      // Check if lead already exists
-      const { data: existingLead } = await supabase
-        .from("leads")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("phone", cleanPhone)
-        .is("deleted_at", null)
-        .single();
-
-      if (!existingLead) {
-        await supabase.from("leads").insert({
-          user_id: userId,
-          name: buyerName || "Lead Hotmart",
-          phone: cleanPhone,
-          email: buyerEmail || null,
-          source: `Hotmart - ${productName}`,
-        });
-      }
-
-      // Mark webhook as processed
-      // (we just inserted it above, so update the latest one)
-      await supabase
-        .from("hotmart_webhooks")
-        .update({ processed: true })
-        .eq("user_id", userId)
-        .eq("event", event)
-        .order("created_at", { ascending: false })
-        .limit(1);
+    if (!userId || !buyerPhone) {
+      return NextResponse.json({ success: true, processed: false, reason: !userId ? "no_user" : "no_phone" });
     }
 
-    return NextResponse.json({ success: true });
+    const cleanPhone = buyerPhone.replace(/\D/g, "");
+    const cfg = eventConfig[event] || {};
+
+    // Check if lead exists
+    const { data: existingLead } = await supabase
+      .from("leads")
+      .select("id")
+      .eq("user_id", userId)
+      .or(`phone.eq.${cleanPhone},phone.ilike.%${cleanPhone}%`)
+      .is("deleted_at", null)
+      .limit(1)
+      .single();
+
+    if (existingLead) {
+      // Update existing lead with new stage/funnel if configured
+      const updates: Record<string, any> = {};
+      if (cfg.stage_id) updates.stage_id = cfg.stage_id;
+      if (cfg.funnel_id) updates.funnel_id = cfg.funnel_id;
+      if (Object.keys(updates).length > 0) {
+        await supabase.from("leads").update(updates).eq("id", existingLead.id);
+      }
+      // Add tag if configured
+      if (cfg.tag_id) {
+        await supabase.from("lead_tags").upsert(
+          { lead_id: existingLead.id, tag_id: cfg.tag_id },
+          { onConflict: "lead_id,tag_id" }
+        );
+      }
+    } else {
+      // Create new lead
+      const { data: newLead } = await supabase.from("leads").insert({
+        user_id: userId,
+        name: buyerName || "Lead Hotmart",
+        phone: cleanPhone,
+        email: buyerEmail || null,
+        source: `Hotmart - ${productName}`,
+        stage_id: cfg.stage_id || null,
+        funnel_id: cfg.funnel_id || null,
+      }).select("id").single();
+
+      // Add tag
+      if (newLead && cfg.tag_id) {
+        await supabase.from("lead_tags").insert({ lead_id: newLead.id, tag_id: cfg.tag_id });
+      }
+    }
+
+    // Mark processed
+    await supabase
+      .from("hotmart_webhooks")
+      .update({ processed: true })
+      .eq("user_id", userId)
+      .eq("event", event)
+      .is("processed", false)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    return NextResponse.json({ success: true, processed: true, event });
   } catch (err: any) {
     console.error("Hotmart webhook error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
 
-// Hotmart may also send GET for verification
 export async function GET() {
   return NextResponse.json({ status: "ok" });
 }
