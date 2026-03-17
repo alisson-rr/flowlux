@@ -15,10 +15,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Plus, Search, GripVertical, Phone, Mail, StickyNote, Tag, X, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Pencil, Globe, Archive, ArchiveRestore, Filter, SortAsc,
+  Plus, Search, Phone, Mail, StickyNote, Tag, X, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Pencil, Globe, Archive, ArchiveRestore, Filter, SortAsc,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
+import { cn, formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 interface Lead {
   id: string;
@@ -58,13 +58,13 @@ export default function LeadsPage() {
   const [newTag, setNewTag] = useState("");
   const [newLead, setNewLead] = useState({ name: "", phone: "", email: "", source: "" });
   const [editLead, setEditLead] = useState({ name: "", phone: "", email: "", source: "" });
-  const [draggedLead, setDraggedLead] = useState<string | null>(null);
   const [editStages, setEditStages] = useState<Stage[]>([]);
   const [newStageName, setNewStageName] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [filterTag, setFilterTag] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "name" | "phone">("recent");
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
+  const { toast } = useToast();
 
   const loadData = useCallback(async () => {
     try {
@@ -97,7 +97,8 @@ export default function LeadsPage() {
 
   // === LEAD CRUD ===
   const handleAddLead = async () => {
-    if (!newLead.name || !newLead.phone) return;
+    if (!newLead.name.trim()) { toast("Nome é obrigatório.", "warning"); return; }
+    if (!newLead.phone.trim()) { toast("Telefone é obrigatório.", "warning"); return; }
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
 
@@ -119,7 +120,9 @@ export default function LeadsPage() {
   };
 
   const handleUpdateLead = async () => {
-    if (!selectedLead || !editLead.name || !editLead.phone) return;
+    if (!selectedLead) return;
+    if (!editLead.name.trim()) { toast("Nome é obrigatório.", "warning"); return; }
+    if (!editLead.phone.trim()) { toast("Telefone é obrigatório.", "warning"); return; }
 
     const { error } = await supabase.from("leads").update({
       name: editLead.name,
@@ -207,16 +210,6 @@ export default function LeadsPage() {
     setSelectedLead(null);
   };
 
-  // === DRAG & DROP ===
-  const handleDragStart = (leadId: string) => setDraggedLead(leadId);
-  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
-  const handleDrop = async (stageId: string) => {
-    if (!draggedLead) return;
-    await supabase.from("leads").update({ stage_id: stageId }).eq("id", draggedLead);
-    setLeads((prev) => prev.map((l) => (l.id === draggedLead ? { ...l, stage_id: stageId } : l)));
-    setDraggedLead(null);
-  };
-
   // === FUNNEL CONFIG ===
   const openFunnelConfig = () => {
     setEditStages([...stages]);
@@ -281,8 +274,6 @@ export default function LeadsPage() {
       if (sortBy === "phone") return a.phone.localeCompare(b.phone);
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  const getLeadsByStage = (stageId: string) => filteredLeads.filter((l) => l.stage_id === stageId);
-
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -333,53 +324,95 @@ export default function LeadsPage() {
         </Button>
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {stages.map((stage) => (
-          <div key={stage.id} className="flex-shrink-0 w-[300px]" onDragOver={handleDragOver} onDrop={() => handleDrop(stage.id)}>
-            <div className="flex items-center gap-2 mb-3 px-1">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }} />
-              <span className="font-medium text-sm">{stage.name}</span>
-              <Badge variant="outline" className="ml-auto text-xs">{getLeadsByStage(stage.id).length}</Badge>
-            </div>
-            <div className="space-y-2 min-h-[200px] p-2 rounded-lg bg-muted/30 border border-dashed border-border">
-              {getLeadsByStage(stage.id).map((lead) => (
-                <Card key={lead.id} draggable onDragStart={() => handleDragStart(lead.id)}
-                  onClick={() => { setSelectedLead(lead); setShowLeadDetail(true); }}
-                  className={cn("p-3 cursor-pointer hover:border-primary/40 transition-all", draggedLead === lead.id && "opacity-50")}>
-                  <div className="flex items-start gap-2">
-                    <GripVertical className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0 cursor-grab" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0" style={{ backgroundColor: stage.color }}>
-                          {getInitials(lead.name)}
+      {/* Leads List */}
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/50">
+                <th className="text-left p-3 font-medium text-muted-foreground">Lead</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">Telefone</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">Email</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">Etapa</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">Tags</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">Origem</th>
+                <th className="text-left p-3 font-medium text-muted-foreground">Criado em</th>
+                <th className="text-right p-3 font-medium text-muted-foreground">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredLeads.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                    <Search className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                    <p>Nenhum lead encontrado</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredLeads.map((lead) => {
+                  const stage = stages.find((s) => s.id === lead.stage_id);
+                  return (
+                    <tr key={lead.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer"
+                      onClick={() => { setSelectedLead(lead); setShowLeadDetail(true); }}>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0" style={{ backgroundColor: stage?.color || "#8B5CF6" }}>
+                            {getInitials(lead.name)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{lead.name}</p>
+                            {lead.notes.length > 0 && (
+                              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground"><StickyNote className="h-3 w-3" /> {lead.notes.length} nota{lead.notes.length > 1 ? "s" : ""}</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-sm truncate">{lead.name}</p>
-                          <p className="text-xs text-muted-foreground">{formatPhone(lead.phone)}</p>
-                        </div>
-                      </div>
-                      {lead.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
+                      </td>
+                      <td className="p-3 text-muted-foreground">{formatPhone(lead.phone)}</td>
+                      <td className="p-3 text-muted-foreground">{lead.email || "—"}</td>
+                      <td className="p-3">
+                        {stage && (
+                          <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full" style={{ backgroundColor: stage.color + "20", color: stage.color }}>
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }} />
+                            {stage.name}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex flex-wrap gap-1">
                           {lead.tags.slice(0, 3).map((tag) => (
                             <span key={tag.id} className="text-[10px] px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: tag.color }}>{tag.name}</span>
                           ))}
                           {lead.tags.length > 3 && <span className="text-[10px] text-muted-foreground">+{lead.tags.length - 3}</span>}
                         </div>
-                      )}
-                      <div className="flex items-center gap-3 mt-2 text-muted-foreground">
-                        {lead.notes.length > 0 && <span className="flex items-center gap-0.5 text-[10px]"><StickyNote className="h-3 w-3" /> {lead.notes.length}</span>}
-                        {lead.email && <Mail className="h-3 w-3" />}
-                        {lead.source && <Globe className="h-3 w-3" />}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                      </td>
+                      <td className="p-3 text-muted-foreground text-xs">{lead.source || "—"}</td>
+                      <td className="p-3 text-muted-foreground text-xs">{new Date(lead.created_at).toLocaleDateString("pt-BR")}</td>
+                      <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setSelectedLead(lead); openEditLead(); }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleArchiveLead(lead.id, !lead.archived)}>
+                            {lead.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteLead(lead.id)}>
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        {filteredLeads.length > 0 && (
+          <div className="p-3 border-t border-border text-xs text-muted-foreground">
+            {filteredLeads.length} lead{filteredLeads.length !== 1 ? "s" : ""} encontrado{filteredLeads.length !== 1 ? "s" : ""}
           </div>
-        ))}
-      </div>
+        )}
+      </Card>
 
       {/* Add Lead Dialog */}
       <Dialog open={showAddLead} onOpenChange={setShowAddLead}>

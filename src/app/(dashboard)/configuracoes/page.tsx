@@ -16,6 +16,7 @@ import {
   Smartphone, Plus, QrCode, RefreshCw, Power, PowerOff, Trash2, Loader2, CheckCircle, XCircle, Wifi, WifiOff, ShoppingCart, Webhook,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 interface WhatsAppInstance {
   id: string;
@@ -37,13 +38,16 @@ export default function ConfiguracoesPage() {
   const [hotmartToken, setHotmartToken] = useState("");
   const [hotmartSaving, setHotmartSaving] = useState(false);
   const [hotmartSaved, setHotmartSaved] = useState(false);
+  const { toast } = useToast();
 
   const loadData = useCallback(async () => {
     try {
       const { data: userData } = await supabase.auth.getUser();
 
       const [instancesRes, hotmartRes] = await Promise.all([
-        supabase.from("whatsapp_instances").select("*").order("created_at"),
+        userData.user
+          ? supabase.from("whatsapp_instances").select("*").eq("user_id", userData.user.id).is("deleted_at", null).order("created_at")
+          : Promise.resolve({ data: [] }),
         userData.user
           ? supabase.from("integrations").select("api_key").eq("user_id", userData.user.id).eq("type", "hotmart").single()
           : Promise.resolve({ data: null }),
@@ -102,6 +106,13 @@ export default function ConfiguracoesPage() {
 
       if (inst) {
         setInstances((prev) => [...prev, inst]);
+      }
+
+      // Configure webhook for receiving messages
+      try {
+        await evolutionApi.setWebhook(newInstanceName, "https://webhook.devnoflow.com.br/webhook/flowlux-webhook");
+      } catch (webhookErr) {
+        console.warn("Webhook config failed (can be retried later):", webhookErr);
       }
 
       // Show QR code if available
@@ -163,8 +174,9 @@ export default function ConfiguracoesPage() {
     setActionLoading(id + "-delete");
     try {
       await evolutionApi.deleteInstance(instanceName);
-      await supabase.from("whatsapp_instances").delete().eq("id", id);
+      await supabase.from("whatsapp_instances").update({ deleted_at: new Date().toISOString() }).eq("id", id);
       setInstances((prev) => prev.filter((i) => i.id !== id));
+      toast("Instância excluída.", "success");
     } catch (err) {
       console.error("Error deleting:", err);
     } finally {
@@ -360,10 +372,10 @@ export default function ConfiguracoesPage() {
                       try {
                         const url = `${window.location.origin}/api/webhooks/hotmart`;
                         await navigator.clipboard.writeText(url);
-                        alert("URL copiada!");
+                        toast("URL copiada!", "success");
                       } catch {
                         const input = document.querySelector('input[readonly]') as HTMLInputElement;
-                        if (input) { input.select(); document.execCommand("copy"); alert("URL copiada!"); }
+                        if (input) { input.select(); document.execCommand("copy"); toast("URL copiada!", "success"); }
                       }
                     }}
                   >

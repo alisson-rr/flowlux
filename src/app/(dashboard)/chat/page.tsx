@@ -14,14 +14,17 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download,
+  Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download, Zap, Timer, Play,
 } from "lucide-react";
 import { cn, formatPhone, getInitials } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 interface Conversation { id: string; instance_id: string; remote_jid: string; contact_name: string; contact_phone: string; last_message: string; last_message_at: string; unread_count: number; }
-interface ChatMessage { id: string; from_me: boolean; content: string; message_type: string; status: string; created_at: string; }
+interface ChatMessage { id: string; from_me: boolean; content: string; message_type: string; media_url?: string; status: string; created_at: string; }
 interface LeadOption { id: string; name: string; phone: string; }
 interface MediaItem { id: string; file_name: string; file_type: string; file_url: string; file_size: number; }
+interface FlowOption { id: string; name: string; description: string; trigger_type: string; is_active: boolean; steps: FlowStepOption[]; }
+interface FlowStepOption { id: string; step_order: number; step_type: string; content: string; media_url: string; file_name: string; delay_seconds: number; }
 
 const TAG_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EF4444", "#EC4899", "#06B6D4", "#EAB308"];
 
@@ -58,6 +61,14 @@ export default function ChatPage() {
   // Media attachment to send with message
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
 
+  // Flows / Triggers
+  const [flows, setFlows] = useState<FlowOption[]>([]);
+  const [showFlowPicker, setShowFlowPicker] = useState(false);
+  const [selectedFlow, setSelectedFlow] = useState<FlowOption | null>(null);
+  const [showFlowPreview, setShowFlowPreview] = useState(false);
+  const [executingFlow, setExecutingFlow] = useState(false);
+
+  const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
@@ -65,21 +76,37 @@ export default function ChatPage() {
   // === DATA LOADING (all parallel) ===
   const loadInitialData = useCallback(async () => {
     try {
-      const [convsRes, leadsRes, templatesRes, mediaRes, tagsRes, leadTagsRes, instRes] = await Promise.all([
-        supabase.from("conversations").select("*").order("last_message_at", { ascending: false }),
-        supabase.from("leads").select("id, name, phone"),
-        supabase.from("message_templates").select("id, name, content"),
-        supabase.from("media").select("id, file_name, file_type, file_url, file_size").order("created_at", { ascending: false }),
-        supabase.from("tags").select("id, name, color"),
-        supabase.from("leads").select("phone, lead_tags(tag_id)"),
-        supabase.from("whatsapp_instances").select("id, instance_name"),
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) { setLoading(false); return; }
+
+      const [convsRes, leadsRes, templatesRes, mediaRes, tagsRes, leadTagsRes, instRes, flowsRes] = await Promise.all([
+        supabase.from("conversations").select("*").eq("user_id", userId).order("last_message_at", { ascending: false }),
+        supabase.from("leads").select("id, name, phone").eq("user_id", userId),
+        supabase.from("message_templates").select("id, name, content").eq("user_id", userId),
+        supabase.from("media").select("id, file_name, file_type, file_url, file_size").eq("user_id", userId).order("created_at", { ascending: false }),
+        supabase.from("tags").select("id, name, color").eq("user_id", userId),
+        supabase.from("leads").select("phone, lead_tags(tag_id)").eq("user_id", userId),
+        supabase.from("whatsapp_instances").select("id, instance_name").eq("user_id", userId).is("deleted_at", null),
+        supabase.from("flows").select("*, flow_steps(*)").eq("user_id", userId).eq("is_active", true).order("name"),
       ]);
       if (convsRes.data) setConversations(convsRes.data);
       if (leadsRes.data) setLeads(leadsRes.data);
       if (templatesRes.data) setTemplates(templatesRes.data);
       if (mediaRes.data) setMediaItems(mediaRes.data);
       if (tagsRes.data) setAllTags(tagsRes.data);
-      if (instRes.data) setInstances(instRes.data);
+      if (instRes.data) {
+        setInstances(instRes.data);
+        if (instRes.data.length > 0 && !selectedInstanceId) {
+          setSelectedInstanceId(instRes.data[0].id);
+        }
+      }
+      if (flowsRes.data) {
+        setFlows(flowsRes.data.map((f: any) => ({
+          ...f,
+          steps: (f.flow_steps || []).sort((a: any, b: any) => a.step_order - b.step_order),
+        })));
+      }
       if (leadTagsRes.data) {
         const map: Record<string, string[]> = {};
         leadTagsRes.data.forEach((l: any) => {
@@ -134,11 +161,26 @@ export default function ChatPage() {
     loadInitialData();
 
     const channel = supabase
-      .channel("messages-realtime")
+      .channel("flowlux-realtime")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
         const msg = payload.new as ChatMessage;
-        setMessages((prev) => [...prev, msg]);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
         setTimeout(scrollToBottom, 100);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, (payload) => {
+        if (payload.eventType === "INSERT") {
+          const conv = payload.new as Conversation;
+          setConversations((prev) => {
+            if (prev.some((c) => c.id === conv.id)) return prev;
+            return [conv, ...prev];
+          });
+        } else if (payload.eventType === "UPDATE") {
+          const conv = payload.new as Conversation;
+          setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, ...conv } : c));
+        }
       })
       .subscribe();
 
@@ -153,7 +195,7 @@ export default function ChatPage() {
     const phone = lead.phone.replace(/\D/g, "");
     const remoteJid = phone.startsWith("55") ? `${phone}@s.whatsapp.net` : `55${phone}@s.whatsapp.net`;
 
-    if (!selectedInstanceId) { alert("Selecione um WhatsApp primeiro."); return; }
+    if (!selectedInstanceId) { toast("Selecione um WhatsApp primeiro.", "warning"); return; }
 
     const existing = conversations.find((c) => c.remote_jid === remoteJid && c.instance_id === selectedInstanceId);
     if (existing) { handleSelectConversation(existing); setShowNewConv(false); setLeadSearch(""); return; }
@@ -182,14 +224,19 @@ export default function ChatPage() {
     setSendingMessage(true);
     try {
       const inst = instances.find((i) => i.id === selectedInstanceId);
-      if (!inst) { alert("Selecione um WhatsApp primeiro."); setSendingMessage(false); return; }
+      if (!inst) { toast("Selecione um WhatsApp primeiro.", "warning"); setSendingMessage(false); return; }
 
       // Send media if selected
       if (selectedMedia) {
-        await evolutionApi.sendMedia(inst.instance_name, selectedConv.remote_jid, selectedMedia.file_url, selectedMedia.file_type, newMessage || "", selectedMedia.file_name);
+        const isAudio = selectedMedia.file_type === "audio";
+        if (isAudio) {
+          await evolutionApi.sendAudio(inst.instance_name, selectedConv.remote_jid, selectedMedia.file_url);
+        } else {
+          await evolutionApi.sendMedia(inst.instance_name, selectedConv.remote_jid, selectedMedia.file_url, selectedMedia.file_type, newMessage || "", selectedMedia.file_name);
+        }
         await supabase.from("messages").insert({
           conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
-          message_type: selectedMedia.file_type, content: newMessage || selectedMedia.file_name, media_url: selectedMedia.file_url, status: "sent",
+          message_type: selectedMedia.file_type, content: isAudio ? "" : (newMessage || selectedMedia.file_name), media_url: selectedMedia.file_url, status: "sent",
         });
         setSelectedMedia(null);
       } else {
@@ -203,7 +250,7 @@ export default function ChatPage() {
 
       await supabase.from("conversations").update({ last_message: newMessage || "[Mídia]", last_message_at: new Date().toISOString() }).eq("id", selectedConv.id);
       setNewMessage("");
-    } catch (err) { console.error("Error sending message:", err); } finally { setSendingMessage(false); }
+    } catch (err: any) { console.error("Error sending message:", err); toast("Erro ao enviar mensagem: " + (err?.message || ""), "error"); } finally { setSendingMessage(false); }
   };
 
   const handleAddNote = async () => {
@@ -240,6 +287,60 @@ export default function ChatPage() {
     await supabase.from("lead_tags").delete().eq("lead_id", leadInfo.id).eq("tag_id", tagId);
     setLeadInfo((prev: any) => prev ? { ...prev, tags: prev.tags.filter((t: any) => t.id !== tagId) } : prev);
     refreshTags();
+  };
+
+  // === EXECUTE FLOW ===
+  const handleExecuteFlow = async () => {
+    if (!selectedFlow || !selectedConv || !selectedInstanceId) return;
+    setExecutingFlow(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+      const inst = instances.find((i) => i.id === selectedInstanceId);
+      if (!inst) { toast("Selecione um WhatsApp.", "warning"); return; }
+
+      const res = await fetch("/api/execute-flow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          flow_id: selectedFlow.id,
+          user_id: userData.user.id,
+          instance_id: selectedInstanceId,
+          instance_name: inst.instance_name,
+          remote_jid: selectedConv.remote_jid,
+          conversation_id: selectedConv.id,
+        }),
+      });
+      const result = await res.json();
+
+      if (!res.ok) {
+        console.error("Flow execution error:", result);
+        toast("Erro ao executar fluxo: " + (result.error || "erro desconhecido"), "error");
+      } else {
+        setShowFlowPreview(false);
+        setSelectedFlow(null);
+      }
+    } catch (err) {
+      console.error("Flow execution error:", err);
+      toast("Erro ao executar fluxo.", "error");
+    } finally {
+      setExecutingFlow(false);
+    }
+  };
+
+  const getFlowStepIcon = (type: string) => {
+    if (type === "text") return <MessageSquare className="h-4 w-4 text-blue-400" />;
+    if (type === "image") return <Image className="h-4 w-4 text-green-400" />;
+    if (type === "video") return <Video className="h-4 w-4 text-purple-400" />;
+    if (type === "audio") return <Music className="h-4 w-4 text-pink-400" />;
+    if (type === "document") return <FileUp className="h-4 w-4 text-orange-400" />;
+    if (type === "delay") return <Timer className="h-4 w-4 text-yellow-400" />;
+    return <MessageSquare className="h-4 w-4" />;
+  };
+
+  const getFlowStepLabel = (type: string) => {
+    const labels: Record<string, string> = { text: "Texto", image: "Imagem", video: "Vídeo", audio: "Áudio", document: "Documento", delay: "Esperar" };
+    return labels[type] || type;
   };
 
   // === FILTERS ===
@@ -374,7 +475,29 @@ export default function ChatPage() {
                     {messages.map((msg) => (
                       <div key={msg.id} className={cn("flex", msg.from_me ? "justify-end" : "justify-start")}>
                         <div className={cn("max-w-[70%] rounded-2xl px-4 py-2.5 text-sm", msg.from_me ? "bg-primary text-primary-foreground rounded-br-md" : "bg-card border border-border rounded-bl-md")}>
-                          <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                          {msg.media_url && msg.message_type === "image" && (
+                            <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block mb-2">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={msg.media_url} alt="" className="rounded-lg max-h-48 w-auto object-cover" loading="lazy" />
+                            </a>
+                          )}
+                          {msg.media_url && msg.message_type === "video" && (
+                            <video src={msg.media_url} controls className="rounded-lg max-h-48 w-full mb-2" preload="metadata" />
+                          )}
+                          {msg.media_url && msg.message_type === "audio" && (
+                            <div className="mb-2 min-w-[240px]">
+                              <audio src={msg.media_url} controls className="w-full h-10" preload="metadata" />
+                            </div>
+                          )}
+                          {msg.media_url && msg.message_type === "document" && (
+                            <a href={msg.media_url} target="_blank" rel="noopener noreferrer"
+                              className={cn("flex items-center gap-2 p-2 rounded-lg mb-2", msg.from_me ? "bg-primary-foreground/10" : "bg-muted")}>
+                              <FileText className="h-5 w-5 shrink-0" />
+                              <span className="text-xs truncate">{msg.content || "Documento"}</span>
+                              <Download className="h-4 w-4 shrink-0 ml-auto" />
+                            </a>
+                          )}
+                          {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
                           <p className={cn("text-[10px] mt-1", msg.from_me ? "text-primary-foreground/60" : "text-muted-foreground")}>
                             {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                           </p>
@@ -404,13 +527,22 @@ export default function ChatPage() {
                       </div>
                     )}
                     <div className="p-3 flex items-center gap-2">
-                      <Button variant="ghost" size="icon" onClick={() => { setRightPanel(rightPanel === "media" ? null : "media"); setMediaTab("templates"); }}>
-                        <Paperclip className="h-4 w-4" />
+                      <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => { setRightPanel(rightPanel === "media" ? null : "media"); setMediaTab("templates"); }}>
+                        <Paperclip className="h-5 w-5" />
                       </Button>
-                      <Input placeholder="Digite uma mensagem..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()} className="flex-1" />
-                      <Button onClick={handleSendMessage} disabled={sendingMessage || (!newMessage.trim() && !selectedMedia)}>
-                        {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setShowFlowPicker(true)} title="Gatilhos / Fluxos" disabled={flows.length === 0}>
+                        <Zap className={cn("h-5 w-5", flows.length > 0 ? "text-yellow-500" : "text-muted-foreground")} />
+                      </Button>
+                      <Input
+                        placeholder={selectedMedia?.file_type === "audio" ? "Áudio não suporta texto" : "Digite uma mensagem..."}
+                        value={selectedMedia?.file_type === "audio" ? "" : newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+                        className="flex-1 h-10"
+                        disabled={selectedMedia?.file_type === "audio"}
+                      />
+                      <Button className="h-10 w-10" size="icon" onClick={handleSendMessage} disabled={sendingMessage || (!newMessage.trim() && !selectedMedia)}>
+                        {sendingMessage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                       </Button>
                     </div>
                   </div>
@@ -490,8 +622,26 @@ export default function ChatPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="p-4 text-center text-muted-foreground">
+                      <div className="p-4 text-center text-muted-foreground space-y-3">
                         <p className="text-sm">Nenhum lead encontrado para este número</p>
+                        <Button size="sm" className="w-full" onClick={async () => {
+                          if (!selectedConv) return;
+                          const { data: userData } = await supabase.auth.getUser();
+                          if (!userData.user) return;
+                          const phone = selectedConv.contact_phone;
+                          const name = selectedConv.contact_name || phone;
+                          const { data, error } = await supabase.from("leads").insert({
+                            user_id: userData.user.id, name, phone, source: "WhatsApp",
+                          }).select().single();
+                          if (!error && data) {
+                            toast("Lead criado com sucesso!", "success");
+                            loadLeadInfo(phone);
+                          } else {
+                            toast("Erro ao criar lead.", "error");
+                          }
+                        }}>
+                          <Plus className="h-4 w-4 mr-1.5" /> Criar Lead
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -514,10 +664,10 @@ export default function ChatPage() {
                         { key: "document", label: "Arquivos", icon: FileUp },
                       ].map((tab) => (
                         <button key={tab.key} onClick={() => setMediaTab(tab.key)}
-                          className={cn("flex-1 py-2.5 text-[10px] flex flex-col items-center gap-0.5 transition-colors",
+                          className={cn("flex-1 py-3 text-xs flex flex-col items-center gap-1 transition-colors",
                             mediaTab === tab.key ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
                           )}>
-                          <tab.icon className="h-3.5 w-3.5" />
+                          <tab.icon className="h-5 w-5" />
                           {tab.label}
                         </button>
                       ))}
@@ -546,9 +696,15 @@ export default function ChatPage() {
                             getMediaByType(mediaTab).map((item) => (
                               <button key={item.id} onClick={() => { setSelectedMedia(item); setRightPanel(null); }}
                                 className="w-full flex items-center gap-2.5 p-2.5 rounded-lg border border-border hover:border-primary/40 transition-colors text-left">
-                                {getTypeIcon(item.file_type)}
+                                {item.file_type === "image" ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={item.file_url} alt="" className="h-10 w-10 rounded object-cover shrink-0" />
+                                ) : (
+                                  <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">{getTypeIcon(item.file_type)}</div>
+                                )}
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs font-medium truncate">{item.file_name}</p>
+                                  <p className="text-[10px] text-muted-foreground">{item.file_type}</p>
                                 </div>
                               </button>
                             ))
@@ -601,6 +757,98 @@ export default function ChatPage() {
                   </button>
                 ))
               )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Flow Picker Dialog */}
+      <Dialog open={showFlowPicker} onOpenChange={setShowFlowPicker}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Zap className="h-5 w-5 text-yellow-500" /> Gatilhos / Fluxos</DialogTitle>
+            <DialogDescription>Selecione um fluxo para enviar ao contato</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[400px] overflow-y-auto space-y-2">
+            {flows.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Nenhum fluxo ativo. Crie em Automação.</p>
+            ) : (
+              flows.map((flow) => (
+                <button key={flow.id} onClick={() => { setSelectedFlow(flow); setShowFlowPicker(false); setShowFlowPreview(true); }}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/40 transition-colors text-left">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Zap className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{flow.name}</p>
+                    {flow.description && <p className="text-xs text-muted-foreground truncate">{flow.description}</p>}
+                    <div className="flex items-center gap-1.5 mt-1 overflow-x-auto">
+                      {flow.steps.map((s, si) => (
+                        <React.Fragment key={s.id}>
+                          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground shrink-0">
+                            {getFlowStepIcon(s.step_type)}
+                          </span>
+                          {si < flow.steps.length - 1 && <span className="text-muted-foreground text-[8px]">→</span>}
+                        </React.Fragment>
+                      ))}
+                      <span className="text-[10px] text-muted-foreground ml-1">{flow.steps.length} passo{flow.steps.length !== 1 ? "s" : ""}</span>
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Flow Preview & Execute Dialog */}
+      <Dialog open={showFlowPreview} onOpenChange={(open) => { setShowFlowPreview(open); if (!open) setSelectedFlow(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Zap className="h-5 w-5 text-yellow-500" /> {selectedFlow?.name}</DialogTitle>
+            <DialogDescription>Revise a sequência de mensagens antes de enviar</DialogDescription>
+          </DialogHeader>
+          {selectedFlow && (
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
+              {selectedFlow.steps.map((step, i) => (
+                <div key={step.id} className="flex items-start gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">{i + 1}</div>
+                    {i < selectedFlow.steps.length - 1 && <div className="w-0.5 h-4 bg-border mt-1" />}
+                  </div>
+                  <div className="flex-1 p-3 rounded-lg border border-border bg-muted/30">
+                    <div className="flex items-center gap-2 mb-1">
+                      {getFlowStepIcon(step.step_type)}
+                      <span className="font-medium text-xs">{getFlowStepLabel(step.step_type)}</span>
+                      {step.step_type === "delay" && (
+                        <span className="text-[10px] text-muted-foreground">({step.delay_seconds}s)</span>
+                      )}
+                    </div>
+                    {step.content && <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-wrap">{step.content}</p>}
+                    {step.media_url && step.step_type === "image" && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={step.media_url} alt="" className="h-16 w-auto rounded mt-1 object-cover" />
+                    )}
+                    {step.media_url && step.step_type !== "image" && step.file_name && (
+                      <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                        <FileUp className="h-3 w-3" /> {step.file_name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-2 border-t border-border">
+            <p className="text-xs text-muted-foreground">
+              Enviar para: <strong>{selectedConv?.contact_name || formatPhone(selectedConv?.contact_phone || "")}</strong>
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowFlowPreview(false)}>Cancelar</Button>
+              <Button size="sm" onClick={handleExecuteFlow} disabled={executingFlow}>
+                {executingFlow ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Play className="h-4 w-4 mr-1.5" />}
+                Executar Fluxo
+              </Button>
             </div>
           </div>
         </DialogContent>

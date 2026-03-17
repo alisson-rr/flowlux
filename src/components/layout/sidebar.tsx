@@ -32,7 +32,7 @@ const navItems = [
   { label: "Configurações", href: "/configuracoes", icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
   const [user, setUser] = useState<{ name: string; avatar_url: string } | null>(null);
@@ -90,7 +90,10 @@ export function Sidebar() {
               )}
             >
               <item.icon className={cn("h-5 w-5 shrink-0", isActive && "text-primary")} />
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+              {!collapsed && item.href === "/automacao" && failedCount > 0 && (
+                <span className="ml-auto w-5 h-5 rounded-full bg-destructive text-[10px] font-bold text-white flex items-center justify-center shrink-0">{failedCount}</span>
+              )}
             </Link>
           );
         })}

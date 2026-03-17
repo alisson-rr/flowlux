@@ -1,0 +1,279 @@
+{
+  "name": "FlowLux - Receber Mensagens WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "flowlux-webhook",
+        "options": {}
+      },
+      "id": "wh-001",
+      "name": "Webhook Evolution",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "flowlux-msg-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst body = data.body || data;\n\n// Filtrar apenas MESSAGES_UPSERT\nif (body.event !== 'messages.upsert') {\n  return [];\n}\n\nconst instance = body.instance;\nconst msgData = body.data;\nif (!msgData || !msgData.key) return [];\n\nconst key = msgData.key;\nconst remoteJid = key.remoteJid || '';\nconst fromMe = key.fromMe || false;\n\n// Ignorar mensagens de grupo\nif (remoteJid.includes('@g.us')) return [];\n\n// Extrair conteúdo\nlet content = '';\nlet messageType = 'text';\nlet mediaUrl = '';\n\nconst msg = msgData.message || {};\nif (msg.conversation) {\n  content = msg.conversation;\n} else if (msg.extendedTextMessage) {\n  content = msg.extendedTextMessage.text || '';\n} else if (msg.imageMessage) {\n  content = msg.imageMessage.caption || '';\n  messageType = 'image';\n  mediaUrl = msg.imageMessage.url || '';\n} else if (msg.videoMessage) {\n  content = msg.videoMessage.caption || '';\n  messageType = 'video';\n  mediaUrl = msg.videoMessage.url || '';\n} else if (msg.audioMessage) {\n  messageType = 'audio';\n  mediaUrl = msg.audioMessage.url || '';\n} else if (msg.documentMessage) {\n  content = msg.documentMessage.fileName || '';\n  messageType = 'document';\n  mediaUrl = msg.documentMessage.url || '';\n} else {\n  // Tipo não suportado (sticker, location, etc)\n  return [];\n}\n\nconst contactPhone = remoteJid.replace('@s.whatsapp.net', '');\nconst contactName = msgData.pushName || contactPhone;\n\nreturn [{\n  json: {\n    instance_name: instance,\n    remote_jid: remoteJid,\n    from_me: fromMe,\n    message_type: messageType,\n    content: content,\n    media_url: mediaUrl || null,\n    contact_name: contactName,\n    contact_phone: contactPhone\n  }\n}];"
+      },
+      "id": "parse-001",
+      "name": "1. Parse Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/whatsapp_instances?instance_name=eq.{{ $json.instance_name }}&select=id,user_id,instance_name&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "inst-001",
+      "name": "2. Buscar Instância",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            {
+              "id": "has-inst",
+              "leftValue": "={{ $json[0]?.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-inst-001",
+      "name": "Instância existe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('1. Parse Mensagem').first().json;\nconst instArr = $('2. Buscar Instância').first().json;\nconst inst = Array.isArray(instArr) ? instArr[0] : instArr;\n\nreturn [{\n  json: {\n    ...parsed,\n    instance_id: inst.id,\n    user_id: inst.user_id\n  }\n}];"
+      },
+      "id": "merge-001",
+      "name": "3. Juntar Dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 220]
+    },
+    {
+      "parameters": {
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/conversations?instance_id=eq.{{ $json.instance_id }}&remote_jid=eq.{{ $json.remote_jid }}&select=id&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "conv-001",
+      "name": "4. Buscar Conversa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 220],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('3. Juntar Dados').first().json;\nconst convArr = $('4. Buscar Conversa').first().json;\nconst conv = Array.isArray(convArr) ? convArr[0] : convArr;\nconst conversationId = conv?.id || null;\n\nreturn [{\n  json: {\n    ...parsed,\n    conversation_id: conversationId,\n    needs_new: !conversationId\n  }\n}];"
+      },
+      "id": "prep-001",
+      "name": "5. Preparar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1580, 220]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            {
+              "id": "needs-new",
+              "leftValue": "={{ $json.needs_new }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-new-001",
+      "name": "Nova conversa?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1800, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/conversations",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": \"{{ $('5. Preparar').item.json.user_id }}\",\n  \"instance_id\": \"{{ $('5. Preparar').item.json.instance_id }}\",\n  \"remote_jid\": \"{{ $('5. Preparar').item.json.remote_jid }}\",\n  \"contact_name\": \"{{ $('5. Preparar').item.json.contact_name }}\",\n  \"contact_phone\": \"{{ $('5. Preparar').item.json.contact_phone }}\",\n  \"last_message\": \"{{ $('5. Preparar').item.json.message_type === 'text' ? $('5. Preparar').item.json.content.substring(0,100) : '[' + $('5. Preparar').item.json.message_type + ']' }}\",\n  \"last_message_at\": \"{{ new Date().toISOString() }}\",\n  \"unread_count\": {{ $('5. Preparar').item.json.from_me ? 0 : 1 }}\n}",
+        "options": {}
+      },
+      "id": "create-conv-001",
+      "name": "6a. Criar Conversa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2020, 120],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/conversations?id=eq.{{ $('5. Preparar').item.json.conversation_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"last_message\": \"{{ $('5. Preparar').item.json.message_type === 'text' ? $('5. Preparar').item.json.content.substring(0,100) : '[' + $('5. Preparar').item.json.message_type + ']' }}\",\n  \"last_message_at\": \"{{ new Date().toISOString() }}\",\n  \"unread_count\": {{ $('5. Preparar').item.json.from_me ? 0 : 1 }}\n}",
+        "options": {}
+      },
+      "id": "update-conv-001",
+      "name": "6b. Atualizar Conversa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2020, 320],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepared = $('5. Preparar').first().json;\nlet convId = prepared.conversation_id;\n\n// Se criou nova conversa, pegar o ID retornado\nif (!convId) {\n  try {\n    const created = $('6a. Criar Conversa').first().json;\n    const arr = Array.isArray(created) ? created[0] : created;\n    convId = arr?.id || null;\n  } catch(e) {}\n}\n\nif (!convId) {\n  throw new Error('Sem conversation_id para salvar mensagem');\n}\n\nreturn [{\n  json: {\n    conversation_id: convId,\n    remote_jid: prepared.remote_jid,\n    from_me: prepared.from_me,\n    message_type: prepared.message_type,\n    content: prepared.content || '',\n    media_url: prepared.media_url || null,\n    status: prepared.from_me ? 'sent' : 'delivered'\n  }\n}];"
+      },
+      "id": "get-convid-001",
+      "name": "7. Obter Conv ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2260, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"conversation_id\": \"{{ $json.conversation_id }}\",\n  \"remote_jid\": \"{{ $json.remote_jid }}\",\n  \"from_me\": {{ $json.from_me }},\n  \"message_type\": \"{{ $json.message_type }}\",\n  \"content\": {{ JSON.stringify($json.content || '') }},\n  \"media_url\": {{ $json.media_url ? '\"' + $json.media_url + '\"' : 'null' }},\n  \"status\": \"{{ $json.status }}\"\n}",
+        "options": {}
+      },
+      "id": "insert-msg-001",
+      "name": "8. Salvar Mensagem",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2480, 220],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# Receber Mensagens WhatsApp\n\n**Configuração:**\n1. Configure o webhook da Evolution API para apontar para a URL deste webhook\n2. A credencial 'FlowLux' deve ter o Supabase URL e API Key configurados\n3. O workflow parseia MESSAGES_UPSERT, busca/cria conversa, e salva a mensagem\n\n**Fluxo:**\nWebhook → Parse → Buscar Instância → Buscar/Criar Conversa → Salvar Mensagem",
+        "height": 480,
+        "width": 2500,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [180, 60],
+      "typeVersion": 1,
+      "id": "note-001",
+      "name": "Instruções"
+    }
+  ],
+  "connections": {
+    "Webhook Evolution": {
+      "main": [[{ "node": "1. Parse Mensagem", "type": "main", "index": 0 }]]
+    },
+    "1. Parse Mensagem": {
+      "main": [[{ "node": "2. Buscar Instância", "type": "main", "index": 0 }]]
+    },
+    "2. Buscar Instância": {
+      "main": [[{ "node": "Instância existe?", "type": "main", "index": 0 }]]
+    },
+    "Instância existe?": {
+      "main": [
+        [{ "node": "3. Juntar Dados", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "3. Juntar Dados": {
+      "main": [[{ "node": "4. Buscar Conversa", "type": "main", "index": 0 }]]
+    },
+    "4. Buscar Conversa": {
+      "main": [[{ "node": "5. Preparar", "type": "main", "index": 0 }]]
+    },
+    "5. Preparar": {
+      "main": [[{ "node": "Nova conversa?", "type": "main", "index": 0 }]]
+    },
+    "Nova conversa?": {
+      "main": [
+        [{ "node": "6a. Criar Conversa", "type": "main", "index": 0 }],
+        [{ "node": "6b. Atualizar Conversa", "type": "main", "index": 0 }]
+      ]
+    },
+    "6a. Criar Conversa": {
+      "main": [[{ "node": "7. Obter Conv ID", "type": "main", "index": 0 }]]
+    },
+    "6b. Atualizar Conversa": {
+      "main": [[{ "node": "7. Obter Conv ID", "type": "main", "index": 0 }]]
+    },
+    "7. Obter Conv ID": {
+      "main": [[{ "node": "8. Salvar Mensagem", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1
+}

@@ -1,0 +1,714 @@
+{
+  "name": "FlowLux - Disparo em Massa WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?status=eq.scheduled&scheduled_at=lte.now()&select=*",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "9f0015a2-ce84-485d-bdf2-8d019e64ba99",
+      "name": "1. Buscar Disparos Agendados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3120,
+        2048
+      ],
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "check-has-results",
+              "leftValue": "={{ $('1. Buscar Disparos Agendados').item.json.status }}",
+              "rightValue": "scheduled",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "64a2c2df-a383-4a09-a16d-4df76960bbf4",
+      "name": "Tem disparos?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3552,
+        2048
+      ],
+      "notes": "Se o array retornado tiver itens, segue o fluxo. Se nao, para."
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('Normalizacao').item.json.id_mass_massages }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"status\": \"sending\" }",
+        "options": {}
+      },
+      "id": "0208957d-e0ae-4082-8cda-941d060ac11a",
+      "name": "3. Status → Enviando",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3776,
+        1968
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/leads?user_id=eq.{{ $('Normalizacao').item.json.user_id }}&archived=eq.false&deleted_at=is.null&select=id,name,phone,stage_id,lead_tags(tag_id)",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "786e637d-828f-4d86-afd5-b8689be70d6e",
+      "name": "4. Buscar Leads do Usuário",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4000,
+        1968
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('Normalizacao').item.json.id_mass_massages }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"total_count\": {{ $items(\"4. Buscar Leads do Usuário\").length }}}",
+        "options": {}
+      },
+      "id": "1ef41ac8-22a3-432b-8c32-cf547c6903a7",
+      "name": "5. Salvar total_count",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4224,
+        1968
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/whatsapp_instances?id=eq.{{ $('Normalizacao').item.json.instance_id }}&status=eq.connected&select=instance_name&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "3caa9fe1-8858-4e92-bc27-28bbb03dcb32",
+      "name": "6. Buscar Instância WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4448,
+        1968
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "check-instance",
+              "leftValue": "={{ ($json.instance_name).length }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b5d94010-fb59-44f5-85b5-85eda3cf5c30",
+      "name": "Instância conectada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4672,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pega os leads - HTTP Request retorna array dentro de json\nlet rawLeads = $('4. Buscar Leads do Usuário').first().json;\nlet allLeads = Array.isArray(rawLeads) ? rawLeads : [rawLeads];\n// Se veio vazio\nif (!allLeads || allLeads.length === 0 || !allLeads[0]?.id) return [{json:{error:'no_leads'}}];\n\n// Pega instância - tambem pode vir como array\nlet rawInst = $('6. Buscar Instância WhatsApp').first().json;\nlet instObj = Array.isArray(rawInst) ? rawInst[0] : rawInst;\nconst instanceName = instObj?.instance_name || '';\nif (!instanceName) return [{json:{error:'no_instance'}}];\n\nconst massMessage = $('Normalizacao').first().json;\n\n// Parse filtros\nfunction toArr(v) {\n  if (!v) return [];\n  if (Array.isArray(v)) return v;\n  if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch(e) { return []; } }\n  return [];\n}\nconst targetTags = toArr(massMessage.target_tags);\nconst targetStages = toArr(massMessage.target_stages);\n\n// Filtrar leads por tags e/ou stages\nconst leads = allLeads.filter(lead => {\n  if (!lead || !lead.id) return false;\n  const leadTagIds = (lead.lead_tags || []).map(lt => lt.tag_id);\n  const tagOk = targetTags.length === 0 || targetTags.some(t => leadTagIds.includes(t));\n  const stageOk = targetStages.length === 0 || targetStages.includes(lead.stage_id);\n  return tagOk && stageOk;\n});\n\nif (leads.length === 0) return [{json:{error:'no_leads_matched'}}];\n\nreturn leads.map(lead => {\n  const phone = (lead.phone || '').replace(/\\D/g, '');\n  const number = phone.startsWith('55') ? phone : '55' + phone;\n  return {\n    json: {\n      lead_id: lead.id,\n      lead_name: lead.name,\n      lead_phone: lead.phone,\n      number: number,\n      remoteJid: number + '@s.whatsapp.net',\n      instanceName: instanceName,\n      message: massMessage.message,\n      mass_message_id: massMessage.id_mass_massages || massMessage.id,\n      user_id: massMessage.user_id\n    }\n  };\n});"
+      },
+      "id": "e62b1df1-2b59-4f0c-9cbd-71b12ace7884",
+      "name": "7. Preparar Lista de Envio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4880,
+        1856
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "9ec977f2-7936-4dda-9880-ded90bae54e0",
+      "name": "8. Loop por Lead",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        5104,
+        1856
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://evo.devnoflow.com.br/message/sendText/{{ $json.instanceName }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpMultipleHeadersAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.number }}\",\n  \"text\": \"{{ $json.message }}\"\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "b7a7e2b5-c389-403c-b177-bc970aa0f55d",
+      "name": "9. Enviar via Evolution API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5328,
+        1888
+      ],
+      "credentials": {
+        "httpMultipleHeadersAuth": {
+          "id": "NJ2Tmv50xP6GfnHO",
+          "name": "Header_evo"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('Normalizacao').item.json.id_mass_massages }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"status\": \"failed\" }",
+        "options": {}
+      },
+      "id": "5d78c457-b6c2-4adf-a119-a89cc40585bd",
+      "name": "Falha: Sem Instância",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4880,
+        2096
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ccec13c3-a230-42c4-b88d-61296ac621de",
+              "name": "id_mass_massages",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "72f3fca8-fed9-4e6b-9e3d-18bc5d77621d",
+              "name": "user_id",
+              "value": "={{ $json.user_id }}",
+              "type": "string"
+            },
+            {
+              "id": "1973344b-4a90-4457-8ae7-31d3cf2d13f6",
+              "name": "message",
+              "value": "={{ $json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "edb1a963-caf3-4f29-99d8-f45faf5d51d5",
+              "name": "instance_id",
+              "value": "={{ $json.instance_id }}",
+              "type": "string"
+            },
+            {
+              "id": "tag-filter-01",
+              "name": "target_tags",
+              "value": "={{ JSON.stringify($json.target_tags || []) }}",
+              "type": "string"
+            },
+            {
+              "id": "stage-filter-01",
+              "name": "target_stages",
+              "value": "={{ JSON.stringify($json.target_stages || []) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3328,
+        2048
+      ],
+      "id": "d6b65c7b-0805-492a-863b-88556c592449",
+      "name": "Normalizacao"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        5504,
+        1648
+      ],
+      "id": "54504d65-352e-46cf-bce5-84f617effd3f",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('Normalizacao').item.json.id_mass_massages }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "599ded1e-c746-49b3-8c0d-51ef26d70d2c",
+      "name": "10. Busca sent_count",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5600,
+        1888
+      ],
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('Normalizacao').item.json.id_mass_massages }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"sent_count\": {{ $('10. Busca sent_count').item.json.sent_count + 1 }}\n}",
+        "options": {}
+      },
+      "id": "ccdf74f5-2b0a-4309-98f6-12dd8d8799db",
+      "name": "11. Incrementar sent_count",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5872,
+        1888
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 6) + 3 }}"
+      },
+      "id": "2009529a-2b23-422f-9ec2-3aa20ce971c5",
+      "name": "12. Delay Anti-Ban (3-8s)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        6176,
+        1904
+      ],
+      "webhookId": "1b04489b-d969-47e0-b891-d192c06cb60e"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('Normalizacao').item.json.id_mass_massages }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"status\": \"completed\" }",
+        "options": {}
+      },
+      "id": "c5924d25-731b-4bcd-ac0a-4325a1b7d6e4",
+      "name": "13. Status → Concluído",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5296,
+        1648
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "223c2e01-817b-42c1-b859-9f8f96d80b64",
+      "name": "Verificar a cada 30 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2896,
+        2048
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# Disparo em massa",
+        "height": 704,
+        "width": 3664,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2736,
+        1600
+      ],
+      "typeVersion": 1,
+      "id": "bc52a62d-5f52-40ca-aeed-3adf7f339fce",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "1. Buscar Disparos Agendados": {
+      "main": [
+        [
+          {
+            "node": "Normalizacao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem disparos?": {
+      "main": [
+        [
+          {
+            "node": "3. Status → Enviando",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Status → Enviando": {
+      "main": [
+        [
+          {
+            "node": "4. Buscar Leads do Usuário",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Buscar Leads do Usuário": {
+      "main": [
+        [
+          {
+            "node": "5. Salvar total_count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Salvar total_count": {
+      "main": [
+        [
+          {
+            "node": "6. Buscar Instância WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Buscar Instância WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Instância conectada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instância conectada?": {
+      "main": [
+        [
+          {
+            "node": "7. Preparar Lista de Envio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Falha: Sem Instância",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Preparar Lista de Envio": {
+      "main": [
+        [
+          {
+            "node": "8. Loop por Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8. Loop por Lead": {
+      "main": [
+        [
+          {
+            "node": "13. Status → Concluído",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "9. Enviar via Evolution API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9. Enviar via Evolution API": {
+      "main": [
+        [
+          {
+            "node": "10. Busca sent_count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizacao": {
+      "main": [
+        [
+          {
+            "node": "Tem disparos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10. Busca sent_count": {
+      "main": [
+        [
+          {
+            "node": "11. Incrementar sent_count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11. Incrementar sent_count": {
+      "main": [
+        [
+          {
+            "node": "12. Delay Anti-Ban (3-8s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12. Delay Anti-Ban (3-8s)": {
+      "main": [
+        [
+          {
+            "node": "8. Loop por Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13. Status → Concluído": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar a cada 30 min": {
+      "main": [
+        [
+          {
+            "node": "1. Buscar Disparos Agendados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "f6f8f22e-1df5-41bb-809b-bf89071930de",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a5bffdfbf51b3ac360223c2749699e9b7c407ef65e1900c9d34d27572fbc319c"
+  },
+  "id": "9SjBS4iJCfnuFqFY",
+  "tags": [
+    {
+      "updatedAt": "2026-03-16T16:17:21.177Z",
+      "createdAt": "2026-03-16T16:17:21.177Z",
+      "id": "WXKzH4jXzCeFbAex",
+      "name": "FlowLux"
+    }
+  ]
+}

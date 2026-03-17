@@ -63,10 +63,19 @@ export const evolutionApi = {
       method: "POST",
       body: JSON.stringify({
         number,
-        mediatype: mediaType === "image" ? "image" : mediaType === "video" ? "video" : mediaType === "audio" ? "audio" : "document",
+        mediatype: mediaType === "image" ? "image" : mediaType === "video" ? "video" : "document",
         media: mediaUrl,
         caption: caption || "",
         fileName: fileName || "",
+      }),
+    }),
+
+  sendAudio: (instanceName: string, number: string, audioUrl: string) =>
+    evolutionFetch(`/message/sendWhatsAppAudio/${instanceName}`, {
+      method: "POST",
+      body: JSON.stringify({
+        number,
+        audio: audioUrl,
       }),
     }),
 
@@ -90,12 +99,10 @@ export const evolutionApi = {
       body: JSON.stringify({
         enabled: true,
         url: webhookUrl,
-        webhookByEvents: false,
+        webhookByEvents: true,
+        webhookBase64: true,
         events: [
           "MESSAGES_UPSERT",
-          "MESSAGES_UPDATE",
-          "CONNECTION_UPDATE",
-          "QRCODE_UPDATED",
         ],
       }),
     }),

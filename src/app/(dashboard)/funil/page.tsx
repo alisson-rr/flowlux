@@ -14,9 +14,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Plus, Search, GripVertical, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Globe, StickyNote, Mail,
+  Plus, Search, GripVertical, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Globe, StickyNote, Mail, UserPlus,
 } from "lucide-react";
-import { cn, formatPhone, getInitials } from "@/lib/utils";
+import { cn, formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 interface Lead { id: string; name: string; phone: string; email?: string; stage_id: string; source?: string; archived: boolean; created_at: string; tags: { id: string; name: string; color: string }[]; notes: { id: string; content: string; created_at: string }[]; }
 interface Stage { id: string; name: string; color: string; order: number; }
@@ -36,9 +37,13 @@ export default function FunilPage() {
   // Funnel config
   const [showFunnelConfig, setShowFunnelConfig] = useState(false);
   const [showAddFunnel, setShowAddFunnel] = useState(false);
+  const [showAddLead, setShowAddLead] = useState(false);
   const [editStages, setEditStages] = useState<Stage[]>([]);
   const [newStageName, setNewStageName] = useState("");
   const [newFunnelName, setNewFunnelName] = useState("");
+  const [newLead, setNewLead] = useState({ name: "", phone: "", email: "", source: "" });
+  const [newLeadStage, setNewLeadStage] = useState("");
+  const { toast } = useToast();
 
   const loadData = useCallback(async () => {
     try {
@@ -96,8 +101,26 @@ export default function FunilPage() {
     }
   };
 
+  const handleAddLead = async () => {
+    if (!newLead.name || !newLead.phone) return;
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+    const stageId = newLeadStage || funnelStages[0]?.id;
+    const { data, error } = await supabase.from("leads").insert({
+      user_id: userData.user.id, name: newLead.name, phone: newLead.phone,
+      email: newLead.email || null, stage_id: stageId, source: newLead.source || null,
+      funnel_id: selectedFunnelId,
+    }).select("*, lead_tags(tags(*)), notes(*)").single();
+    if (!error && data) {
+      setLeads((prev) => [...prev, { ...data, archived: false, tags: data.lead_tags?.map((lt: any) => lt.tags).filter(Boolean) || [], notes: data.notes || [] }]);
+      setNewLead({ name: "", phone: "", email: "", source: "" });
+      setNewLeadStage("");
+      setShowAddLead(false);
+    }
+  };
+
   const handleDeleteFunnel = async () => {
-    if (!selectedFunnelId || funnels.length <= 1) { alert("Deve haver pelo menos um funil."); return; }
+    if (!selectedFunnelId || funnels.length <= 1) { toast("Deve haver pelo menos um funil.", "warning"); return; }
     await supabase.from("funnel_stages").delete().eq("funnel_id", selectedFunnelId);
     await supabase.from("funnels").delete().eq("id", selectedFunnelId);
     setFunnels((prev) => prev.filter((f) => f.id !== selectedFunnelId));
@@ -146,6 +169,7 @@ export default function FunilPage() {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowAddFunnel(true)}><Plus className="h-4 w-4 mr-1" /> Novo Funil</Button>
           <Button variant="outline" size="sm" onClick={openFunnelConfig}><Settings2 className="h-4 w-4 mr-1" /> Etapas</Button>
+          <Button size="sm" onClick={() => setShowAddLead(true)}><UserPlus className="h-4 w-4 mr-1" /> Novo Lead</Button>
         </div>
       </div>
 
@@ -264,6 +288,52 @@ export default function FunilPage() {
             <Button variant="destructive" size="sm" onClick={handleDeleteFunnel}>Excluir Funil</Button>
             <Button variant="outline" onClick={() => setShowFunnelConfig(false)}>Cancelar</Button>
             <Button onClick={handleSaveFunnel}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Add Lead Dialog */}
+      <Dialog open={showAddLead} onOpenChange={setShowAddLead}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Lead</DialogTitle>
+            <DialogDescription>Adicione um lead diretamente ao funil</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Nome *</Label>
+              <Input placeholder="Nome do lead" value={newLead.name} onChange={(e) => setNewLead({ ...newLead, name: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone *</Label>
+              <Input placeholder="(00) 00000-0000" value={newLead.phone} onChange={(e) => setNewLead({ ...newLead, phone: formatPhoneInput(e.target.value) })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input placeholder="email@exemplo.com" value={newLead.email} onChange={(e) => setNewLead({ ...newLead, email: e.target.value })} />
+            </div>
+            {funnelStages.length > 0 && (
+              <div className="space-y-2">
+                <Label>Etapa</Label>
+                <Select value={newLeadStage || funnelStages[0]?.id} onValueChange={setNewLeadStage}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {funnelStages.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Origem</Label>
+              <Input placeholder="Ex: WhatsApp, Hotmart" value={newLead.source} onChange={(e) => setNewLead({ ...newLead, source: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddLead(false)}>Cancelar</Button>
+            <Button onClick={() => {
+              if (!newLead.name.trim()) { toast("Nome é obrigatório.", "warning"); return; }
+              if (!newLead.phone.trim()) { toast("Telefone é obrigatório.", "warning"); return; }
+              handleAddLead();
+            }}>Adicionar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

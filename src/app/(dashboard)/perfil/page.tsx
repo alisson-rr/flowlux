@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, CheckCircle, UserCircle, Camera } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { getInitials, formatPhoneInput } from "@/lib/utils";
+import { cn, getInitials, formatPhoneInput } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 export default function PerfilPage() {
   const [loading, setLoading] = useState(true);
@@ -20,6 +20,7 @@ export default function PerfilPage() {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadProfile();
@@ -110,7 +111,7 @@ export default function PerfilPage() {
         .upload(filePath, file, { cacheControl: "3600", upsert: true });
 
       if (uploadError) {
-        alert("Erro ao fazer upload. Verifique se o bucket 'public_bucket' tem políticas de INSERT para usuários autenticados.");
+        toast("Erro ao fazer upload. Verifique as políticas do bucket.", "error");
         console.error("Upload error:", uploadError);
         setUploading(false);
         return;
@@ -123,7 +124,7 @@ export default function PerfilPage() {
       setProfile((prev) => ({ ...prev, avatar_url: avatarUrl }));
     } catch (err) {
       console.error("Avatar upload error:", err);
-      alert("Erro ao fazer upload da foto.");
+      toast("Erro ao fazer upload da foto.", "error");
     } finally {
       setUploading(false);
     }
@@ -189,7 +190,8 @@ export default function PerfilPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
+              <Input id="email" type="email" value={profile.email} disabled className="bg-muted cursor-not-allowed" />
+              <p className="text-xs text-muted-foreground">O email não pode ser alterado</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Telefone</Label>
