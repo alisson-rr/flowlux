@@ -111,8 +111,10 @@ export default function ConfiguracoesPage() {
       // Configure webhook for receiving messages
       try {
         await evolutionApi.setWebhook(newInstanceName, "https://webhook.devnoflow.com.br/webhook/flowlux-webhook");
-      } catch (webhookErr) {
-        console.warn("Webhook config failed (can be retried later):", webhookErr);
+        toast("Webhook configurado com sucesso!", "success");
+      } catch (webhookErr: any) {
+        console.error("Webhook config failed:", webhookErr);
+        toast("Falha ao configurar webhook: " + (webhookErr?.message || "erro"), "error");
       }
 
       // Show QR code if available
@@ -127,6 +129,19 @@ export default function ConfiguracoesPage() {
       console.error("Error creating instance:", err);
     } finally {
       setCreatingInstance(false);
+    }
+  };
+
+  const handleConfigureWebhook = async (instanceName: string) => {
+    setActionLoading(instanceName + "-webhook");
+    try {
+      await evolutionApi.setWebhook(instanceName, "https://webhook.devnoflow.com.br/webhook/flowlux-webhook");
+      toast("Webhook configurado!", "success");
+    } catch (err: any) {
+      console.error("Webhook error:", err);
+      toast("Erro ao configurar webhook: " + (err?.message || ""), "error");
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -282,6 +297,21 @@ export default function ConfiguracoesPage() {
                           QR Code
                         </Button>
 
+                        {/* Webhook */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleConfigureWebhook(inst.instance_name)}
+                          disabled={!!actionLoading}
+                        >
+                          {actionLoading === inst.instance_name + "-webhook" ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Webhook className="h-4 w-4 mr-1" />
+                          )}
+                          Webhook
+                        </Button>
+
                         {/* Restart */}
                         <Button
                           variant="outline"
@@ -362,7 +392,7 @@ export default function ConfiguracoesPage() {
                 <div className="flex items-center gap-2">
                   <Input
                     readOnly
-                    value={typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/hotmart` : ""}
+                    value={typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/hotmart${hotmartToken ? '?hottok=' + hotmartToken : ''}` : ""}
                     className="bg-muted"
                   />
                   <Button
@@ -370,7 +400,7 @@ export default function ConfiguracoesPage() {
                     size="sm"
                     onClick={async () => {
                       try {
-                        const url = `${window.location.origin}/api/webhooks/hotmart`;
+                        const url = `${window.location.origin}/api/webhooks/hotmart${hotmartToken ? '?hottok=' + hotmartToken : ''}`;
                         await navigator.clipboard.writeText(url);
                         toast("URL copiada!", "success");
                       } catch {
