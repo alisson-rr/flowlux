@@ -553,6 +553,7 @@ export default function LeadsPage() {
               {/* Tags */}
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground flex items-center gap-1"><Tag className="h-3 w-3" /> Tags</Label>
+                {/* Tags atuais do lead */}
                 <div className="flex flex-wrap gap-1.5">
                   {selectedLead.tags.map((tag) => (
                     <span key={tag.id} className="text-xs px-2 py-1 rounded-full text-white flex items-center gap-1" style={{ backgroundColor: tag.color }}>
@@ -561,10 +562,37 @@ export default function LeadsPage() {
                     </span>
                   ))}
                 </div>
+                {/* Tags disponíveis para adicionar (excluindo as já atribuídas) */}
+                {allTags.filter((t) => !selectedLead.tags.some((lt) => lt.id === t.id)).length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground">Clique para adicionar:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {allTags.filter((t) => !selectedLead.tags.some((lt) => lt.id === t.id)).map((tag) => (
+                        <button
+                          key={tag.id}
+                          onClick={async () => {
+                            if (!selectedLead) return;
+                            await supabase.from("lead_tags").insert({ lead_id: selectedLead.id, tag_id: tag.id });
+                            const t = { id: tag.id, name: tag.name, color: tag.color };
+                            setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, tags: [...l.tags, t] } : l));
+                            setSelectedLead((prev) => prev ? { ...prev, tags: [...prev.tags, t] } : prev);
+                          }}
+                          className="text-xs px-2 py-1 rounded-full border border-dashed border-border text-muted-foreground hover:text-white hover:border-transparent transition-colors"
+                          style={{ ["--hover-bg" as any]: tag.color }}
+                          onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = tag.color; }}
+                          onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = "transparent"; }}
+                        >
+                          + {tag.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Criar nova tag */}
                 <div className="flex gap-2">
-                  <Input placeholder="Digite o nome da tag e pressione Enter" value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddTag()} className="h-9 text-sm" />
-                  <Button size="sm" variant="outline" onClick={handleAddTag} className="shrink-0">
-                    <Plus className="h-3 w-3 mr-1" /> Tag
+                  <Input placeholder="Criar nova tag..." value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddTag()} className="h-8 text-xs" />
+                  <Button size="sm" variant="outline" onClick={handleAddTag} className="shrink-0 h-8 text-xs">
+                    <Plus className="h-3 w-3 mr-1" /> Criar
                   </Button>
                 </div>
               </div>

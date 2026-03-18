@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
         }).eq("id", conversation_id);
 
         if (i < steps.length - 1 && step.step_type !== "delay") {
-          await delay(1500);
+          await delay(500);
         }
       } catch (stepError: any) {
         if (executionId) {

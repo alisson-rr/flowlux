@@ -56,8 +56,9 @@ const PLANS = [
   {
     id: "starter",
     name: "Starter",
-    price: "89",
-    priceNum: 89,
+    price: "49",
+    oldPrice: "89",
+    priceNum: 49,
     period: "/mês",
     description: "Comece a organizar seus leads e responder mais rápido",
     icon: Zap,
@@ -84,8 +85,9 @@ const PLANS = [
   {
     id: "pro",
     name: "Pro",
-    price: "129",
-    priceNum: 129,
+    price: "69",
+    oldPrice: "129",
+    priceNum: 69,
     period: "/mês",
     description: "Automatize seu atendimento e aumente suas vendas no WhatsApp",
     icon: Star,
@@ -112,8 +114,9 @@ const PLANS = [
   {
     id: "black",
     name: "FlowLux Black",
-    price: "99",
-    priceNum: 99,
+    price: "59",
+    oldPrice: "99",
+    priceNum: 59,
     period: "12x",
     description: "O plano definitivo para escalar seu negócio no WhatsApp",
     icon: Flame,
@@ -333,6 +336,11 @@ export default function AssinaturaPage() {
                         <span className="text-4xl font-bold">{plan.price}</span>
                         <span className="text-muted-foreground">{plan.period}</span>
                       </>
+                    )}
+                    {plan.oldPrice && (
+                      <span className="text-lg text-muted-foreground line-through ml-2">
+                        R${plan.oldPrice}
+                      </span>
                     )}
                   </div>
                   <p className="text-xs text-green-400 mt-1 flex items-center gap-1">

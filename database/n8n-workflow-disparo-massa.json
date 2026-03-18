@@ -3,49 +3,16 @@
   "nodes": [
     {
       "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "minutes"
-            }
-          ]
-        }
-      },
-      "id": "8ff34881-7e89-4acd-98e1-c2077cfadf36",
-      "name": "Verificar a cada 5 min",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [460, 340]
-    },
-    {
-      "parameters": {
-        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?status=eq.scheduled&scheduled_at=lte.now()&select=*",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "supabaseApi",
-        "options": {}
-      },
-      "id": "d92bf756-b201-4630-add4-23a8c8d9f122",
-      "name": "1. Buscar Disparos Agendados",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [700, 340],
-      "alwaysOutputData": true,
-      "credentials": {
-        "supabaseApi": {
-          "id": "Pv48djwcm2OcpOqt",
-          "name": "FlowLux"
-        }
-      }
-    },
-    {
-      "parameters": {
         "jsCode": "// Supabase REST API retorna array. O HTTP Request do n8n pode retornar:\n// - Um item com json sendo o array inteiro: [{json: [{...}, {...}]}]\n// - Ou items separados: [{json: {...}}, {json: {...}}]\n\nconst allItems = $input.all();\nlet disparos = [];\n\nfor (const item of allItems) {\n  if (Array.isArray(item.json)) {\n    // Veio como array dentro do json\n    disparos = disparos.concat(item.json);\n  } else if (item.json && item.json.id) {\n    // Veio como item individual\n    disparos.push(item.json);\n  }\n}\n\n// Filtra apenas os que estao scheduled\ndisparos = disparos.filter(d => d.status === 'scheduled' && d.id);\n\nif (disparos.length === 0) {\n  return []; // Para o fluxo - sem disparos\n}\n\n// Retorna cada disparo como um item separado\nreturn disparos.map(d => ({ json: d }));"
       },
-      "id": "sep-disparos-01",
+      "id": "d30177dd-21a9-4c18-8708-259a1b6c7d84",
       "name": "2. Separar Disparos",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [940, 340]
+      "position": [
+        14912,
+        3360
+      ]
     },
     {
       "parameters": {
@@ -91,11 +58,14 @@
         },
         "options": {}
       },
-      "id": "norm-01",
+      "id": "cb377a48-9731-4323-ac76-c7133e95da88",
       "name": "3. Normalizar Dados",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [1180, 340]
+      "position": [
+        15152,
+        3360
+      ]
     },
     {
       "parameters": {
@@ -117,11 +87,14 @@
         "jsonBody": "={ \"status\": \"sending\" }",
         "options": {}
       },
-      "id": "status-sending-01",
+      "id": "63ef6c3d-9166-4c4b-ab1c-85cf281cecc6",
       "name": "4. Status → Enviando",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1420, 340],
+      "position": [
+        15392,
+        3360
+      ],
       "credentials": {
         "supabaseApi": {
           "id": "Pv48djwcm2OcpOqt",
@@ -136,11 +109,14 @@
         "nodeCredentialType": "supabaseApi",
         "options": {}
       },
-      "id": "buscar-leads-01",
+      "id": "5e8e475b-31d5-448b-a65a-a57aff3df5b5",
       "name": "5. Buscar Leads",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1660, 340],
+      "position": [
+        15632,
+        3360
+      ],
       "credentials": {
         "supabaseApi": {
           "id": "Pv48djwcm2OcpOqt",
@@ -155,11 +131,14 @@
         "nodeCredentialType": "supabaseApi",
         "options": {}
       },
-      "id": "buscar-inst-01",
+      "id": "a7e33287-dd47-46ca-94d4-f20eb5f94f53",
       "name": "6. Buscar Instancia",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1900, 340],
+      "position": [
+        15872,
+        3360
+      ],
       "alwaysOutputData": true,
       "credentials": {
         "supabaseApi": {
@@ -167,16 +146,6 @@
           "name": "FlowLux"
         }
       }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Pega leads do node 5 - pode vir como array dentro de json ou items separados\nconst leadsRaw = $('5. Buscar Leads').all();\nlet allLeads = [];\nfor (const item of leadsRaw) {\n  if (Array.isArray(item.json)) {\n    allLeads = allLeads.concat(item.json);\n  } else if (item.json?.id) {\n    allLeads.push(item.json);\n  }\n}\nif (allLeads.length === 0) return [{json: {error: 'no_leads'}}];\n\n// Pega instancia do node 6\nconst instRaw = $('6. Buscar Instancia').all();\nlet instanceName = '';\nlet instanceStatus = '';\nfor (const item of instRaw) {\n  if (Array.isArray(item.json) && item.json.length > 0) {\n    instanceName = item.json[0].instance_name || '';\n    instanceStatus = item.json[0].status || '';\n  } else if (item.json?.instance_name) {\n    instanceName = item.json.instance_name;\n    instanceStatus = item.json.status || '';\n  }\n}\nif (!instanceName) return [{json: {error: 'no_instance'}}];\nif (instanceStatus !== 'connected') return [{json: {error: 'instance_disconnected', instanceName}}];\n\nconst massData = $('3. Normalizar Dados').first().json;\n\n// Parse filtros de tags e stages\nfunction toArr(v) {\n  if (!v) return [];\n  if (Array.isArray(v)) return v;\n  if (typeof v === 'string') { try { return JSON.parse(v) || []; } catch(e) { return []; } }\n  return [];\n}\nconst targetTags = toArr(massData.target_tags);\nconst targetStages = toArr(massData.target_stages);\n\n// Filtrar leads por tags e/ou stages\nconst filteredLeads = allLeads.filter(lead => {\n  if (!lead || !lead.id) return false;\n  const leadTagIds = (lead.lead_tags || []).map(lt => lt.tag_id);\n  const tagOk = targetTags.length === 0 || targetTags.some(t => leadTagIds.includes(t));\n  const stageOk = targetStages.length === 0 || targetStages.includes(lead.stage_id);\n  return tagOk && stageOk;\n});\n\nif (filteredLeads.length === 0) return [{json: {error: 'no_leads_matched'}}];\n\n// Retorna lista de envio\nreturn filteredLeads.map(lead => {\n  const phone = (lead.phone || '').replace(/\\D/g, '');\n  const number = phone.startsWith('55') ? phone : '55' + phone;\n  return {\n    json: {\n      lead_id: lead.id,\n      lead_name: lead.name,\n      lead_phone: lead.phone,\n      number: number,\n      remoteJid: number + '@s.whatsapp.net',\n      instanceName: instanceName,\n      message: massData.message,\n      mass_id: massData.mass_id,\n      user_id: massData.user_id\n    }\n  };\n});"
-      },
-      "id": "preparar-envio-01",
-      "name": "7. Preparar Lista de Envio",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2140, 340]
     },
     {
       "parameters": {
@@ -202,16 +171,19 @@
         },
         "options": {}
       },
-      "id": "check-error-01",
+      "id": "b2469a63-9a09-4d28-8bd4-77992dfeb9ee",
       "name": "Tem leads para enviar?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2380, 340]
+      "position": [
+        16352,
+        3360
+      ]
     },
     {
       "parameters": {
         "method": "PATCH",
-        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('3. Normalizar Dados').item.json.mass_id }}",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('3. Normalizar Dados').first().json.mass_id }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendHeaders": true,
@@ -228,11 +200,14 @@
         "jsonBody": "={\n  \"total_count\": {{ $input.all().length }}\n}",
         "options": {}
       },
-      "id": "save-total-01",
+      "id": "717d0d92-54e2-4a66-8d89-1de0fb2f6dd7",
       "name": "8. Salvar total_count",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2620, 260],
+      "position": [
+        16592,
+        3280
+      ],
       "executeOnce": true,
       "credentials": {
         "supabaseApi": {
@@ -245,11 +220,14 @@
       "parameters": {
         "options": {}
       },
-      "id": "loop-01",
+      "id": "dd613ae2-c27a-470c-949f-956867eb38ae",
       "name": "9. Loop por Lead",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [2860, 260]
+      "position": [
+        16832,
+        3280
+      ]
     },
     {
       "parameters": {
@@ -264,11 +242,14 @@
           "timeout": 30000
         }
       },
-      "id": "enviar-msg-01",
+      "id": "0a82a3c6-c5bd-4846-b90d-a9580c1562a8",
       "name": "10. Enviar via Evolution API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3100, 300],
+      "position": [
+        17072,
+        3328
+      ],
       "credentials": {
         "httpMultipleHeadersAuth": {
           "id": "NJ2Tmv50xP6GfnHO",
@@ -280,50 +261,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('3. Normalizar Dados').item.json.mass_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "supabaseApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Prefer",
-              "value": "return=representation"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"sent_count\": {{ $('9. Loop por Lead').context.currentRunIndex + 1 }}\n}",
-        "options": {}
-      },
-      "id": "inc-sent-01",
-      "name": "11. Incrementar sent_count",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [3340, 300],
-      "credentials": {
-        "supabaseApi": {
-          "id": "Pv48djwcm2OcpOqt",
-          "name": "FlowLux"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "amount": "={{ Math.floor(Math.random() * 6) + 3 }}"
-      },
-      "id": "delay-01",
-      "name": "12. Delay Anti-Ban (3-8s)",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1.1,
-      "position": [3580, 300],
-      "webhookId": "1b04489b-d969-47e0-b891-d192c06cb60e"
-    },
-    {
-      "parameters": {
-        "method": "PATCH",
-        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('3. Normalizar Dados').item.json.mass_id }}",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('3. Normalizar Dados').first().json.mass_id }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
@@ -331,11 +269,14 @@
         "jsonBody": "={ \"status\": \"completed\" }",
         "options": {}
       },
-      "id": "status-done-01",
+      "id": "dc8f9027-fc85-43e6-bc27-ef8259e55272",
       "name": "13. Status → Concluido",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3100, 100],
+      "position": [
+        17072,
+        3120
+      ],
       "credentials": {
         "supabaseApi": {
           "id": "Pv48djwcm2OcpOqt",
@@ -354,11 +295,14 @@
         "jsonBody": "={ \"status\": \"failed\" }",
         "options": {}
       },
-      "id": "falha-01",
+      "id": "e08dd473-06d8-4dca-a0ee-e5687304e24e",
       "name": "Falha: Sem Leads/Instancia",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2620, 480],
+      "position": [
+        16592,
+        3504
+      ],
       "credentials": {
         "supabaseApi": {
           "id": "Pv48djwcm2OcpOqt",
@@ -368,42 +312,127 @@
     },
     {
       "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "f386e1e4-71cf-4b0a-8c4e-f016be192e03",
+      "name": "Verificar a cada 5 min1",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        14432,
+        3360
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?status=eq.scheduled&scheduled_at=lte.now()&select=*",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "218ef269-a822-4fa0-97a3-399d015eebb1",
+      "name": "1. Buscar Disparos Agendados1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        14672,
+        3360
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Buscar leads do node 5 ===\nconst leadsRaw = $('5. Buscar Leads').all();\nlet allLeads = [];\nfor (const item of leadsRaw) {\n  if (Array.isArray(item.json)) {\n    allLeads = allLeads.concat(item.json);\n  } else if (item.json && item.json.id) {\n    allLeads.push(item.json);\n  }\n}\nif (allLeads.length === 0) return [{json: {error: 'no_leads'}}];\n\n// === Buscar instancia do node 6 ===\nconst instRaw = $('6. Buscar Instancia').all();\nlet instanceName = '';\nlet instanceStatus = '';\nfor (const item of instRaw) {\n  if (Array.isArray(item.json) && item.json.length > 0) {\n    instanceName = item.json[0].instance_name || '';\n    instanceStatus = item.json[0].status || '';\n  } else if (item.json && item.json.instance_name) {\n    instanceName = item.json.instance_name;\n    instanceStatus = item.json.status || '';\n  }\n}\nif (!instanceName) return [{json: {error: 'no_instance'}}];\nif (instanceStatus !== 'connected') return [{json: {error: 'instance_disconnected'}}];\n\n// === Dados do disparo ===\nconst massData = $('3. Normalizar Dados').first().json;\n\n// === Parse filtros ===\nfunction toArr(v) {\n  if (!v) return [];\n  if (Array.isArray(v)) return v;\n  if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch(e) { return []; } }\n  return [];\n}\nconst targetTags = toArr(massData.target_tags);\nconst targetStages = toArr(massData.target_stages);\n\n// === Filtrar leads ===\nconst filteredLeads = allLeads.filter(lead => {\n  if (!lead || !lead.id) return false;\n  const leadTagIds = (lead.lead_tags || []).map(lt => lt.tag_id);\n  const tagOk = targetTags.length === 0 || targetTags.some(t => leadTagIds.includes(t));\n  const stageOk = targetStages.length === 0 || targetStages.includes(lead.stage_id);\n  return tagOk && stageOk;\n});\n\nif (filteredLeads.length === 0) return [{json: {error: 'no_leads_matched'}}];\n\n// === Montar lista de envio ===\nreturn filteredLeads.map(lead => {\n  let phone = String(lead.phone || '').replace(/\\D/g, '').trim();\n  if (!phone) return null;\n  if (phone.startsWith('00')) phone = phone.slice(2);\n  if (!phone.startsWith('55')) {\n    if (phone.length === 11 || phone.length === 10) {\n      phone = '55' + phone;\n    } else {\n      return null;\n    }\n  }\n  return {\n    json: {\n      lead_id: lead.id,\n      lead_name: lead.name,\n      lead_phone: lead.phone,\n      number: phone,\n      remoteJid: phone + '@s.whatsapp.net',\n      instanceName: instanceName.trim(),\n      message: (massData.message || '').trim(),\n      mass_id: massData.mass_id,\n      user_id: massData.user_id\n    }\n  };\n}).filter(Boolean);"
+      },
+      "id": "9d5bc501-ee47-4613-94c1-1e8329aef08c",
+      "name": "7. Preparar Lista de Envio1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16112,
+        3360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/mass_messages?id=eq.{{ $('3. Normalizar Dados').first().json.mass_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"sent_count\": {{ $('9. Loop por Lead').context.currentRunIndex + 1 }}\n}",
+        "options": {}
+      },
+      "id": "a6dc4c8b-df37-4acf-a73c-1989c61ce764",
+      "name": "11. Incrementar sent_count1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        17312,
+        3328
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 6) + 3 }}"
+      },
+      "id": "af5d52bf-eb6b-41f2-a33f-90cf6951aa18",
+      "name": "12. Delay Anti-Ban (3-8s)1",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        17552,
+        3328
+      ],
+      "webhookId": "1b04489b-d969-47e0-b891-d192c06cb60e"
+    },
+    {
+      "parameters": {
         "content": "# FlowLux - Disparo em Massa v2\n\n**Fluxo:**\n1. Busca disparos agendados (status=scheduled, scheduled_at <= now)\n2. Separa array do Supabase REST em items individuais\n3. Normaliza campos\n4. Marca status como 'sending'\n5. Busca leads do usuario (com filtros de tags/stages)\n6. Busca instancia WhatsApp\n7. Prepara lista de envio (filtra leads, formata numeros)\n8. Loop: envia msg via Evolution API → incrementa sent_count → delay anti-ban\n9. Marca status como 'completed'",
-        "height": 580,
-        "width": 3400,
+        "height": 644,
+        "width": 3620,
         "color": 4
       },
       "type": "n8n-nodes-base.stickyNote",
-      "position": [380, 20],
+      "position": [
+        14352,
+        3040
+      ],
       "typeVersion": 1,
-      "id": "note-01",
-      "name": "Sticky Note"
+      "id": "dd8d5428-fb91-4347-99c9-123678ab9716",
+      "name": "Sticky Note1"
     }
   ],
   "pinData": {},
   "connections": {
-    "Verificar a cada 5 min": {
-      "main": [
-        [
-          {
-            "node": "1. Buscar Disparos Agendados",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "1. Buscar Disparos Agendados": {
-      "main": [
-        [
-          {
-            "node": "2. Separar Disparos",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "2. Separar Disparos": {
       "main": [
         [
@@ -452,18 +481,7 @@
       "main": [
         [
           {
-            "node": "7. Preparar Lista de Envio",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "7. Preparar Lista de Envio": {
-      "main": [
-        [
-          {
-            "node": "Tem leads para enviar?",
+            "node": "7. Preparar Lista de Envio1",
             "type": "main",
             "index": 0
           }
@@ -477,22 +495,16 @@
             "node": "8. Salvar total_count",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "9. Loop por Lead",
+            "type": "main",
+            "index": 0
           }
         ],
         [
           {
             "node": "Falha: Sem Leads/Instancia",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "8. Salvar total_count": {
-      "main": [
-        [
-          {
-            "node": "9. Loop por Lead",
             "type": "main",
             "index": 0
           }
@@ -521,25 +533,58 @@
       "main": [
         [
           {
-            "node": "11. Incrementar sent_count",
+            "node": "11. Incrementar sent_count1",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "11. Incrementar sent_count": {
+    "Verificar a cada 5 min1": {
       "main": [
         [
           {
-            "node": "12. Delay Anti-Ban (3-8s)",
+            "node": "1. Buscar Disparos Agendados1",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "12. Delay Anti-Ban (3-8s)": {
+    "1. Buscar Disparos Agendados1": {
+      "main": [
+        [
+          {
+            "node": "2. Separar Disparos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Preparar Lista de Envio1": {
+      "main": [
+        [
+          {
+            "node": "Tem leads para enviar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11. Incrementar sent_count1": {
+      "main": [
+        [
+          {
+            "node": "12. Delay Anti-Ban (3-8s)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12. Delay Anti-Ban (3-8s)1": {
       "main": [
         [
           {
@@ -558,7 +603,7 @@
     "saveDataSuccessExecution": "all",
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "versionId": "v2-fixed-2026-03-18",
+  "versionId": "d8ce829e-22a6-4ec7-9235-8c0ba9039923",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "a5bffdfbf51b3ac360223c2749699e9b7c407ef65e1900c9d34d27572fbc319c"

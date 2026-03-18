@@ -196,9 +196,8 @@ Deno.serve(async (req) => {
           })
           .eq("id", conversation_id);
 
-        // Small delay between messages to avoid rate limiting
         if (i < steps.length - 1 && step.step_type !== "delay") {
-          await delay(1500);
+          await delay(500);
         }
       } catch (stepError) {
         console.error(`Error executing step ${i}:`, stepError);
