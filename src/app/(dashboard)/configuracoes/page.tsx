@@ -182,6 +182,24 @@ export default function ConfiguracoesPage() {
       if (result?.base64) {
         setQrCode({ instanceName, base64: result.base64 });
         setShowQrDialog(true);
+        // Poll for connection status every 5s while QR dialog is open
+        const pollInterval = setInterval(async () => {
+          try {
+            const status = await evolutionApi.getInstanceStatus(instanceName);
+            if (status?.instance?.state === "open") {
+              clearInterval(pollInterval);
+              const inst = instances.find((i) => i.instance_name === instanceName);
+              if (inst) {
+                await supabase.from("whatsapp_instances").update({ status: "connected" }).eq("id", inst.id);
+                setInstances((prev) => prev.map((i) => i.instance_name === instanceName ? { ...i, status: "connected" } : i));
+              }
+              setShowQrDialog(false);
+              toast("WhatsApp conectado com sucesso!", "success");
+            }
+          } catch { /* ignore */ }
+        }, 5000);
+        // Stop polling after 3 minutes
+        setTimeout(() => clearInterval(pollInterval), 180000);
       }
     } catch (err) {
       console.error("Error generating QR:", err);
@@ -518,25 +536,25 @@ export default function ConfiguracoesPage() {
       <Dialog open={showAddInstance} onOpenChange={setShowAddInstance}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Adicionar Número</DialogTitle>
-            <DialogDescription>Crie uma nova instância do WhatsApp</DialogDescription>
+            <DialogTitle>Adicionar Número WhatsApp</DialogTitle>
+            <DialogDescription>Dê um nome para identificar este número</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Nome da instância</Label>
+              <Label>Nome de identificação</Label>
               <Input
-                placeholder="Ex: meu-whatsapp"
+                placeholder="Ex: comercial, suporte, vendas"
                 value={newInstanceName}
                 onChange={(e) => setNewInstanceName(e.target.value.replace(/\s/g, "-").toLowerCase())}
               />
-              <p className="text-xs text-muted-foreground">Apenas letras, números e hifens</p>
+              <p className="text-xs text-muted-foreground">Use um nome simples para identificar este WhatsApp (apenas letras, números e hifens)</p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddInstance(false)}>Cancelar</Button>
             <Button onClick={handleCreateInstance} disabled={creatingInstance}>
               {creatingInstance && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Criar Instância
+              Adicionar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -548,7 +566,7 @@ export default function ConfiguracoesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><QrCode className="h-5 w-5" /> QR Code</DialogTitle>
             <DialogDescription>
-              Escaneie o QR Code com seu WhatsApp para conectar a instância <strong>{qrCode?.instanceName}</strong>
+              Escaneie o QR Code com seu WhatsApp para conectar o número <strong>{qrCode?.instanceName}</strong>
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-center p-4">

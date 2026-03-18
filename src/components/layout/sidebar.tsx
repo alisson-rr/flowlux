@@ -10,7 +10,7 @@ import {
   MessageSquare,
   Users,
   Zap,
-  Settings,
+  Plug,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -31,7 +31,7 @@ const navItems = [
   { label: "Mídia", href: "/midia", icon: FolderOpen },
   { label: "Área de Membros", href: "/membros", icon: GraduationCap },
   { label: "Assinatura", href: "/assinatura", icon: Crown },
-  { label: "Configurações", href: "/configuracoes", icon: Settings },
+  { label: "Integrações", href: "/configuracoes", icon: Plug },
 ];
 
 export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {

@@ -131,7 +131,7 @@ export default function AutomacaoPage() {
       const [flowsRes, massRes, schedRes, instRes, leadsRes, mediaRes, tagsRes, stagesRes] = await Promise.all([
         supabase.from("flows").select("*, flow_steps(*)").eq("user_id", userId).order("created_at", { ascending: false }),
         supabase.from("mass_messages").select("*").eq("user_id", userId).is("deleted_at", null).neq("status", "cancelled").order("created_at", { ascending: false }),
-        supabase.from("scheduled_messages").select("*, leads(name)").eq("user_id", userId).is("deleted_at", null).neq("status", "cancelled").order("scheduled_at", { ascending: true }),
+        supabase.from("scheduled_messages").select("*, leads(name)").eq("user_id", userId).is("deleted_at", null).neq("status", "cancelled").order("scheduled_at", { ascending: false }),
         supabase.from("whatsapp_instances").select("id, instance_name").eq("user_id", userId).is("deleted_at", null),
         supabase.from("leads").select("id, name, phone, stage_id, lead_tags(tag_id)").eq("user_id", userId).eq("archived", false).is("deleted_at", null),
         supabase.from("media").select("id, file_name, file_type, file_url").eq("user_id", userId).order("created_at", { ascending: false }),
@@ -300,7 +300,8 @@ export default function AutomacaoPage() {
   // ===== MASS MESSAGES =====
   const openEditMass = (m: MassMessage) => {
     setEditingMassId(m.id);
-    setNewMass({ name: m.name, message: m.message, scheduled_at: m.scheduled_at || "", instance_id: m.instance_id || "", target_tags: m.target_tags || [], target_stages: m.target_stages || [] });
+    const schedAt = m.scheduled_at ? new Date(m.scheduled_at).toISOString().slice(0, 16) : "";
+    setNewMass({ name: m.name, message: m.message, scheduled_at: schedAt, instance_id: m.instance_id || instances[0]?.id || "", target_tags: m.target_tags || [], target_stages: m.target_stages || [] });
     setShowAddMass(true);
   };
 
@@ -338,7 +339,8 @@ export default function AutomacaoPage() {
   // ===== SCHEDULED =====
   const openEditScheduled = (sm: ScheduledMsg) => {
     setEditingScheduledId(sm.id);
-    setNewScheduled({ lead_id: "", message: sm.message, scheduled_at: sm.scheduled_at ? new Date(sm.scheduled_at).toISOString().slice(0, 16) : "", instance_id: "" });
+    const schedAt = sm.scheduled_at ? new Date(sm.scheduled_at).toISOString().slice(0, 16) : "";
+    setNewScheduled({ lead_id: "", message: sm.message, scheduled_at: schedAt, instance_id: instances[0]?.id || "" });
     setShowAddScheduled(true);
   };
 

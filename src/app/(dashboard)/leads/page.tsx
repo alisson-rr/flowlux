@@ -66,18 +66,25 @@ export default function LeadsPage() {
   const [filterTag, setFilterTag] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "name" | "phone">("recent");
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [funnels, setFunnels] = useState<{ id: string; name: string }[]>([]);
+  const [newLeadFunnel, setNewLeadFunnel] = useState("");
   const { toast } = useToast();
   const { limits } = useSubscription();
 
   const loadData = useCallback(async () => {
     try {
-      const [stagesRes, leadsRes, tagsRes] = await Promise.all([
+      const [stagesRes, leadsRes, tagsRes, funnelsRes] = await Promise.all([
         supabase.from("funnel_stages").select("*").order("order"),
         supabase.from("leads").select("*, lead_tags(tags(*)), notes(*)"),
         supabase.from("tags").select("id, name, color"),
+        supabase.from("funnels").select("id, name").order("created_at"),
       ]);
 
       if (stagesRes.data && stagesRes.data.length > 0) setStages(stagesRes.data);
+      if (funnelsRes.data) {
+        setFunnels(funnelsRes.data);
+        if (funnelsRes.data.length > 0 && !newLeadFunnel) setNewLeadFunnel(funnelsRes.data[0].id);
+      }
 
       if (leadsRes.data) {
         setLeads(leadsRes.data.map((l: any) => ({
@@ -111,6 +118,7 @@ export default function LeadsPage() {
       phone: newLead.phone,
       email: newLead.email || null,
       stage_id: newLeadStage || stages[0]?.id,
+      funnel_id: newLeadFunnel || funnels[0]?.id || null,
       source: newLead.source || null,
     }).select().single();
 
@@ -453,12 +461,23 @@ export default function LeadsPage() {
               <Label>Email</Label>
               <Input placeholder="email@exemplo.com" value={newLead.email} onChange={(e) => setNewLead({ ...newLead, email: e.target.value })} />
             </div>
+            {funnels.length > 0 && (
+              <div className="space-y-2">
+                <Label>Funil</Label>
+                <Select value={newLeadFunnel || funnels[0]?.id} onValueChange={(v) => { setNewLeadFunnel(v); setNewLeadStage(""); }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {funnels.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Etapa</Label>
-              <Select value={newLeadStage || stages[0]?.id} onValueChange={setNewLeadStage}>
+              <Select value={newLeadStage || stages.filter((s: any) => !newLeadFunnel || s.funnel_id === newLeadFunnel)[0]?.id} onValueChange={setNewLeadStage}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {stages.map((s) => (
+                  {stages.filter((s: any) => !newLeadFunnel || s.funnel_id === newLeadFunnel).map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -543,8 +562,10 @@ export default function LeadsPage() {
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <Input placeholder="Nova tag..." value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddTag()} className="h-9 text-sm" />
-                  <Button size="sm" variant="outline" onClick={handleAddTag}><Plus className="h-3 w-3" /></Button>
+                  <Input placeholder="Digite o nome da tag e pressione Enter" value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddTag()} className="h-9 text-sm" />
+                  <Button size="sm" variant="outline" onClick={handleAddTag} className="shrink-0">
+                    <Plus className="h-3 w-3 mr-1" /> Tag
+                  </Button>
                 </div>
               </div>
 
