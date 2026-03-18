@@ -178,7 +178,7 @@ export default function HistoricoPagamentosPage() {
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Plano</p>
                 <p className="font-semibold">
-                  {subscription.plan_id === "professional" ? "Professional" : "Starter"}
+                  {{ starter: "Starter", pro: "Pro", black: "FlowLux Black" }[subscription.plan_id] || subscription.plan_id}
                 </p>
               </div>
               <div className="space-y-1">

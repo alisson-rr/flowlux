@@ -29,7 +29,8 @@ export default function AssinaturaSucessoPage() {
           .single();
 
         if (data) {
-          setPlanName(data.plan_id === "professional" ? "Professional" : "Starter");
+          const names: Record<string, string> = { starter: "Starter", pro: "Pro", black: "FlowLux Black" };
+          setPlanName(names[data.plan_id] || data.plan_id);
 
           if (data.status === "active" || data.status === "authorized" || data.mp_preapproval_id) {
             // Webhook already processed, confirmed!

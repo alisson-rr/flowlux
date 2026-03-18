@@ -22,6 +22,15 @@ import {
   CreditCard,
   ArrowRight,
   ShieldCheck,
+  Flame,
+  HardDrive,
+  Tag,
+  StickyNote,
+  FileText,
+  Workflow,
+  Megaphone,
+  UsersRound,
+  Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -37,53 +46,97 @@ interface Subscription {
   created_at: string;
 }
 
+const PLAN_NAMES: Record<string, string> = {
+  starter: "Starter",
+  pro: "Pro",
+  black: "FlowLux Black",
+};
+
 const PLANS = [
   {
     id: "starter",
     name: "Starter",
-    price: "97",
-    priceNum: 97,
+    price: "89",
+    priceNum: 89,
     period: "/mês",
-    description: "Ideal para quem está começando a organizar seus leads e atendimento.",
+    description: "Comece a organizar seus leads e responder mais rápido",
     icon: Zap,
-    color: "from-blue-500 to-cyan-500",
-    borderColor: "border-blue-500/30",
-    bgColor: "bg-blue-500/10",
+    color: "from-green-500 to-emerald-500",
+    borderColor: "border-green-500/30",
+    bgColor: "bg-green-500/10",
     popular: false,
+    recommended: false,
     link: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=2a69ac12835b4077bbf7279faa7d61c6",
     features: [
-      { text: "CRM completo com funil Kanban", icon: Kanban },
-      { text: "Até 500 leads", icon: Users },
       { text: "1 número WhatsApp", icon: MessageSquare },
-      { text: "Chat em tempo real", icon: MessageSquare },
-      { text: "Disparo em massa (até 500/mês)", icon: Send },
-      { text: "Mensagens agendadas", icon: Clock },
-      { text: "Dashboard com métricas", icon: BarChart3 },
+      { text: "Até 500 leads", icon: Users },
+      { text: "Chat em tempo real + CRM", icon: Kanban },
+      { text: "Tags + Notas", icon: Tag },
+      { text: "Gatilhos de mensagens", icon: Zap },
+      { text: "5 GB de mídias", icon: HardDrive },
+      { text: "Mensagens prontas", icon: FileText },
+      { text: "Fluxos de mensagens", icon: Workflow },
+      { text: "Disparo em massa (500/mês)", icon: Send },
       { text: "Integração Hotmart", icon: ShieldCheck },
+      { text: "Comunidade exclusiva", icon: UsersRound },
     ],
   },
   {
-    id: "professional",
-    name: "Professional",
-    price: "197",
-    priceNum: 197,
+    id: "pro",
+    name: "Pro",
+    price: "129",
+    priceNum: 129,
     period: "/mês",
-    description: "Para profissionais que precisam de automação avançada e escala.",
-    icon: Crown,
-    color: "from-purple-500 to-pink-500",
-    borderColor: "border-primary/30",
-    bgColor: "bg-primary/10",
-    popular: true,
+    description: "Automatize seu atendimento e aumente suas vendas no WhatsApp",
+    icon: Star,
+    color: "from-purple-500 to-violet-500",
+    borderColor: "border-purple-500/30",
+    bgColor: "bg-purple-500/10",
+    popular: false,
+    recommended: false,
     link: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=2a69ac12835b4077bbf7279faa7d61c61111111",
     features: [
-      { text: "Tudo do plano Starter", icon: Check },
-      { text: "Leads ilimitados", icon: Users },
       { text: "Até 3 números WhatsApp", icon: MessageSquare },
-      { text: "Disparos ilimitados", icon: Send },
-      { text: "Automações avançadas com IA", icon: Bot },
-      { text: "Área de membros", icon: Star },
-      { text: "Gestão de mídias", icon: Sparkles },
-      { text: "Suporte prioritário", icon: ShieldCheck },
+      { text: "Leads ilimitados", icon: Users },
+      { text: "Chat em tempo real + CRM", icon: Kanban },
+      { text: "Tags + Notas", icon: Tag },
+      { text: "Gatilhos por palavra-chave", icon: Zap },
+      { text: "15 GB de mídias", icon: HardDrive },
+      { text: "Mensagens prontas", icon: FileText },
+      { text: "Fluxos ilimitados", icon: Workflow },
+      { text: "Disparo em massa (5.000/mês)", icon: Send },
+      { text: "Integração Hotmart", icon: ShieldCheck },
+      { text: "Comunidade exclusiva", icon: UsersRound },
+    ],
+  },
+  {
+    id: "black",
+    name: "FlowLux Black",
+    price: "99",
+    priceNum: 99,
+    period: "12x",
+    description: "O plano definitivo para escalar seu negócio no WhatsApp",
+    icon: Flame,
+    color: "from-orange-500 to-red-500",
+    borderColor: "border-orange-500/30",
+    bgColor: "bg-orange-500/10",
+    popular: false,
+    recommended: true,
+    link: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=2a69ac12835b4077bbf7279faa7d61c61111111",
+    features: [
+      { text: "Até 5 números WhatsApp", icon: MessageSquare },
+      { text: "Leads ilimitados", icon: Users },
+      { text: "Chat em tempo real + CRM", icon: Kanban },
+      { text: "Tags + Notas", icon: Tag },
+      { text: "Gatilhos por palavra-chave", icon: Zap },
+      { text: "30 GB de mídias", icon: HardDrive },
+      { text: "Mensagens prontas", icon: FileText },
+      { text: "Fluxos ilimitados", icon: Workflow },
+      { text: "Disparo em massa (10.000/mês)", icon: Megaphone },
+      { text: "Integração Hotmart", icon: ShieldCheck },
+      { text: "Suporte prioritário", icon: Rocket },
+      { text: "Comunidade exclusiva", icon: UsersRound },
+      { text: "Acesso antecipado a IA personalizada", icon: Bot },
     ],
   },
 ];
@@ -192,7 +245,7 @@ export default function AssinaturaPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-lg">
-                      Plano {subscription.plan_id === "professional" ? "Professional" : "Starter"}
+                      Plano {PLAN_NAMES[subscription.plan_id] || subscription.plan_id}
                     </p>
                     {getStatusBadge(subscription.status)}
                   </div>
@@ -231,7 +284,7 @@ export default function AssinaturaPage() {
       </div>
 
       {/* Plans Grid */}
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-3 gap-6">
         {PLANS.map((plan) => {
           const isCurrentPlan = subscription?.plan_id === plan.id && 
             ["active", "authorized", "trial"].includes(subscription?.status || "");
@@ -241,15 +294,15 @@ export default function AssinaturaPage() {
               key={plan.id}
               className={cn(
                 "relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5",
-                plan.popular ? "border-primary/50 shadow-lg shadow-primary/10" : "border-border",
+                plan.recommended ? "border-orange-500/50 shadow-lg shadow-orange-500/10 scale-[1.02]" : "border-border",
                 isCurrentPlan && "ring-2 ring-primary"
               )}
             >
-              {/* Popular Badge */}
-              {plan.popular && (
+              {/* Recommended Badge */}
+              {plan.recommended && (
                 <div className="absolute top-0 right-0">
-                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold px-4 py-1.5 rounded-bl-xl">
-                    MAIS POPULAR
+                  <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold px-4 py-1.5 rounded-bl-xl">
+                    RECOMENDADO
                   </div>
                 </div>
               )}
@@ -268,9 +321,19 @@ export default function AssinaturaPage() {
                 {/* Price */}
                 <div className="pt-4">
                   <div className="flex items-baseline gap-1">
-                    <span className="text-sm text-muted-foreground">R$</span>
-                    <span className="text-4xl font-bold">{plan.price}</span>
-                    <span className="text-muted-foreground">{plan.period}</span>
+                    {plan.period === "12x" ? (
+                      <>
+                        <span className="text-sm text-muted-foreground">12x</span>
+                        <span className="text-sm text-muted-foreground">R$</span>
+                        <span className="text-4xl font-bold">{plan.price}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sm text-muted-foreground">R$</span>
+                        <span className="text-4xl font-bold">{plan.price}</span>
+                        <span className="text-muted-foreground">{plan.period}</span>
+                      </>
+                    )}
                   </div>
                   <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
                     <Check className="h-3 w-3" />
@@ -281,10 +344,10 @@ export default function AssinaturaPage() {
 
               <CardContent className="space-y-4">
                 {/* Features */}
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {plan.features.map((feature, idx) => (
                     <div key={idx} className="flex items-center gap-3">
-                      <div className={cn("p-1 rounded-md", plan.bgColor)}>
+                      <div className={cn("p-1 rounded-md shrink-0", plan.bgColor)}>
                         <feature.icon className="h-3.5 w-3.5 text-primary" />
                       </div>
                       <span className="text-sm">{feature.text}</span>
@@ -303,8 +366,8 @@ export default function AssinaturaPage() {
                     <Button
                       className={cn(
                         "w-full group",
-                        plan.popular
-                          ? "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                        plan.recommended
+                          ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
                           : ""
                       )}
                       onClick={() => handleSelectPlan(plan)}

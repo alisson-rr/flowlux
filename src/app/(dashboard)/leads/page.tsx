@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { cn, formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { useSubscription } from "@/lib/use-subscription";
+import Link from "next/link";
 
 interface Lead {
   id: string;
@@ -65,6 +67,7 @@ export default function LeadsPage() {
   const [sortBy, setSortBy] = useState<"recent" | "name" | "phone">("recent");
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const { toast } = useToast();
+  const { limits } = useSubscription();
 
   const loadData = useCallback(async () => {
     try {
@@ -284,13 +287,29 @@ export default function LeadsPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold">Leads</h1>
-          <p className="text-muted-foreground">Gerencie seus leads no funil de vendas</p>
+          <p className="text-muted-foreground">
+            Gerencie seus leads no funil de vendas
+            <span className={cn("ml-2 text-xs font-mono px-2 py-0.5 rounded-full", leads.filter(l => !l.archived).length >= limits.max_leads && limits.max_leads !== Infinity ? "bg-destructive/20 text-destructive" : "bg-muted text-muted-foreground")}>
+              {leads.filter(l => !l.archived).length.toLocaleString("pt-BR")}/{limits.max_leads === Infinity ? "∞" : limits.max_leads.toLocaleString("pt-BR")} leads
+            </span>
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={openFunnelConfig}>
             <Settings2 className="h-4 w-4 mr-2" /> Configurar Funil
           </Button>
-          <Button onClick={() => setShowAddLead(true)}>
+          {leads.filter(l => !l.archived).length >= limits.max_leads && limits.max_leads !== Infinity && (
+            <Link href="/assinatura">
+              <Button variant="outline" size="sm" className="text-xs">Fazer upgrade</Button>
+            </Link>
+          )}
+          <Button onClick={() => {
+            if (leads.filter(l => !l.archived).length >= limits.max_leads && limits.max_leads !== Infinity) {
+              toast(`Limite de ${limits.max_leads.toLocaleString("pt-BR")} leads atingido. Fa\u00e7a upgrade do plano.`, "warning");
+              return;
+            }
+            setShowAddLead(true);
+          }}>
             <Plus className="h-4 w-4 mr-2" /> Novo Lead
           </Button>
         </div>

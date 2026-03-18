@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { useSubscription } from "@/lib/use-subscription";
+import Link from "next/link";
 
 interface Flow {
   id: string;
@@ -93,6 +95,8 @@ export default function AutomacaoPage() {
   const [allStages, setAllStages] = useState<StageOption[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { plan, limits } = useSubscription();
+  const [monthlyDisparos, setMonthlyDisparos] = useState(0);
 
   // Flow editor
   const [showFlowEditor, setShowFlowEditor] = useState(false);
@@ -140,7 +144,16 @@ export default function AutomacaoPage() {
           steps: (f.flow_steps || []).sort((a: FlowStep, b: FlowStep) => a.step_order - b.step_order),
         })));
       }
-      if (massRes.data) setMassMessages(massRes.data);
+      if (massRes.data) {
+        setMassMessages(massRes.data);
+        // Calculate monthly disparos (sent_count from completed/sending this month)
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const monthlyTotal = massRes.data
+          .filter((m: any) => ["completed", "sending", "sent"].includes(m.status) && m.created_at >= monthStart)
+          .reduce((acc: number, m: any) => acc + (m.sent_count || 0), 0);
+        setMonthlyDisparos(monthlyTotal);
+      }
       if (schedRes.data) setScheduledMessages(schedRes.data.map((s: any) => ({ ...s, lead_name: s.leads?.name })));
       if (instRes.data) {
         setInstances(instRes.data);
@@ -590,7 +603,9 @@ export default function AutomacaoPage() {
       <Tabs defaultValue="flows" className="space-y-4">
         <TabsList>
           <TabsTrigger value="flows" className="gap-2"><Zap className="h-4 w-4" /> Fluxos</TabsTrigger>
-          <TabsTrigger value="mass" className="gap-2"><Megaphone className="h-4 w-4" /> Disparos em Massa</TabsTrigger>
+          <TabsTrigger value="mass" className="gap-2">
+            <Megaphone className="h-4 w-4" /> Disparos em Massa
+          </TabsTrigger>
           <TabsTrigger value="scheduled" className="gap-2"><CalendarClock className="h-4 w-4" /> Agendamentos</TabsTrigger>
         </TabsList>
 
@@ -665,8 +680,42 @@ export default function AutomacaoPage() {
 
         {/* Mass Messages Tab */}
         <TabsContent value="mass" className="space-y-4">
-          <div className="flex justify-end">
-            <Button onClick={() => setShowAddMass(true)}><Plus className="h-4 w-4 mr-2" /> Novo Disparo</Button>
+          {/* Disparo Usage Bar */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-muted-foreground">Disparos este mês</span>
+                <span className={cn("font-mono font-semibold", monthlyDisparos >= limits.max_mass_messages_per_month ? "text-destructive" : "text-foreground")}>
+                  {monthlyDisparos.toLocaleString("pt-BR")} / {limits.max_mass_messages_per_month === Infinity ? "Ilimitado" : limits.max_mass_messages_per_month.toLocaleString("pt-BR")}
+                </span>
+              </div>
+              {limits.max_mass_messages_per_month !== Infinity && (
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn("h-full rounded-full transition-all", monthlyDisparos >= limits.max_mass_messages_per_month ? "bg-destructive" : "bg-primary")}
+                    style={{ width: `${Math.min(100, (monthlyDisparos / limits.max_mass_messages_per_month) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {monthlyDisparos >= limits.max_mass_messages_per_month && limits.max_mass_messages_per_month !== Infinity && (
+                <Link href="/assinatura">
+                  <Button variant="outline" size="sm" className="text-xs">Fazer upgrade</Button>
+                </Link>
+              )}
+              <Button
+                onClick={() => {
+                  if (monthlyDisparos >= limits.max_mass_messages_per_month && limits.max_mass_messages_per_month !== Infinity) {
+                    toast(`Limite de ${limits.max_mass_messages_per_month.toLocaleString("pt-BR")} disparos/mês atingido. Faça upgrade do plano.`, "warning");
+                    return;
+                  }
+                  setShowAddMass(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" /> Novo Disparo
+              </Button>
+            </div>
           </div>
           <div className="grid gap-3">
             {massMessages.length === 0 ? (

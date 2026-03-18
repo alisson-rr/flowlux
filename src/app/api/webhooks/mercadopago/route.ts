@@ -152,7 +152,10 @@ export async function POST(req: NextRequest) {
             } else {
               // Determine plan from preapproval amount
               const amount = preapproval.auto_recurring?.transaction_amount || 0;
-              const planId = amount > 150 ? "professional" : "starter";
+              let planId = "starter";
+              if (amount >= 99 && amount < 100) planId = "black"; // 12x R$99
+              else if (amount > 100) planId = "pro"; // R$129/mês
+              // R$89/mês = starter
 
               // Create new subscription
               await supabase.from("subscriptions").insert({

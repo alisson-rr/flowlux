@@ -137,7 +137,7 @@ export interface HotmartWebhook {
 export interface Subscription {
   id: string;
   user_id: string;
-  plan_id: "starter" | "professional";
+  plan_id: "starter" | "pro" | "black";
   status: "pending" | "authorized" | "paused" | "cancelled" | "trial" | "active";
   mp_preapproval_id?: string;
   mp_payer_id?: string;

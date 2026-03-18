@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { useSubscription } from "@/lib/use-subscription";
+import Link from "next/link";
 
 interface WhatsAppInstance {
   id: string;
@@ -46,6 +48,7 @@ export default function ConfiguracoesPage() {
   const [stages, setStages] = useState<{ id: string; name: string; funnel_id: string }[]>([]);
   const [tags, setTags] = useState<{ id: string; name: string }[]>([]);
   const { toast } = useToast();
+  const { limits } = useSubscription();
 
   const HOTMART_EVENTS = [
     { key: "PURCHASE_APPROVED", label: "Compra Aprovada" },
@@ -278,11 +281,29 @@ export default function ConfiguracoesPage() {
           <div className="flex justify-between items-center">
             <div>
               <h3 className="font-medium">Instâncias WhatsApp</h3>
-              <p className="text-sm text-muted-foreground">Gerencie suas conexões com o WhatsApp via Evolution API</p>
+              <p className="text-sm text-muted-foreground">
+                Gerencie suas conexões com o WhatsApp
+                <span className={cn("ml-2 text-xs font-mono px-2 py-0.5 rounded-full", instances.length >= limits.max_whatsapp_instances ? "bg-destructive/20 text-destructive" : "bg-muted text-muted-foreground")}>
+                  {instances.length}/{limits.max_whatsapp_instances} número{limits.max_whatsapp_instances !== 1 ? "s" : ""}
+                </span>
+              </p>
             </div>
-            <Button onClick={() => setShowAddInstance(true)}>
-              <Plus className="h-4 w-4 mr-2" /> Adicionar Número
-            </Button>
+            <div className="flex items-center gap-2">
+              {instances.length >= limits.max_whatsapp_instances && (
+                <Link href="/assinatura">
+                  <Button variant="outline" size="sm" className="text-xs">Fazer upgrade</Button>
+                </Link>
+              )}
+              <Button onClick={() => {
+                if (instances.length >= limits.max_whatsapp_instances) {
+                  toast(`Limite de ${limits.max_whatsapp_instances} número${limits.max_whatsapp_instances !== 1 ? "s" : ""} atingido. Faça upgrade do plano.`, "warning");
+                  return;
+                }
+                setShowAddInstance(true);
+              }}>
+                <Plus className="h-4 w-4 mr-2" /> Adicionar Número
+              </Button>
+            </div>
           </div>
 
           {instances.length === 0 ? (

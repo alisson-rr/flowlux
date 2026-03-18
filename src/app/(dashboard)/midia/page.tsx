@@ -19,6 +19,9 @@ import {
   FileText, Image, Video, Music, FileUp, Plus, Trash2, Loader2, Pencil, Download, Search, FolderOpen, Check, Mic, Square, Upload,
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import { useSubscription } from "@/lib/use-subscription";
+import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 interface Template { id: string; name: string; content: string; category: string; }
 interface MediaItem { id: string; file_name: string; file_type: string; file_url: string; file_size: number; created_at: string; }
@@ -73,6 +76,7 @@ export default function MidiaPage() {
   const [renameValue, setRenameValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { limits } = useSubscription();
 
   // Audio recording
   const [isRecording, setIsRecording] = useState(false);
@@ -307,6 +311,12 @@ export default function MidiaPage() {
     }
   };
 
+  const totalStorageBytes = mediaItems.reduce((acc, m) => acc + (m.file_size || 0), 0);
+  const totalStorageGB = totalStorageBytes / (1024 * 1024 * 1024);
+  const maxStorageGB = limits.max_media_gb;
+  const storagePercent = maxStorageGB > 0 ? Math.min(100, (totalStorageGB / maxStorageGB) * 100) : 0;
+  const isOverStorage = totalStorageGB >= maxStorageGB;
+
   const filteredMedia = mediaItems
     .filter((m) => filterType === "all" || m.file_type === filterType)
     .filter((m) => m.file_name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -390,6 +400,29 @@ export default function MidiaPage() {
 
         {/* Media Tab */}
         <TabsContent value="media" className="space-y-4">
+          {/* Storage Usage Bar */}
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-muted-foreground">Armazenamento</span>
+                <span className={cn("font-mono font-semibold", isOverStorage ? "text-destructive" : "text-foreground")}>
+                  {totalStorageGB.toFixed(2)} GB / {maxStorageGB} GB
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={cn("h-full rounded-full transition-all", isOverStorage ? "bg-destructive" : "bg-primary")}
+                  style={{ width: `${storagePercent}%` }}
+                />
+              </div>
+            </div>
+            {isOverStorage && (
+              <Link href="/assinatura">
+                <Button variant="outline" size="sm" className="text-xs shrink-0">Fazer upgrade</Button>
+              </Link>
+            )}
+          </div>
+
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">
               <div className="relative w-64">
@@ -409,7 +442,16 @@ export default function MidiaPage() {
             </div>
             <div>
               <input ref={fileInputRef} type="file" className="hidden" multiple accept={ALLOWED_MIME_ACCEPT} onChange={handleFileUpload} />
-              <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              <Button
+                onClick={() => {
+                  if (isOverStorage) {
+                    toast(`Limite de ${maxStorageGB} GB atingido. Fa\u00e7a upgrade do plano ou exclua arquivos.`, "warning");
+                    return;
+                  }
+                  fileInputRef.current?.click();
+                }}
+                disabled={uploading}
+              >
                 {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
                 Upload
               </Button>
