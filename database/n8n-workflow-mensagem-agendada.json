@@ -19,26 +19,6 @@
     },
     {
       "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "minutes",
-              "minutesInterval": 30
-            }
-          ]
-        }
-      },
-      "id": "a9168d1d-a5a5-4c5d-8557-cb6384830cb7",
-      "name": "Verificar a cada 30 min",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        -944,
-        832
-      ]
-    },
-    {
-      "parameters": {
         "method": "PATCH",
         "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/scheduled_messages?id=eq.{{ $('Normalizacao').item.json.id_scheduled_messages }}",
         "authentication": "predefinedCredentialType",
@@ -148,12 +128,12 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://evo.devnoflow.com.br/message/sendText/{{ $json.instanceName }}",
+        "url": "=https://evo.devnoflow.com.br/message/sendText/{{ $('6. Buscar Instância WhatsApp').item.json.instance_name }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpMultipleHeadersAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"number\": \"{{ $json.number }}\",\n  \"text\": \"{{ $json.message }}\"\n}",
+        "jsonBody": "={\n  \"number\": \"{{ \n  (() => {\n    let phone = $('4. Buscar Leads do Usuário').item.json.phone || '';\n    \n    phone = String(phone).replace(/\\D/g, ''); // remove tudo que não for número\n    \n    if (!phone.startsWith('55')) {\n      phone = '55' + phone; // adiciona DDI do Brasil se não tiver\n    }\n\n    return phone;\n  })()\n}}\",\n  \"text\": \"{{ $('1. Buscar Disparos Agendados').item.json.message }}\"\n}",
         "options": {
           "timeout": 30000
         }
@@ -308,6 +288,26 @@
           "name": "FlowLux"
         }
       }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "a9168d1d-a5a5-4c5d-8557-cb6384830cb7",
+      "name": "Verificar a cada 1 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -944,
+        832
+      ]
     }
   ],
   "pinData": {},
@@ -401,7 +401,7 @@
         ]
       ]
     },
-    "Verificar a cada 30 min": {
+    "Verificar a cada 1 min": {
       "main": [
         [
           {
@@ -413,7 +413,7 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
@@ -421,7 +421,7 @@
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": false
   },
-  "versionId": "ac69d918-f8f0-440f-a102-edf3c1d1b66e",
+  "versionId": "9b920850-da35-4bf7-86c9-f39e3dfa6a30",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "a5bffdfbf51b3ac360223c2749699e9b7c407ef65e1900c9d34d27572fbc319c"

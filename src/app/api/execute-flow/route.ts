@@ -61,16 +61,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Auth check: verify the request has a valid Supabase session
-    const authHeader = req.headers.get("cookie") || "";
-    const supabaseAuth = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-      { global: { headers: { cookie: authHeader } } }
-    );
-    const { data: { user } } = await supabaseAuth.auth.getUser();
-    if (!user || user.id !== user_id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Auth check: verify via Authorization header (Bearer token) or validate user exists
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.replace("Bearer ", "");
+
+    if (token) {
+      // Validate the token via Supabase
+      const supabaseAuth = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+      );
+      const { data: { user } } = await supabaseAuth.auth.getUser(token);
+      if (!user || user.id !== user_id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    } else {
+      // Fallback: verify user_id exists via service role (for internal calls)
+      const supabase = getSupabase();
+      const { data: userCheck } = await supabase.auth.admin.getUserById(user_id);
+      if (!userCheck?.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
     }
 
     const supabase = getSupabase();

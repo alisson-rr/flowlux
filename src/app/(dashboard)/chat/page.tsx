@@ -299,9 +299,15 @@ export default function ChatPage() {
       const inst = instances.find((i) => i.id === selectedInstanceId);
       if (!inst) { toast("Selecione um WhatsApp.", "warning"); return; }
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token || "";
+
       const res = await fetch("/api/execute-flow", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { "Authorization": `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify({
           flow_id: selectedFlow.id,
           user_id: userData.user.id,
