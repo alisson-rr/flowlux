@@ -18,6 +18,7 @@ import {
   FolderOpen,
   Headset,
   Kanban,
+  Crown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -29,6 +30,7 @@ const navItems = [
   { label: "Automação", href: "/automacao", icon: Zap },
   { label: "Mídia", href: "/midia", icon: FolderOpen },
   { label: "Área de Membros", href: "/membros", icon: GraduationCap },
+  { label: "Assinatura", href: "/assinatura", icon: Crown },
   { label: "Configurações", href: "/configuracoes", icon: Settings },
 ];
 

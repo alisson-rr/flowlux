@@ -134,6 +134,37 @@ export interface HotmartWebhook {
   created_at: string;
 }
 
+export interface Subscription {
+  id: string;
+  user_id: string;
+  plan_id: "starter" | "professional";
+  status: "pending" | "authorized" | "paused" | "cancelled" | "trial" | "active";
+  mp_preapproval_id?: string;
+  mp_payer_id?: string;
+  mp_payer_email?: string;
+  trial_start?: string;
+  trial_end?: string;
+  current_period_start?: string;
+  current_period_end?: string;
+  cancelled_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubscriptionPayment {
+  id: string;
+  user_id: string;
+  subscription_id?: string;
+  mp_payment_id?: string;
+  status: "approved" | "pending" | "in_process" | "rejected" | "refunded" | "cancelled";
+  amount: number | null;
+  currency: string;
+  payment_method?: string;
+  description?: string;
+  paid_at?: string;
+  created_at: string;
+}
+
 export interface DashboardMetrics {
   total_leads: number;
   new_leads_today: number;

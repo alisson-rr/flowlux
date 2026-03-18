@@ -31,6 +31,33 @@ export default function LoginPage() {
       return;
     }
 
+    // Check if user has active subscription before redirecting
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user) {
+      const { data: subscription } = await supabase
+        .from("subscriptions")
+        .select("id, status, trial_end")
+        .eq("user_id", userData.user.id)
+        .in("status", ["active", "authorized", "trial", "pending"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!subscription) {
+        router.push("/assinatura");
+        return;
+      }
+
+      // Check if trial expired
+      if (subscription.status === "trial" && subscription.trial_end) {
+        const trialEnd = new Date(subscription.trial_end);
+        if (trialEnd < new Date()) {
+          router.push("/assinatura");
+          return;
+        }
+      }
+    }
+
     router.push("/dashboard");
   };
 
