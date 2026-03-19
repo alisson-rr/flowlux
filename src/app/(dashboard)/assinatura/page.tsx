@@ -56,9 +56,9 @@ const PLANS = [
   {
     id: "starter",
     name: "Starter",
-    price: "49",
+    price: "10",
     oldPrice: "89",
-    priceNum: 49,
+    priceNum: 10,
     period: "/mês",
     description: "Comece a organizar seus leads e responder mais rápido",
     icon: Zap,
