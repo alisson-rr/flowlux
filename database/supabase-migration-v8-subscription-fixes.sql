@@ -1,3 +1,4 @@
+DELETE FROM subscriptions WHERE status = 'pending' AND mp_preapproval_id IS NULL;
 -- =====================================================
 -- FlowLux - Migration V8: Subscription Fixes
 -- =====================================================

@@ -145,24 +145,38 @@ async function findUserId(
   return null;
 }
 
-// Map Mercado Pago preapproval_plan_id to our plan_id
+// Map Mercado Pago preapproval_plan_id to our plan_id (for legacy/generic links)
 const MP_PLAN_TO_PLAN: Record<string, string> = {
   "2a69ac12835b4077bbf7279faa7d61c6": "starter",
   "d9bbcdeb8cdd488994afa7c88d94f75e": "pro",
   "e54d3d648c9045d3ac50101e493e8e84": "black",
 };
 
+// Map reason/description to plan_id
+const REASON_TO_PLAN: Record<string, string> = {
+  "FlowLux Starter": "starter",
+  "FlowLux Pro": "pro",
+  "FlowLux Black": "black",
+};
+
 function detectPlanId(preapproval: any): string {
-  // 1. Try to match by preapproval_plan_id
+  // 1. Try to match by preapproval_plan_id (legacy/generic links)
   if (preapproval.preapproval_plan_id) {
     const plan = MP_PLAN_TO_PLAN[preapproval.preapproval_plan_id];
     if (plan) return plan;
   }
 
-  // 2. Fallback: detect by amount
+  // 2. Try to match by reason (new approach without plan_id)
+  if (preapproval.reason) {
+    const plan = REASON_TO_PLAN[preapproval.reason];
+    if (plan) return plan;
+  }
+
+  // 3. Fallback: detect by amount
   const amount = preapproval.auto_recurring?.transaction_amount || 0;
   if (amount >= 65) return "pro";
   if (amount >= 55) return "black";
+  if (amount >= 45) return "starter";
   return "starter";
 }
 

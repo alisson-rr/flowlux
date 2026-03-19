@@ -5,11 +5,33 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 
-// Map plan IDs to Mercado Pago preapproval_plan_id
-const MP_PLAN_IDS: Record<string, string> = {
-  starter: "2a69ac12835b4077bbf7279faa7d61c6",
-  pro: "d9bbcdeb8cdd488994afa7c88d94f75e",
-  black: "e54d3d648c9045d3ac50101e493e8e84",
+// Plan configurations with pricing for Mercado Pago auto_recurring
+const PLAN_CONFIG: Record<string, { name: string; amount: number; frequency: number; frequency_type: string }> = {
+  starter: {
+    name: "FlowLux Starter",
+    amount: 49,
+    frequency: 1,
+    frequency_type: "months",
+  },
+  pro: {
+    name: "FlowLux Pro",
+    amount: 69,
+    frequency: 1,
+    frequency_type: "months",
+  },
+  black: {
+    name: "FlowLux Black",
+    amount: 59,
+    frequency: 1,
+    frequency_type: "months",
+  },
+};
+
+// Fallback: generic MP checkout links (preapproval_plan_id based)
+const MP_GENERIC_LINKS: Record<string, string> = {
+  starter: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=2a69ac12835b4077bbf7279faa7d61c6",
+  pro: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=d9bbcdeb8cdd488994afa7c88d94f75e",
+  black: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=e54d3d648c9045d3ac50101e493e8e84",
 };
 
 export async function POST(req: NextRequest) {
@@ -20,13 +42,11 @@ export async function POST(req: NextRequest) {
     console.log("[create-subscription] Request:", { plan_id, user_id, user_email: user_email ? "***" : "MISSING", back_url });
 
     if (!plan_id || !user_id || !user_email) {
-      console.error("[create-subscription] Missing required fields:", { plan_id: !!plan_id, user_id: !!user_id, user_email: !!user_email });
       return NextResponse.json({ error: "Missing required fields: plan_id, user_id, user_email" }, { status: 400 });
     }
 
-    const mpPlanId = MP_PLAN_IDS[plan_id];
-    if (!mpPlanId) {
-      console.error("[create-subscription] Invalid plan_id:", plan_id);
+    const planConfig = PLAN_CONFIG[plan_id];
+    if (!planConfig) {
       return NextResponse.json({ error: `Invalid plan_id: ${plan_id}` }, { status: 400 });
     }
 
@@ -42,7 +62,6 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (activeSub) {
-      console.warn("[create-subscription] User already has active subscription:", activeSub.id);
       return NextResponse.json({
         error: "Você já possui uma assinatura ativa.",
         existing_plan: activeSub.plan_id,
@@ -62,35 +81,43 @@ export async function POST(req: NextRequest) {
     if (!mpAccessToken) {
       console.error("[create-subscription] MERCADOPAGO_ACCESS_TOKEN not configured");
 
-      // Create subscription record as pending_payment
       const { error: dbError } = await supabase.from("subscriptions").insert({
         user_id,
         plan_id,
         status: "pending_payment",
         mp_payer_email: user_email,
       });
-
       if (dbError) console.error("[create-subscription] DB insert error (fallback):", dbError);
 
-      // Fallback: redirect to generic MP checkout
-      const genericLink = `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${mpPlanId}`;
-
       return NextResponse.json({
-        init_point: genericLink,
+        init_point: MP_GENERIC_LINKS[plan_id],
         fallback: true,
-        warning: "MP API not configured. external_reference not set - webhook matching will use email only.",
       });
     }
 
-    // Create subscription via Mercado Pago API with external_reference
+    // Create subscription via Mercado Pago API
+    // Using subscription WITHOUT associated plan (no preapproval_plan_id)
+    // This returns an init_point (checkout link) where the user enters card details
+    // Reference: https://www.mercadopago.com.br/developers/en/docs/subscriptions/integration-configuration/subscription-no-associated-plan
     const mpPayload = {
-      preapproval_plan_id: mpPlanId,
+      reason: planConfig.name,
       external_reference: user_id,
       payer_email: user_email,
+      auto_recurring: {
+        frequency: planConfig.frequency,
+        frequency_type: planConfig.frequency_type,
+        transaction_amount: planConfig.amount,
+        currency_id: "BRL",
+      },
       back_url: back_url || "https://flowlux.vercel.app/assinatura/sucesso",
       status: "pending",
     };
-    console.log("[create-subscription] Calling MP API:", { ...mpPayload, payer_email: "***" });
+
+    console.log("[create-subscription] Calling MP API (no plan):", {
+      reason: mpPayload.reason,
+      amount: mpPayload.auto_recurring.transaction_amount,
+      external_reference: user_id,
+    });
 
     const mpResponse = await fetch("https://api.mercadopago.com/preapproval", {
       method: "POST",
@@ -112,39 +139,36 @@ export async function POST(req: NextRequest) {
     if (!mpResponse.ok || !mpData.init_point) {
       console.error("[create-subscription] MP API error:", JSON.stringify(mpData));
 
-      // Create subscription record and return generic link as fallback
+      // Fallback to generic link
       const { error: dbError } = await supabase.from("subscriptions").insert({
         user_id,
         plan_id,
         status: "pending_payment",
         mp_payer_email: user_email,
       });
-      if (dbError) console.error("[create-subscription] DB insert error (MP fail fallback):", dbError);
-
-      const genericLink = `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${mpPlanId}`;
+      if (dbError) console.error("[create-subscription] DB insert error (fallback):", dbError);
 
       return NextResponse.json({
-        init_point: genericLink,
+        init_point: MP_GENERIC_LINKS[plan_id],
         fallback: true,
         mp_error: mpData.message || mpData.error || "MP API error",
       });
     }
 
-    // Success: create subscription record with MP preapproval ID
+    // Success: MP returned init_point (checkout link)
     const { error: dbError } = await supabase.from("subscriptions").insert({
       user_id,
       plan_id,
       status: "pending_payment",
-      mp_preapproval_id: mpData.id || null,
+      mp_preapproval_id: mpData.id,
       mp_payer_email: user_email,
     });
 
     if (dbError) {
       console.error("[create-subscription] DB insert error:", dbError);
-      // Still return the init_point — the webhook will handle creating the subscription later
     }
 
-    console.log("[create-subscription] Success! MP ID:", mpData.id);
+    console.log("[create-subscription] Success! MP ID:", mpData.id, "init_point generated");
 
     return NextResponse.json({
       init_point: mpData.init_point,
