@@ -9,19 +9,19 @@ const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 const PLAN_CONFIG: Record<string, { name: string; amount: number; frequency: number; frequency_type: string }> = {
   starter: {
     name: "FlowLux Starter",
-    amount: 49,
+    amount: 10, // TODO: voltar para 49 após testes
     frequency: 1,
     frequency_type: "months",
   },
   pro: {
     name: "FlowLux Pro",
-    amount: 69,
+    amount: 10, // TODO: voltar para 69 após testes
     frequency: 1,
     frequency_type: "months",
   },
   black: {
     name: "FlowLux Black",
-    amount: 59,
+    amount: 10, // TODO: voltar para 59 após testes
     frequency: 1,
     frequency_type: "months",
   },
@@ -108,6 +108,20 @@ export async function POST(req: NextRequest) {
         frequency_type: planConfig.frequency_type,
         transaction_amount: planConfig.amount,
         currency_id: "BRL",
+        free_trial: {
+          frequency: 7,
+          frequency_type: "days",
+        },
+      },
+      payment_methods_allowed: {
+        payment_types: [
+          { id: "credit_card" },
+          { id: "debit_card" },
+          { id: "pix" },
+        ],
+        payment_methods: [
+          { id: "pix" },
+        ],
       },
       back_url: back_url || "https://flowlux.vercel.app/assinatura/sucesso",
       status: "pending",
