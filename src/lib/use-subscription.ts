@@ -32,7 +32,7 @@ export function useSubscription(): UseSubscriptionReturn {
           .from("subscriptions")
           .select("plan_id, status, trial_end")
           .eq("user_id", userData.user.id)
-          .in("status", ["active", "authorized", "trial", "pending"])
+          .in("status", ["active", "authorized", "trial"])
           .order("created_at", { ascending: false })
           .limit(1)
           .single();
@@ -49,7 +49,7 @@ export function useSubscription(): UseSubscriptionReturn {
 
   const plan: PlanId = data?.plan_id || "starter";
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.starter;
-  const isActive = !!data && ["active", "authorized", "trial", "pending"].includes(data.status);
+  const isActive = !!data && ["active", "authorized", "trial"].includes(data.status);
 
   return { plan, limits, status: data?.status || "", loading, isActive };
 }

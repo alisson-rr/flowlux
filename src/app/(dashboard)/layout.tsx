@@ -29,7 +29,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const [instRes, failedRes, subRes] = await Promise.all([
         supabase.from("whatsapp_instances").select("instance_name, status").eq("user_id", userData.user.id).eq("status", "disconnected").is("deleted_at", null),
         supabase.from("mass_messages").select("id", { count: "exact", head: true }).eq("user_id", userData.user.id).eq("status", "failed"),
-        supabase.from("subscriptions").select("status, trial_end").eq("user_id", userData.user.id).in("status", ["active", "authorized", "trial", "pending"]).order("created_at", { ascending: false }).limit(1).single(),
+        supabase.from("subscriptions").select("status, trial_end").eq("user_id", userData.user.id).in("status", ["active", "authorized", "trial"]).order("created_at", { ascending: false }).limit(1).single(),
       ]);
       if (instRes.data) setDisconnectedInstances(instRes.data.map((i: any) => i.instance_name));
       if (failedRes.count) setFailedCount(failedRes.count);

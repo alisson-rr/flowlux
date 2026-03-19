@@ -32,22 +32,13 @@ export default function AssinaturaSucessoPage() {
           const names: Record<string, string> = { starter: "Starter", pro: "Pro", black: "FlowLux Black" };
           setPlanName(names[data.plan_id] || data.plan_id);
 
-          if (data.status === "active" || data.status === "authorized" || data.mp_preapproval_id) {
-            // Webhook already processed, confirmed!
+          // Only confirm if webhook already set status to trial/active/authorized
+          if (["active", "authorized", "trial"].includes(data.status)) {
             setConfirmed(true);
             setLoading(false);
             return;
           }
-
-          // Update status to trial if still pending (user came back from MP)
-          if (data.status === "pending") {
-            await supabase
-              .from("subscriptions")
-              .update({ status: "trial" })
-              .eq("user_id", userData.user.id)
-              .eq("status", "pending");
-            setConfirmed(true);
-          }
+          // pending_payment / pending = still waiting for MP webhook confirmation
         }
       } catch {
         // ignore
@@ -58,11 +49,11 @@ export default function AssinaturaSucessoPage() {
 
     checkSubscription();
 
-    // Poll every 5s for up to 2 minutes to detect webhook confirmation
+    // Poll every 5s for up to 3 minutes to detect webhook confirmation
     pollRef.current = setInterval(async () => {
       pollCountRef.current += 1;
-      if (pollCountRef.current > 24) {
-        // Stop after ~2 minutes
+      if (pollCountRef.current > 36) {
+        // Stop after ~3 minutes
         if (pollRef.current) clearInterval(pollRef.current);
         return;
       }
@@ -73,13 +64,15 @@ export default function AssinaturaSucessoPage() {
 
         const { data } = await supabase
           .from("subscriptions")
-          .select("status, mp_preapproval_id")
+          .select("plan_id, status")
           .eq("user_id", userData.user.id)
           .order("created_at", { ascending: false })
           .limit(1)
           .single();
 
-        if (data && (data.status === "active" || data.status === "authorized" || data.mp_preapproval_id)) {
+        if (data && ["active", "authorized", "trial"].includes(data.status)) {
+          const names: Record<string, string> = { starter: "Starter", pro: "Pro", black: "FlowLux Black" };
+          setPlanName(names[data.plan_id] || data.plan_id);
           setConfirmed(true);
           if (pollRef.current) clearInterval(pollRef.current);
         }

@@ -159,7 +159,7 @@ export default function AssinaturaPage() {
           .from("subscriptions")
           .select("*")
           .eq("user_id", userData.user.id)
-          .in("status", ["active", "authorized", "trial", "pending"])
+          .in("status", ["active", "authorized", "trial", "pending_payment"])
           .order("created_at", { ascending: false })
           .limit(1)
           .single();
@@ -174,28 +174,46 @@ export default function AssinaturaPage() {
     loadSubscription();
   }, []);
 
+  const [selectingPlan, setSelectingPlan] = useState<string | null>(null);
+
   const handleSelectPlan = async (plan: typeof PLANS[0]) => {
     try {
+      setSelectingPlan(plan.id);
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) {
         toast("Faça login para assinar.", "error");
+        setSelectingPlan(null);
         return;
       }
 
-      // Create pending subscription
-      await supabase.from("subscriptions").insert({
-        user_id: userData.user.id,
-        plan_id: plan.id,
-        status: "pending",
-        trial_start: new Date().toISOString().split("T")[0],
-        trial_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      const backUrl = `${window.location.origin}/assinatura/sucesso`;
+
+      const res = await fetch("/api/create-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan_id: plan.id,
+          user_id: userData.user.id,
+          user_email: userData.user.email,
+          back_url: backUrl,
+        }),
       });
 
-      // Redirect to Mercado Pago
-      window.open(plan.link, "_blank");
+      const data = await res.json();
+
+      if (!res.ok || !data.init_point) {
+        console.error("Error creating subscription:", data);
+        toast("Erro ao criar assinatura. Tente novamente.", "error");
+        setSelectingPlan(null);
+        return;
+      }
+
+      // Redirect to Mercado Pago personalized checkout
+      window.location.href = data.init_point;
     } catch (err) {
       console.error("Error selecting plan:", err);
       toast("Erro ao selecionar plano.", "error");
+      setSelectingPlan(null);
     }
   };
 
@@ -204,7 +222,8 @@ export default function AssinaturaPage() {
       active: { label: "Ativo", variant: "success" },
       authorized: { label: "Autorizado", variant: "success" },
       trial: { label: "Período de Teste", variant: "outline" },
-      pending: { label: "Pendente", variant: "outline" },
+      pending_payment: { label: "Aguardando Pagamento", variant: "outline" },
+      pending: { label: "Aguardando Pagamento", variant: "outline" },
       paused: { label: "Pausado", variant: "outline" },
       cancelled: { label: "Cancelado", variant: "destructive" },
     };
@@ -379,9 +398,13 @@ export default function AssinaturaPage() {
                           : ""
                       )}
                       onClick={() => handleSelectPlan(plan)}
+                      disabled={!!selectingPlan}
                     >
-                      Começar Teste Grátis
-                      <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                      {selectingPlan === plan.id ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando...</>
+                      ) : (
+                        <>Começar Teste Grátis<ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
+                      )}
                     </Button>
                   )}
                 </div>

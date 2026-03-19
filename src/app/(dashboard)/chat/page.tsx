@@ -123,26 +123,39 @@ export default function ChatPage() {
     if (data) { setMessages(data); setTimeout(scrollToBottom, 100); }
   }, []);
 
+  const normalizePhoneVariants = (phone: string): string[] => {
+    const digits = phone.replace(/\D/g, "");
+    const result = [digits];
+    if (digits.startsWith("55") && digits.length > 11) {
+      result.push(digits.slice(2)); // without country code
+    }
+    if (!digits.startsWith("55") && digits.length <= 11) {
+      result.push("55" + digits); // with country code
+    }
+    return result;
+  };
+
   const loadLeadInfo = async (phone: string) => {
-    const cleanPhone = phone.replace(/\D/g, "");
-    // Try multiple phone format variations to find the lead
-    const phoneVariants = [cleanPhone];
-    if (cleanPhone.startsWith("55") && cleanPhone.length > 11) {
-      phoneVariants.push(cleanPhone.slice(2)); // without country code
-    }
-    if (!cleanPhone.startsWith("55")) {
-      phoneVariants.push("55" + cleanPhone); // with country code
-    }
+    const convVariants = normalizePhoneVariants(phone);
+
+    // Fetch all leads for this user and match by normalized phone digits
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) { setLeadInfo(null); setRightPanel("lead"); return; }
+
+    const { data: allLeads } = await supabase
+      .from("leads")
+      .select("*, lead_tags(tags(*)), notes(*)")
+      .eq("user_id", userData.user.id)
+      .is("deleted_at", null);
 
     let foundLead = null;
-    for (const variant of phoneVariants) {
-      const { data } = await supabase
-        .from("leads")
-        .select("*, lead_tags(tags(*)), notes(*)")
-        .ilike("phone", `%${variant}%`)
-        .limit(1)
-        .single();
-      if (data) { foundLead = data; break; }
+    if (allLeads) {
+      for (const lead of allLeads) {
+        const leadVariants = normalizePhoneVariants(lead.phone || "");
+        // Check if any variant from the conversation phone matches any variant from the lead phone
+        const match = convVariants.some((cv) => leadVariants.includes(cv));
+        if (match) { foundLead = lead; break; }
+      }
     }
 
     if (foundLead) {
@@ -225,11 +238,15 @@ export default function ChatPage() {
 
   const handleSelectConversation = async (conv: Conversation) => {
     setSelectedConv(conv);
+    setRightPanel(null);
+    setLeadInfo(null);
     await loadMessages(conv.id);
     if (conv.unread_count > 0) {
       await supabase.from("conversations").update({ unread_count: 0 }).eq("id", conv.id);
       setConversations((prev) => prev.map((c) => (c.id === conv.id ? { ...c, unread_count: 0 } : c)));
     }
+    // Auto-load lead info for this conversation
+    loadLeadInfo(conv.contact_phone);
   };
 
   const handleSendMessage = async () => {

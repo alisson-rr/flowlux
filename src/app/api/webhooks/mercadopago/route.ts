@@ -84,19 +84,23 @@ export async function POST(req: NextRequest) {
         const mpStatus = preapproval.status || ""; // authorized, paused, cancelled, pending
         const startDate = preapproval.date_created || null;
         const nextPaymentDate = preapproval.next_payment_date || null;
+        const externalReference = preapproval.external_reference || "";
 
-        // Map MP status to our status
-        let appStatus = "pending";
-        if (mpStatus === "authorized") appStatus = "active";
-        else if (mpStatus === "paused") appStatus = "paused";
-        else if (mpStatus === "cancelled") appStatus = "cancelled";
-        else if (mpStatus === "pending") appStatus = "pending";
-
-        // Find user by email in profiles or auth
+        // --- Find user: prefer external_reference (user_id), fallback to email ---
         let userId: string | null = null;
 
-        if (payerEmail) {
-          // Try to find user by email in auth.users via admin
+        // 1. Try external_reference (this is the user_id we set when creating the subscription)
+        if (externalReference) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("id", externalReference)
+            .single();
+          if (profile) userId = profile.id;
+        }
+
+        // 2. Fallback: find user by payer email
+        if (!userId && payerEmail) {
           const { data: users } = await supabase.auth.admin.listUsers();
           const matchedUser = users?.users?.find(
             (u) => u.email?.toLowerCase() === payerEmail.toLowerCase()
@@ -113,63 +117,95 @@ export async function POST(req: NextRequest) {
             .single();
 
           if (existing) {
-            // Update existing subscription
+            // --- Update existing subscription based on MP status ---
             const updates: Record<string, any> = {
-              status: appStatus,
               mp_payer_email: payerEmail,
               mp_payer_id: payerId,
             };
             if (nextPaymentDate) updates.current_period_end = nextPaymentDate;
-            if (mpStatus === "cancelled") updates.cancelled_at = new Date().toISOString();
+            if (startDate) updates.current_period_start = startDate;
+
+            if (mpStatus === "authorized") {
+              // MP approved! Start trial if not already active
+              if (existing.status === "pending_payment" || existing.status === "pending") {
+                updates.status = "trial";
+                updates.trial_start = new Date().toISOString().split("T")[0];
+                updates.trial_end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+              } else if (existing.status !== "active") {
+                updates.status = "active";
+              }
+            } else if (mpStatus === "paused") {
+              updates.status = "paused";
+            } else if (mpStatus === "cancelled") {
+              updates.status = "cancelled";
+              updates.cancelled_at = new Date().toISOString();
+            }
+            // If mpStatus is "pending", keep current status (don't grant access)
 
             await supabase
               .from("subscriptions")
               .update(updates)
               .eq("id", existing.id);
           } else {
-            // Try to match with a pending subscription for this user
+            // No subscription with this mp_preapproval_id yet
+            // Try to match with a pending_payment subscription for this user
             const { data: pendingSub } = await supabase
               .from("subscriptions")
-              .select("id")
+              .select("id, status")
               .eq("user_id", userId)
-              .eq("status", "pending")
+              .in("status", ["pending_payment", "pending"])
               .order("created_at", { ascending: false })
               .limit(1)
               .single();
 
             if (pendingSub) {
-              await supabase
-                .from("subscriptions")
-                .update({
-                  mp_preapproval_id: String(dataId),
-                  mp_payer_id: payerId,
-                  mp_payer_email: payerEmail,
-                  status: appStatus,
-                  current_period_start: startDate,
-                  current_period_end: nextPaymentDate,
-                })
-                .eq("id", pendingSub.id);
-            } else {
-              // Determine plan from preapproval amount
-              const amount = preapproval.auto_recurring?.transaction_amount || 0;
-              let planId = "starter";
-              if (amount >= 99 && amount < 100) planId = "black"; // 12x R$99
-              else if (amount > 100) planId = "pro"; // R$129/mês
-              // R$89/mês = starter
-
-              // Create new subscription
-              await supabase.from("subscriptions").insert({
-                user_id: userId,
-                plan_id: planId,
-                status: appStatus,
+              const updates: Record<string, any> = {
                 mp_preapproval_id: String(dataId),
                 mp_payer_id: payerId,
                 mp_payer_email: payerEmail,
-                trial_start: new Date().toISOString().split("T")[0],
-                trial_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
                 current_period_start: startDate,
                 current_period_end: nextPaymentDate,
-              });
+              };
+
+              if (mpStatus === "authorized") {
+                updates.status = "trial";
+                updates.trial_start = new Date().toISOString().split("T")[0];
+                updates.trial_end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+              } else if (mpStatus === "cancelled") {
+                updates.status = "cancelled";
+                updates.cancelled_at = new Date().toISOString();
+              }
+              // If still "pending" from MP, keep pending_payment (no access)
+
+              await supabase
+                .from("subscriptions")
+                .update(updates)
+                .eq("id", pendingSub.id);
+            } else {
+              // No pending subscription found — create new one
+              const amount = preapproval.auto_recurring?.transaction_amount || 0;
+              let planId = "starter";
+              if (amount >= 55 && amount <= 65) planId = "black";
+              else if (amount >= 65) planId = "pro";
+
+              const newSub: Record<string, any> = {
+                user_id: userId,
+                plan_id: planId,
+                mp_preapproval_id: String(dataId),
+                mp_payer_id: payerId,
+                mp_payer_email: payerEmail,
+                current_period_start: startDate,
+                current_period_end: nextPaymentDate,
+                status: "pending_payment",
+              };
+
+              if (mpStatus === "authorized") {
+                newSub.status = "trial";
+                newSub.trial_start = new Date().toISOString().split("T")[0];
+                newSub.trial_end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+              }
+
+              await supabase.from("subscriptions").insert(newSub);
             }
           }
         }
@@ -190,16 +226,27 @@ export async function POST(req: NextRequest) {
 
       if (payment) {
         const payerEmail = payment.payer?.email || "";
-        const mpPaymentStatus = payment.status || ""; // approved, pending, in_process, rejected, refunded, cancelled
+        const mpPaymentStatus = payment.status || "";
         const amount = payment.transaction_amount || 0;
         const currency = payment.currency_id || "BRL";
         const paymentMethod = payment.payment_type_id || "";
         const description = payment.description || "Pagamento FlowLux";
         const paidAt = payment.date_approved || payment.date_created || null;
+        const externalReference = payment.external_reference || "";
 
-        // Find user
+        // --- Find user: prefer external_reference, fallback to email ---
         let userId: string | null = null;
-        if (payerEmail) {
+
+        if (externalReference) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("id", externalReference)
+            .single();
+          if (profile) userId = profile.id;
+        }
+
+        if (!userId && payerEmail) {
           const { data: users } = await supabase.auth.admin.listUsers();
           const matchedUser = users?.users?.find(
             (u) => u.email?.toLowerCase() === payerEmail.toLowerCase()
@@ -211,7 +258,7 @@ export async function POST(req: NextRequest) {
           // Find subscription for this user
           const { data: sub } = await supabase
             .from("subscriptions")
-            .select("id")
+            .select("id, status")
             .eq("user_id", userId)
             .order("created_at", { ascending: false })
             .limit(1)

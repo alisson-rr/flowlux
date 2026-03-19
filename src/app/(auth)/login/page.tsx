@@ -38,7 +38,7 @@ export default function LoginPage() {
         .from("subscriptions")
         .select("id, status, trial_end")
         .eq("user_id", userData.user.id)
-        .in("status", ["active", "authorized", "trial", "pending"])
+        .in("status", ["active", "authorized", "trial"])
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
