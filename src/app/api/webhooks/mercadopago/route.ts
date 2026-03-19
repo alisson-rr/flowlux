@@ -65,6 +65,8 @@ export async function POST(req: NextRequest) {
     const eventAction = body.action || "";
     const dataId = body.data?.id || "";
 
+    console.log("[mp-webhook] Received:", { eventType, eventAction, dataId });
+
     // Log the webhook
     await supabase.from("mp_webhooks").insert({
       event_type: eventType,
@@ -77,6 +79,7 @@ export async function POST(req: NextRequest) {
     // Handle subscription (preapproval) events
     if (eventType === "subscription_preapproval" && dataId) {
       const preapproval = await mpFetch(`/preapproval/${dataId}`);
+      console.log("[mp-webhook] Preapproval data:", preapproval ? { status: preapproval.status, external_reference: preapproval.external_reference, payer_email: preapproval.payer_email } : "NULL");
 
       if (preapproval) {
         const payerEmail = preapproval.payer_email || "";
@@ -97,16 +100,34 @@ export async function POST(req: NextRequest) {
             .eq("id", externalReference)
             .single();
           if (profile) userId = profile.id;
+          console.log("[mp-webhook] Found user by external_reference:", !!profile);
         }
 
-        // 2. Fallback: find user by payer email
+        // 2. Fallback: find user by payer email in profiles table
+        if (!userId && payerEmail) {
+          const { data: profileByEmail } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("email", payerEmail.toLowerCase())
+            .limit(1)
+            .single();
+          if (profileByEmail) {
+            userId = profileByEmail.id;
+            console.log("[mp-webhook] Found user by email in profiles");
+          }
+        }
+
+        // 3. Last fallback: find user by email in auth.users
         if (!userId && payerEmail) {
           const { data: users } = await supabase.auth.admin.listUsers();
           const matchedUser = users?.users?.find(
             (u) => u.email?.toLowerCase() === payerEmail.toLowerCase()
           );
           if (matchedUser) userId = matchedUser.id;
+          console.log("[mp-webhook] Found user by email in auth.users:", !!matchedUser);
         }
+
+        console.log("[mp-webhook] User resolution:", { userId, mpStatus, externalReference: externalReference || "NONE" });
 
         if (userId) {
           // Check if subscription already exists with this mp_preapproval_id

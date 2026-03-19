@@ -94,6 +94,47 @@ export default function AssinaturaSucessoPage() {
     );
   }
 
+  // Not yet confirmed — show waiting state
+  if (!confirmed) {
+    return (
+      <div className="flex items-center justify-center min-h-[70vh] animate-fade-in">
+        <Card className="max-w-lg w-full border-yellow-500/30 shadow-xl shadow-yellow-500/10 overflow-hidden">
+          <div className="h-2 bg-gradient-to-r from-yellow-500 via-orange-500 to-yellow-500" />
+          <CardContent className="p-8 text-center space-y-6">
+            <div className="w-20 h-20 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto">
+              <Loader2 className="h-10 w-10 text-yellow-500 animate-spin" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold mb-2">Processando Assinatura...</h1>
+              <p className="text-muted-foreground">
+                {planName ? (
+                  <>Aguardando confirmação do plano <span className="font-semibold text-primary">{planName}</span></>
+                ) : (
+                  <>Aguardando confirmação do Mercado Pago</>
+                )}
+              </p>
+            </div>
+            <div className="bg-yellow-500/10 rounded-xl p-4 space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Estamos aguardando a confirmação do pagamento pelo Mercado Pago. Isso pode levar alguns segundos...
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Se já completou o pagamento, aguarde. A página será atualizada automaticamente.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 pt-2">
+              <Link href="/assinatura">
+                <Button variant="outline" className="w-full">
+                  Voltar para Planos
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-center min-h-[70vh] animate-fade-in">
       <Card className="max-w-lg w-full border-primary/30 shadow-xl shadow-primary/10 overflow-hidden">
@@ -138,7 +179,7 @@ export default function AssinaturaSucessoPage() {
             </p>
             <div className="space-y-2">
               {[
-                "Configure sua instância WhatsApp em Configurações",
+                "Configure sua instância WhatsApp em Integrações",
                 "Importe ou crie seus primeiros leads",
                 "Monte seu funil de vendas",
                 "Configure automações para escalar",

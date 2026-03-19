@@ -17,49 +17,89 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { plan_id, user_id, user_email, back_url } = body;
 
+    console.log("[create-subscription] Request:", { plan_id, user_id, user_email: user_email ? "***" : "MISSING", back_url });
+
     if (!plan_id || !user_id || !user_email) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      console.error("[create-subscription] Missing required fields:", { plan_id: !!plan_id, user_id: !!user_id, user_email: !!user_email });
+      return NextResponse.json({ error: "Missing required fields: plan_id, user_id, user_email" }, { status: 400 });
     }
 
     const mpPlanId = MP_PLAN_IDS[plan_id];
     if (!mpPlanId) {
-      return NextResponse.json({ error: "Invalid plan_id" }, { status: 400 });
+      console.error("[create-subscription] Invalid plan_id:", plan_id);
+      return NextResponse.json({ error: `Invalid plan_id: ${plan_id}` }, { status: 400 });
     }
 
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Check if MP access token is configured
     if (!mpAccessToken) {
-      return NextResponse.json({ error: "Mercado Pago not configured" }, { status: 500 });
+      console.error("[create-subscription] MERCADOPAGO_ACCESS_TOKEN not configured");
+      // Fallback: create subscription as pending_payment and return the generic MP link
+      const genericLinks: Record<string, string> = {
+        starter: `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${MP_PLAN_IDS.starter}`,
+        pro: `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${MP_PLAN_IDS.pro}`,
+        black: `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${MP_PLAN_IDS.black}`,
+      };
+
+      const { error: dbError } = await supabase.from("subscriptions").insert({
+        user_id,
+        plan_id,
+        status: "pending_payment",
+        mp_payer_email: user_email,
+      });
+
+      if (dbError) console.error("[create-subscription] DB insert error (fallback):", dbError);
+
+      return NextResponse.json({
+        init_point: genericLinks[plan_id],
+        fallback: true,
+      });
     }
 
     // Create subscription via Mercado Pago API with external_reference
+    const mpPayload = {
+      preapproval_plan_id: mpPlanId,
+      external_reference: user_id,
+      payer_email: user_email,
+      back_url: back_url || "https://flowlux.vercel.app/assinatura/sucesso",
+    };
+    console.log("[create-subscription] Calling MP API:", { ...mpPayload, payer_email: "***" });
+
     const mpResponse = await fetch("https://api.mercadopago.com/preapproval", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${mpAccessToken}`,
       },
-      body: JSON.stringify({
-        preapproval_plan_id: mpPlanId,
-        external_reference: user_id,
-        payer_email: user_email,
-        back_url: back_url || "https://flowlux.vercel.app/assinatura/sucesso",
-      }),
+      body: JSON.stringify(mpPayload),
     });
 
     const mpData = await mpResponse.json();
+    console.log("[create-subscription] MP API response:", { status: mpResponse.status, id: mpData.id, init_point: mpData.init_point ? "present" : "MISSING", mpStatus: mpData.status });
 
     if (!mpResponse.ok) {
-      console.error("Mercado Pago API error:", mpData);
-      return NextResponse.json(
-        { error: "Erro ao criar assinatura no Mercado Pago", details: mpData },
-        { status: 500 }
-      );
+      console.error("[create-subscription] MP API error:", JSON.stringify(mpData));
+      // Fallback: use generic link if MP API fails
+      const genericLink = `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${mpPlanId}`;
+
+      const { error: dbError } = await supabase.from("subscriptions").insert({
+        user_id,
+        plan_id,
+        status: "pending_payment",
+        mp_payer_email: user_email,
+      });
+      if (dbError) console.error("[create-subscription] DB insert error (MP fail fallback):", dbError);
+
+      return NextResponse.json({
+        init_point: genericLink,
+        fallback: true,
+        mp_error: mpData.message || mpData.error || "MP API error",
+      });
     }
 
-    // mpData contains: id, init_point, status, external_reference, etc.
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Create subscription record with pending_payment status (NO access, NO trial yet)
-    await supabase.from("subscriptions").insert({
+    // Success: mpData contains id, init_point, status, external_reference
+    const { error: dbError } = await supabase.from("subscriptions").insert({
       user_id,
       plan_id,
       status: "pending_payment",
@@ -67,12 +107,19 @@ export async function POST(req: NextRequest) {
       mp_payer_email: user_email,
     });
 
+    if (dbError) {
+      console.error("[create-subscription] DB insert error:", dbError);
+      // Still return the init_point — the webhook will handle creating the subscription later
+    }
+
+    console.log("[create-subscription] Success! Redirecting user to MP checkout.");
+
     return NextResponse.json({
       init_point: mpData.init_point,
       mp_id: mpData.id,
     });
   } catch (err: any) {
-    console.error("Create subscription error:", err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.error("[create-subscription] Unexpected error:", err);
+    return NextResponse.json({ error: "Erro interno: " + String(err.message || err) }, { status: 500 });
   }
 }

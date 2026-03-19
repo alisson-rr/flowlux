@@ -159,7 +159,7 @@ export default function AssinaturaPage() {
           .from("subscriptions")
           .select("*")
           .eq("user_id", userData.user.id)
-          .in("status", ["active", "authorized", "trial", "pending_payment"])
+          .in("status", ["active", "authorized", "trial", "pending_payment", "pending"])
           .order("created_at", { ascending: false })
           .limit(1)
           .single();
@@ -186,6 +186,14 @@ export default function AssinaturaPage() {
         return;
       }
 
+      // Clean up old broken pending subscriptions for this user (no MP data)
+      await supabase
+        .from("subscriptions")
+        .delete()
+        .eq("user_id", userData.user.id)
+        .in("status", ["pending", "pending_payment"])
+        .is("mp_preapproval_id", null);
+
       const backUrl = `${window.location.origin}/assinatura/sucesso`;
 
       const res = await fetch("/api/create-subscription", {
@@ -203,12 +211,16 @@ export default function AssinaturaPage() {
 
       if (!res.ok || !data.init_point) {
         console.error("Error creating subscription:", data);
-        toast("Erro ao criar assinatura. Tente novamente.", "error");
+        toast(data.error || "Erro ao criar assinatura. Tente novamente.", "error");
         setSelectingPlan(null);
         return;
       }
 
-      // Redirect to Mercado Pago personalized checkout
+      if (data.fallback) {
+        console.warn("Using fallback generic MP link (API not configured or failed)");
+      }
+
+      // Redirect to Mercado Pago checkout
       window.location.href = data.init_point;
     } catch (err) {
       console.error("Error selecting plan:", err);
