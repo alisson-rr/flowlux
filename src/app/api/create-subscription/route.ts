@@ -5,25 +5,38 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 
-// Plan configurations with pricing for Mercado Pago auto_recurring
-const PLAN_CONFIG: Record<string, { name: string; amount: number; frequency: number; frequency_type: string }> = {
+// Plan configurations
+// Starter & Pro: monthly subscriptions via Preapproval API
+// Black: one-time annual payment (12x R$59 = R$708) via Checkout Pro (Preferences API)
+const PLAN_CONFIG: Record<string, {
+  name: string;
+  amount: number;
+  type: "subscription" | "checkout";
+  frequency?: number;
+  frequency_type?: string;
+  installments?: number;
+  total_amount?: number;
+}> = {
   starter: {
     name: "FlowLux Starter",
-    amount: 10, // TODO: voltar para 49 após testes
+    amount: 49,
+    type: "subscription",
     frequency: 1,
     frequency_type: "months",
   },
   pro: {
     name: "FlowLux Pro",
-    amount: 10, // TODO: voltar para 69 após testes
+    amount: 69,
+    type: "subscription",
     frequency: 1,
     frequency_type: "months",
   },
   black: {
     name: "FlowLux Black",
-    amount: 10, // TODO: voltar para 59 após testes
-    frequency: 1,
-    frequency_type: "months",
+    amount: 59,
+    type: "checkout",
+    installments: 12,
+    total_amount: 708, // 12 x R$59
   },
 };
 
@@ -34,6 +47,212 @@ const MP_GENERIC_LINKS: Record<string, string> = {
   black: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=e54d3d648c9045d3ac50101e493e8e84",
 };
 
+// ========================================
+// Create a monthly subscription via Preapproval API (Starter / Pro)
+// ========================================
+async function createSubscriptionFlow(
+  planConfig: typeof PLAN_CONFIG[string],
+  userId: string,
+  userEmail: string,
+  backUrl: string,
+  hadTrial: boolean,
+  supabase: any,
+  planId: string,
+) {
+  const mpPayload = {
+    reason: planConfig.name,
+    external_reference: userId,
+    payer_email: userEmail,
+    auto_recurring: {
+      frequency: planConfig.frequency,
+      frequency_type: planConfig.frequency_type,
+      transaction_amount: planConfig.amount,
+      currency_id: "BRL",
+      ...(hadTrial ? {} : {
+        free_trial: {
+          frequency: 7,
+          frequency_type: "days",
+        },
+      }),
+    },
+    payment_methods_allowed: {
+      payment_types: [
+        { id: "credit_card" },
+        { id: "debit_card" },
+        { id: "pix" },
+      ],
+      payment_methods: [
+        { id: "pix" },
+      ],
+    },
+    back_url: backUrl,
+    status: "pending",
+  };
+
+  console.log("[create-subscription] Calling MP Preapproval API:", {
+    reason: mpPayload.reason,
+    amount: mpPayload.auto_recurring.transaction_amount,
+    hadTrial,
+  });
+
+  const mpResponse = await fetch("https://api.mercadopago.com/preapproval", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${mpAccessToken}`,
+    },
+    body: JSON.stringify(mpPayload),
+  });
+
+  const mpData = await mpResponse.json();
+  console.log("[create-subscription] MP Preapproval response:", {
+    status: mpResponse.status,
+    id: mpData.id,
+    init_point: mpData.init_point ? "present" : "MISSING",
+  });
+
+  if (!mpResponse.ok || !mpData.init_point) {
+    console.error("[create-subscription] MP Preapproval error:", JSON.stringify(mpData));
+
+    const { error: dbError } = await supabase.from("subscriptions").insert({
+      user_id: userId,
+      plan_id: planId,
+      status: "pending_payment",
+      mp_payer_email: userEmail,
+    });
+    if (dbError) console.error("[create-subscription] DB insert error (fallback):", dbError);
+
+    return NextResponse.json({
+      init_point: MP_GENERIC_LINKS[planId],
+      fallback: true,
+      mp_error: mpData.message || mpData.error || "MP API error",
+    });
+  }
+
+  const { error: dbError } = await supabase.from("subscriptions").insert({
+    user_id: userId,
+    plan_id: planId,
+    status: "pending_payment",
+    mp_preapproval_id: mpData.id,
+    mp_payer_email: userEmail,
+  });
+  if (dbError) console.error("[create-subscription] DB insert error:", dbError);
+
+  console.log("[create-subscription] Subscription created! MP ID:", mpData.id);
+
+  return NextResponse.json({
+    init_point: mpData.init_point,
+    mp_id: mpData.id,
+  });
+}
+
+// ========================================
+// Create a one-time payment via Checkout Pro / Preferences API (Black)
+// Allows 12x installments on credit card
+// ========================================
+async function createCheckoutFlow(
+  planConfig: typeof PLAN_CONFIG[string],
+  userId: string,
+  userEmail: string,
+  backUrl: string,
+  supabase: any,
+  planId: string,
+) {
+  const webhookUrl = process.env.NEXT_PUBLIC_APP_URL
+    ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/mercadopago`
+    : "https://flowlux.vercel.app/api/webhooks/mercadopago";
+
+  const preferencePayload = {
+    items: [
+      {
+        id: `plan-${planId}`,
+        title: `${planConfig.name} - Plano Anual`,
+        description: `Assinatura anual ${planConfig.name} (12 meses)`,
+        quantity: 1,
+        unit_price: planConfig.total_amount || (planConfig.amount * (planConfig.installments || 12)),
+        currency_id: "BRL",
+      },
+    ],
+    payer: {
+      email: userEmail,
+    },
+    payment_methods: {
+      installments: planConfig.installments || 12,
+      default_installments: planConfig.installments || 12,
+    },
+    back_urls: {
+      success: backUrl,
+      failure: backUrl.replace("/sucesso", ""),
+      pending: backUrl,
+    },
+    auto_return: "approved",
+    external_reference: userId,
+    notification_url: webhookUrl,
+    statement_descriptor: planConfig.name,
+  };
+
+  console.log("[create-subscription] Calling MP Checkout Pro (Preferences) API:", {
+    title: preferencePayload.items[0].title,
+    total: preferencePayload.items[0].unit_price,
+    installments: preferencePayload.payment_methods.installments,
+  });
+
+  const mpResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${mpAccessToken}`,
+    },
+    body: JSON.stringify(preferencePayload),
+  });
+
+  const mpData = await mpResponse.json();
+  console.log("[create-subscription] MP Checkout Pro response:", {
+    status: mpResponse.status,
+    id: mpData.id,
+    init_point: mpData.init_point ? "present" : "MISSING",
+  });
+
+  if (!mpResponse.ok || !mpData.init_point) {
+    console.error("[create-subscription] MP Checkout Pro error:", JSON.stringify(mpData));
+
+    const { error: dbError } = await supabase.from("subscriptions").insert({
+      user_id: userId,
+      plan_id: planId,
+      status: "pending_payment",
+      mp_payer_email: userEmail,
+    });
+    if (dbError) console.error("[create-subscription] DB insert error (fallback):", dbError);
+
+    return NextResponse.json({
+      init_point: MP_GENERIC_LINKS[planId],
+      fallback: true,
+      mp_error: mpData.message || mpData.error || "MP Checkout Pro error",
+    });
+  }
+
+  // Insert pending subscription — mp_preference_id stored in mp_preapproval_id field for reuse
+  const { error: dbError } = await supabase.from("subscriptions").insert({
+    user_id: userId,
+    plan_id: planId,
+    status: "pending_payment",
+    mp_preapproval_id: `pref_${mpData.id}`,
+    mp_payer_email: userEmail,
+  });
+  if (dbError) console.error("[create-subscription] DB insert error:", dbError);
+
+  console.log("[create-subscription] Checkout Pro created! Preference ID:", mpData.id);
+
+  return NextResponse.json({
+    init_point: mpData.init_point,
+    mp_id: mpData.id,
+    type: "checkout",
+  });
+}
+
+// ========================================
+// Main handler
+// ========================================
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -77,7 +296,7 @@ export async function POST(req: NextRequest) {
       .not("trial_start", "is", null)
       .limit(1);
 
-    const hadTrial = (trialHistory && trialHistory.length > 0);
+    const hadTrial = !!(trialHistory && trialHistory.length > 0);
     console.log("[create-subscription] User trial history:", { hadTrial });
 
     // Clean up old broken pending subscriptions (no MP data)
@@ -106,101 +325,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Create subscription via Mercado Pago API
-    // Using subscription WITHOUT associated plan (no preapproval_plan_id)
-    // This returns an init_point (checkout link) where the user enters card details
-    // Reference: https://www.mercadopago.com.br/developers/en/docs/subscriptions/integration-configuration/subscription-no-associated-plan
-    const mpPayload = {
-      reason: planConfig.name,
-      external_reference: user_id,
-      payer_email: user_email,
-      auto_recurring: {
-        frequency: planConfig.frequency,
-        frequency_type: planConfig.frequency_type,
-        transaction_amount: planConfig.amount,
-        currency_id: "BRL",
-        ...(hadTrial ? {} : {
-          free_trial: {
-            frequency: 7,
-            frequency_type: "days",
-          },
-        }),
-      },
-      payment_methods_allowed: {
-        payment_types: [
-          { id: "credit_card" },
-          { id: "debit_card" },
-          { id: "pix" },
-        ],
-        payment_methods: [
-          { id: "pix" },
-        ],
-      },
-      back_url: back_url || "https://flowlux.vercel.app/assinatura/sucesso",
-      status: "pending",
-    };
+    const resolvedBackUrl = back_url || "https://flowlux.vercel.app/assinatura/sucesso";
 
-    console.log("[create-subscription] Calling MP API (no plan):", {
-      reason: mpPayload.reason,
-      amount: mpPayload.auto_recurring.transaction_amount,
-      external_reference: user_id,
-    });
-
-    const mpResponse = await fetch("https://api.mercadopago.com/preapproval", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${mpAccessToken}`,
-      },
-      body: JSON.stringify(mpPayload),
-    });
-
-    const mpData = await mpResponse.json();
-    console.log("[create-subscription] MP API response:", {
-      status: mpResponse.status,
-      id: mpData.id,
-      init_point: mpData.init_point ? "present" : "MISSING",
-      mpStatus: mpData.status,
-    });
-
-    if (!mpResponse.ok || !mpData.init_point) {
-      console.error("[create-subscription] MP API error:", JSON.stringify(mpData));
-
-      // Fallback to generic link
-      const { error: dbError } = await supabase.from("subscriptions").insert({
-        user_id,
-        plan_id,
-        status: "pending_payment",
-        mp_payer_email: user_email,
-      });
-      if (dbError) console.error("[create-subscription] DB insert error (fallback):", dbError);
-
-      return NextResponse.json({
-        init_point: MP_GENERIC_LINKS[plan_id],
-        fallback: true,
-        mp_error: mpData.message || mpData.error || "MP API error",
-      });
+    // Route to the correct flow based on plan type
+    if (planConfig.type === "checkout") {
+      // Black plan: one-time payment with installments via Checkout Pro
+      return createCheckoutFlow(planConfig, user_id, user_email, resolvedBackUrl, supabase, plan_id);
+    } else {
+      // Starter/Pro: monthly subscription via Preapproval API
+      return createSubscriptionFlow(planConfig, user_id, user_email, resolvedBackUrl, hadTrial, supabase, plan_id);
     }
-
-    // Success: MP returned init_point (checkout link)
-    const { error: dbError } = await supabase.from("subscriptions").insert({
-      user_id,
-      plan_id,
-      status: "pending_payment",
-      mp_preapproval_id: mpData.id,
-      mp_payer_email: user_email,
-    });
-
-    if (dbError) {
-      console.error("[create-subscription] DB insert error:", dbError);
-    }
-
-    console.log("[create-subscription] Success! MP ID:", mpData.id, "init_point generated");
-
-    return NextResponse.json({
-      init_point: mpData.init_point,
-      mp_id: mpData.id,
-    });
   } catch (err: any) {
     console.error("[create-subscription] Unexpected error:", err);
     return NextResponse.json({ error: "Erro interno: " + String(err.message || err) }, { status: 500 });

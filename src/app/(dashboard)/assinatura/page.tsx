@@ -304,7 +304,11 @@ export default function AssinaturaPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast(data.error || "Erro ao alterar plano.", "error");
+        if (data.requires_new_checkout) {
+          toast("Para mudar de/para o plano Black, cancele a assinatura atual e assine o novo plano.", "warning");
+        } else {
+          toast(data.error || "Erro ao alterar plano.", "error");
+        }
         setSelectingPlan(null);
         return;
       }
@@ -472,10 +476,16 @@ export default function AssinaturaPage() {
                       </span>
                     )}
                   </div>
-                  {!hadTrial && (
+                  {!hadTrial && plan.id !== "black" && (
                     <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
                       <Check className="h-3 w-3" />
                       7 dias grátis inclusos
+                    </p>
+                  )}
+                  {plan.id === "black" && (
+                    <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                      <Check className="h-3 w-3" />
+                      Parcele em até 12x no cartão
                     </p>
                   )}
                 </div>
@@ -515,7 +525,7 @@ export default function AssinaturaPage() {
                       {selectingPlan === plan.id ? (
                         <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando...</>
                       ) : (
-                        <>{hadTrial ? "Assinar Agora" : "Começar Teste Grátis"}<ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
+                        <>{(hadTrial || plan.id === "black") ? "Assinar Agora" : "Começar Teste Grátis"}<ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
                       )}
                     </Button>
                   )}

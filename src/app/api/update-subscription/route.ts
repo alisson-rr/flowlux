@@ -5,21 +5,21 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 
-// Plan configurations matching create-subscription
+// Plan configurations for monthly subscriptions (updatable via PUT on preapproval)
+// Note: Black plan uses Checkout Pro (one-time payment) and cannot be updated this way
 const PLAN_CONFIG: Record<string, { name: string; amount: number }> = {
   starter: {
     name: "FlowLux Starter",
-    amount: 10, // TODO: voltar para 49 após testes
+    amount: 49,
   },
   pro: {
     name: "FlowLux Pro",
-    amount: 10, // TODO: voltar para 69 após testes
-  },
-  black: {
-    name: "FlowLux Black",
-    amount: 10, // TODO: voltar para 59 após testes
+    amount: 69,
   },
 };
+
+// Plans that use Checkout Pro (not subscription) — cannot be updated via PUT
+const CHECKOUT_PLANS = ["black"];
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,6 +30,14 @@ export async function POST(req: NextRequest) {
 
     if (!user_id || !new_plan_id) {
       return NextResponse.json({ error: "Missing user_id or new_plan_id" }, { status: 400 });
+    }
+
+    // Block changes TO Black plan (requires new checkout, not a subscription update)
+    if (CHECKOUT_PLANS.includes(new_plan_id)) {
+      return NextResponse.json({
+        error: "Para mudar para o plano FlowLux Black, cancele sua assinatura atual e assine o novo plano.",
+        requires_new_checkout: true,
+      }, { status: 400 });
     }
 
     const newPlanConfig = PLAN_CONFIG[new_plan_id];
@@ -55,6 +63,14 @@ export async function POST(req: NextRequest) {
 
     if (subscription.plan_id === new_plan_id) {
       return NextResponse.json({ error: "Você já está neste plano." }, { status: 400 });
+    }
+
+    // Block changes FROM Black plan (it uses Checkout Pro, no preapproval to update)
+    if (CHECKOUT_PLANS.includes(subscription.plan_id)) {
+      return NextResponse.json({
+        error: "Para mudar do plano FlowLux Black, cancele sua assinatura atual e assine o novo plano.",
+        requires_new_checkout: true,
+      }, { status: 400 });
     }
 
     console.log("[update-subscription] Changing plan:", {

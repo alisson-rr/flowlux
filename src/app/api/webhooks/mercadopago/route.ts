@@ -175,7 +175,6 @@ function detectPlanId(preapproval: any): string {
   // 3. Fallback: detect by amount
   const amount = preapproval.auto_recurring?.transaction_amount || 0;
   if (amount >= 65) return "pro";
-  if (amount >= 55) return "black";
   if (amount >= 45) return "starter";
   return "starter";
 }
@@ -531,13 +530,55 @@ export async function POST(req: NextRequest) {
 
       // If payment approved, ensure subscription is active
       if (mpPaymentStatus === "approved" && subId) {
+        // Check if this is a Black plan (Checkout Pro) — needs 12-month period
+        const { data: subData } = await supabase
+          .from("subscriptions")
+          .select("plan_id, status")
+          .eq("id", subId)
+          .single();
+
+        const updatePayload: Record<string, any> = { status: "active" };
+
+        // For Black plan (Checkout Pro one-time payment), set 12-month access period
+        if (subData?.plan_id === "black") {
+          const periodEnd = new Date();
+          periodEnd.setMonth(periodEnd.getMonth() + 12);
+          updatePayload.current_period_start = new Date().toISOString();
+          updatePayload.current_period_end = periodEnd.toISOString();
+          console.log("[mp-webhook] Black plan detected, setting 12-month period until:", periodEnd.toISOString());
+        }
+
         const { error: subUpdateError } = await supabase
           .from("subscriptions")
-          .update({ status: "active" })
+          .update(updatePayload)
           .eq("id", subId)
           .in("status", ["trial", "pending_payment", "pending", "authorized"]);
         if (!subUpdateError) {
           console.log("[mp-webhook] Subscription activated via payment:", subId);
+        }
+      }
+
+      // If no subscription found but payment is approved, try to detect plan from payment description
+      // This handles Checkout Pro payments where the subscription might not be linked yet
+      if (mpPaymentStatus === "approved" && !subId) {
+        const isBlackPayment = description.includes("FlowLux Black") || amount >= 700;
+        if (isBlackPayment) {
+          const periodEnd = new Date();
+          periodEnd.setMonth(periodEnd.getMonth() + 12);
+
+          const { error: insertError } = await supabase.from("subscriptions").insert({
+            user_id: userId,
+            plan_id: "black",
+            status: "active",
+            mp_payer_email: payerEmail,
+            current_period_start: new Date().toISOString(),
+            current_period_end: periodEnd.toISOString(),
+          });
+          if (insertError) {
+            console.error("[mp-webhook] Error creating Black subscription from payment:", insertError);
+          } else {
+            console.log("[mp-webhook] Black plan subscription created from payment for user:", userId);
+          }
         }
       }
 
