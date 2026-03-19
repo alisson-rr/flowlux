@@ -89,13 +89,22 @@ const FeaturesSection = () => {
               {/* Video placeholder */}
               <div className="flex-1 w-full">
                 <div className="rounded-[24px] p-3 bg-card border border-foreground/5">
-                  <div className="rounded-[12px] bg-surface-elevated aspect-video flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-2">
-                        <f.icon className="w-6 h-6 text-primary" />
-                      </div>
-                      <p className="text-xs text-muted-foreground font-mono">Vídeo em breve</p>
-                    </div>
+                  <div className="rounded-[12px] bg-surface-elevated aspect-video flex items-center justify-center overflow-hidden">
+                    <img 
+                      src={
+                        f.title === "Chat com CRM integrado" ? "/assets/chat.png" :
+                        f.title === "Funis personalizados" ? "/assets/funil.png" :
+                        f.title === "Fluxos de mensagens" ? "/assets/fluxo.png" :
+                        f.title === "Gatilhos automáticos" ? "/assets/disparo.png" :
+                        f.title === "Disparo em massa segmentado" ? "/assets/disparo.png" :
+                        f.title === "Integração com Hotmart" ? "/assets/hotmart.png" :
+                        f.title === "Biblioteca de mídias e mensagens" ? "/assets/midias.png" :
+                        f.title === "Múltiplos números de WhatsApp" ? "/assets/whats.png" :
+                        "/assets/chat.png"
+                      }
+                      alt={f.title}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                 </div>
               </div>
