@@ -112,13 +112,22 @@ export default function LeadsPage() {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
 
+    const selectedFunnel = newLeadFunnel || funnels[0]?.id || null;
+    const funnelStages = stages.filter((s: any) => !selectedFunnel || s.funnel_id === selectedFunnel);
+    const selectedStage = newLeadStage && funnelStages.some((s) => s.id === newLeadStage) ? newLeadStage : funnelStages[0]?.id || null;
+
+    if (!selectedFunnel || !selectedStage) {
+      toast("É necessário ter um funil e etapa configurados para cadastrar um lead.", "warning");
+      return;
+    }
+
     const { data, error } = await supabase.from("leads").insert({
       user_id: userData.user.id,
       name: newLead.name,
       phone: newLead.phone,
       email: newLead.email || null,
-      stage_id: newLeadStage || stages[0]?.id,
-      funnel_id: newLeadFunnel || funnels[0]?.id || null,
+      stage_id: selectedStage,
+      funnel_id: selectedFunnel,
       source: newLead.source || null,
     }).select().single();
 

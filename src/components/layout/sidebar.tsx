@@ -63,7 +63,7 @@ export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
       )}
     >
       {/* Logo */}
-      <div className="flex items-center h-16 px-4 border-b border-border">
+      <div className="flex items-center h-16 px-4 border-b border-border relative">
         <Link href="/dashboard" className="flex items-center gap-2 overflow-hidden">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center shrink-0">
             <span className="text-white font-bold text-sm">FL</span>
@@ -74,6 +74,16 @@ export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
             </span>
           )}
         </Link>
+        {/* Collapse Button - Outside Menu */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className={cn(
+            "absolute -right-3 top-[65px] -translate-y-1/2 w-6 h-6 rounded-full bg-background border border-border shadow-sm flex items-center justify-center text-sidebar-foreground hover:bg-sidebar-hover transition-colors z-10",
+            collapsed && "right-0"
+          )}
+        >
+          {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
+        </button>
       </div>
 
       {/* Navigation */}
@@ -139,12 +149,6 @@ export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
         >
           <LogOut className="h-5 w-5 shrink-0" />
           {!collapsed && <span>Sair</span>}
-        </button>
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center justify-center w-full py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-hover transition-colors"
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>
       </div>
     </aside>

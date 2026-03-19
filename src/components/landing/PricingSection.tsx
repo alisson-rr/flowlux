@@ -8,7 +8,8 @@ const plans = [
   {
     name: "Starter",
     icon: Zap,
-    price: "R$89",
+    price: "R$49",
+    oldPrice: "R$89",
     period: "/mês",
     desc: "Pra quem quer começar a organizar os leads e responder mais rápido.",
     features: [
@@ -22,8 +23,9 @@ const plans = [
       "Fluxos de mensagens",
       "Disparo limitado de 500/mês",
       "Integração Hotmart",
+      "Comunidade exclusiva",
     ],
-    cta: "Quero começar",
+    cta: "Começar Teste Grátis",
     badge: null,
     featured: false,
     gradient: false,
@@ -31,7 +33,8 @@ const plans = [
   {
     name: "Pro",
     icon: Star,
-    price: "R$129",
+    price: "R$69",
+    oldPrice: "R$129",
     period: "/mês",
     desc: "Pra quem quer automatizar o atendimento e ganhar escala.",
     features: [
@@ -45,8 +48,9 @@ const plans = [
       "Fluxos de mensagens ilimitados",
       "Disparo em massa até 5.000/mês",
       "Integração Hotmart",
+      "Comunidade exclusiva",
     ],
-    cta: "Quero o Pro",
+    cta: "Começar Teste Grátis",
     badge: "Mais escolhido",
     featured: true,
     gradient: false,
@@ -54,8 +58,9 @@ const plans = [
   {
     name: "FlowLux Black",
     icon: Crown,
-    price: "12x R$99",
-    period: "",
+    price: "R$59",
+    oldPrice: "R$99",
+    period: "12x",
     desc: "Pra quem quer crescer com mais estrutura, prioridade e vantagens exclusivas.",
     features: [
       "5 números de WhatsApp",
@@ -72,7 +77,7 @@ const plans = [
       "Comunidade",
       "Acesso antecipado a IA personalizada",
     ],
-    cta: "Quero o Black",
+    cta: "Começar Teste Grátis",
     badge: "Recomendado",
     featured: false,
     gradient: true,
@@ -119,8 +124,28 @@ const PricingSection = () => {
                 <p className="text-sm text-muted-foreground mb-4">{plan.desc}</p>
 
                 <div className="mb-6">
-                  <span className="text-3xl font-bold text-foreground font-mono tabular-nums">{plan.price}</span>
-                  <span className="text-muted-foreground text-sm">{plan.period}</span>
+                  <div className="flex items-baseline gap-2">
+                    {plan.period === "12x" ? (
+                      <>
+                        <span className="text-sm text-muted-foreground">12x</span>
+                        <span className="text-3xl font-bold text-foreground font-mono tabular-nums">{plan.price.replace('R$', '')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-3xl font-bold text-foreground font-mono tabular-nums">{plan.price}</span>
+                        <span className="text-muted-foreground text-sm">{plan.period}</span>
+                      </>
+                    )}
+                    {plan.oldPrice && (
+                      <span className="text-lg text-muted-foreground line-through">
+                        {plan.oldPrice}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                    <Check className="h-3 w-3" />
+                    7 dias grátis inclusos
+                  </p>
                 </div>
 
                 <ul className="space-y-2 mb-8 flex-1">

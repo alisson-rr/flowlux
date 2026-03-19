@@ -63,15 +63,43 @@ export default function CadastroPage() {
     }
 
     if (data.user) {
+      // Create profile
       await supabase.from("profiles").upsert({
         id: data.user.id,
         name: form.name,
         email: form.email,
         phone: form.phone,
       });
+
+      // Create default funnel with stages for the new user
+      const { data: funnel } = await supabase.from("funnels").insert({
+        user_id: data.user.id,
+        name: "Funil Principal",
+        description: "Funil padrão criado automaticamente",
+      }).select().single();
+
+      if (funnel) {
+        const defaultStages = [
+          { name: "Novo Lead", color: "#8B5CF6", order: 0 },
+          { name: "Contato Feito", color: "#3B82F6", order: 1 },
+          { name: "Proposta Enviada", color: "#F97316", order: 2 },
+          { name: "Negociação", color: "#EAB308", order: 3 },
+          { name: "Fechado", color: "#10B981", order: 4 },
+        ];
+        await supabase.from("funnel_stages").insert(
+          defaultStages.map((s) => ({
+            user_id: data.user!.id,
+            funnel_id: funnel.id,
+            name: s.name,
+            color: s.color,
+            order: s.order,
+          }))
+        );
+      }
     }
 
-    router.push("/dashboard");
+    // Redirect to plan selection - user must choose a plan before using the app
+    router.push("/assinatura");
   };
 
   return (

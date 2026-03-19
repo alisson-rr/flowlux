@@ -96,7 +96,7 @@ const PLANS = [
     bgColor: "bg-purple-500/10",
     popular: false,
     recommended: false,
-    link: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=2a69ac12835b4077bbf7279faa7d61c61111111",
+    link: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=d9bbcdeb8cdd488994afa7c88d94f75e",
     features: [
       { text: "Até 3 números WhatsApp", icon: MessageSquare },
       { text: "Leads ilimitados", icon: Users },
@@ -125,7 +125,7 @@ const PLANS = [
     bgColor: "bg-orange-500/10",
     popular: false,
     recommended: true,
-    link: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=2a69ac12835b4077bbf7279faa7d61c61111111",
+    link: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=e54d3d648c9045d3ac50101e493e8e84",
     features: [
       { text: "Até 5 números WhatsApp", icon: MessageSquare },
       { text: "Leads ilimitados", icon: Users },

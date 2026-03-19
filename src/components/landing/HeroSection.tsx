@@ -1,6 +1,3 @@
-"use client";
-
-import { motion } from "framer-motion";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, MessageSquare, Users, GitBranch, Zap } from "lucide-react";
@@ -11,11 +8,8 @@ const HeroSection = () => {
       {/* Subtle glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.2, 0, 0, 1] }}
-        className="relative z-10 max-w-4xl mx-auto text-center"
+      <div
+        className="relative z-10 max-w-4xl mx-auto text-center animate-fade-in"
       >
         <span className="tag-mono mb-6 inline-block">Plataforma de vendas no WhatsApp</span>
 
@@ -44,14 +38,12 @@ const HeroSection = () => {
         <p className="text-sm text-muted-foreground max-w-lg mx-auto">
           Ideal para infoprodutores que querem responder mais rápido, organizar seus leads e automatizar o processo comercial no WhatsApp.
         </p>
-      </motion.div>
+      </div>
 
       {/* Dashboard Preview Mockup */}
-      <motion.div
-        initial={{ opacity: 0, y: 40 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.3, ease: [0.2, 0, 0, 1] }}
-        className="relative z-10 mt-16 w-full max-w-5xl mx-auto"
+      <div
+        className="relative z-10 mt-16 w-full max-w-5xl mx-auto animate-fade-in"
+        style={{ animationDelay: "0.3s", animationFillMode: "backwards" }}
       >
         <div className="card-lux p-1 md:p-2">
           <div className="bg-surface-elevated rounded-[20px] p-4 md:p-6">
@@ -89,7 +81,7 @@ const HeroSection = () => {
         </div>
         {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent pointer-events-none" />
-      </motion.div>
+      </div>
     </section>
   );
 };

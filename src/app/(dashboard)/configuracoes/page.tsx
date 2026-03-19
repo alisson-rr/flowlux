@@ -160,10 +160,30 @@ export default function ConfiguracoesPage() {
 
       toast("Instância criada com webhook configurado!", "success");
 
-      // Show QR code if available
+      // Show QR code if available and start polling for connection
       if (result?.qrcode?.base64) {
         setQrCode({ instanceName: newInstanceName, base64: result.qrcode.base64 });
         setShowQrDialog(true);
+
+        // Poll for connection status every 5s while QR dialog is open
+        const instName = newInstanceName;
+        const pollInterval = setInterval(async () => {
+          try {
+            const status = await evolutionApi.getInstanceStatus(instName);
+            if (status?.instance?.state === "open") {
+              clearInterval(pollInterval);
+              const createdInst = instances.find((i) => i.instance_name === instName) || inst;
+              if (createdInst) {
+                await supabase.from("whatsapp_instances").update({ status: "connected" }).eq("id", createdInst.id);
+                setInstances((prev) => prev.map((i) => i.instance_name === instName ? { ...i, status: "connected" } : i));
+              }
+              setShowQrDialog(false);
+              toast("WhatsApp conectado com sucesso!", "success");
+            }
+          } catch { /* ignore */ }
+        }, 5000);
+        // Stop polling after 3 minutes
+        setTimeout(() => clearInterval(pollInterval), 180000);
       }
 
       setNewInstanceName("");
@@ -284,7 +304,7 @@ export default function ConfiguracoesPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold">Configurações</h1>
+        <h1 className="text-2xl font-bold">Integrações</h1>
         <p className="text-muted-foreground">Configure integrações e conexões</p>
       </div>
 

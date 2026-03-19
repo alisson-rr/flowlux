@@ -131,7 +131,7 @@ export default function AutomacaoPage() {
       const [flowsRes, massRes, schedRes, instRes, leadsRes, mediaRes, tagsRes, stagesRes] = await Promise.all([
         supabase.from("flows").select("*, flow_steps(*)").eq("user_id", userId).order("created_at", { ascending: false }),
         supabase.from("mass_messages").select("*").eq("user_id", userId).is("deleted_at", null).neq("status", "cancelled").order("created_at", { ascending: false }),
-        supabase.from("scheduled_messages").select("*, leads(name)").eq("user_id", userId).is("deleted_at", null).neq("status", "cancelled").order("scheduled_at", { ascending: false }),
+        supabase.from("scheduled_messages").select("*, leads(name)").eq("user_id", userId).is("deleted_at", null).neq("status", "cancelled").order("created_at", { ascending: false }),
         supabase.from("whatsapp_instances").select("id, instance_name").eq("user_id", userId).is("deleted_at", null),
         supabase.from("leads").select("id, name, phone, stage_id, lead_tags(tag_id)").eq("user_id", userId).eq("archived", false).is("deleted_at", null),
         supabase.from("media").select("id, file_name, file_type, file_url").eq("user_id", userId).order("created_at", { ascending: false }),

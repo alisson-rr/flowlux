@@ -13,8 +13,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  Plus, Search, GripVertical, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Globe, StickyNote, Mail, UserPlus,
+  Plus, Search, GripVertical, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Globe, StickyNote, Mail, UserPlus, Tag, X, Phone, Pencil, Archive, ArchiveRestore,
 } from "lucide-react";
 import { cn, formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -43,15 +44,26 @@ export default function FunilPage() {
   const [newFunnelName, setNewFunnelName] = useState("");
   const [newLead, setNewLead] = useState({ name: "", phone: "", email: "", source: "" });
   const [newLeadStage, setNewLeadStage] = useState("");
+
+  // Lead detail modal
+  const [showLeadDetail, setShowLeadDetail] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [newNote, setNewNote] = useState("");
+  const [newTag, setNewTag] = useState("");
+  const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
+
+  const TAG_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EF4444", "#EC4899", "#06B6D4", "#EAB308"];
   const { toast } = useToast();
 
   const loadData = useCallback(async () => {
     try {
-      const [funnelsRes, stagesRes, leadsRes] = await Promise.all([
+      const [funnelsRes, stagesRes, leadsRes, tagsRes] = await Promise.all([
         supabase.from("funnels").select("id, name, description").order("created_at"),
         supabase.from("funnel_stages").select("*").order("order"),
         supabase.from("leads").select("*, lead_tags(tags(*)), notes(*)").is("deleted_at", null).eq("archived", false),
+        supabase.from("tags").select("id, name, color"),
       ]);
+      if (tagsRes.data) setAllTags(tagsRes.data);
 
       if (funnelsRes.data) {
         setFunnels(funnelsRes.data);
@@ -156,6 +168,48 @@ export default function FunilPage() {
     [arr[i], arr[t]] = [arr[t], arr[i]]; setEditStages(arr);
   };
 
+  // === LEAD DETAIL: Tags & Notes ===
+  const handleAddNote = async () => {
+    if (!selectedLead || !newNote.trim()) return;
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+    const { data, error } = await supabase.from("notes").insert({
+      lead_id: selectedLead.id, user_id: userData.user.id, content: newNote,
+    }).select().single();
+    if (!error && data) {
+      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, notes: [...l.notes, data] } : l));
+      setSelectedLead((prev) => prev ? { ...prev, notes: [...prev.notes, data] } : prev);
+      setNewNote("");
+    }
+  };
+
+  const handleAddTag = async () => {
+    if (!selectedLead || !newTag.trim()) return;
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+    const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
+    let { data: existingTag } = await supabase.from("tags").select().eq("name", newTag).eq("user_id", userData.user.id).single();
+    if (!existingTag) {
+      const { data: created } = await supabase.from("tags").insert({ name: newTag, color, user_id: userData.user.id }).select().single();
+      existingTag = created;
+    }
+    if (existingTag) {
+      await supabase.from("lead_tags").insert({ lead_id: selectedLead.id, tag_id: existingTag.id });
+      const tag = { id: existingTag.id, name: existingTag.name, color: existingTag.color };
+      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, tags: [...l.tags, tag] } : l));
+      setSelectedLead((prev) => prev ? { ...prev, tags: [...prev.tags, tag] } : prev);
+      if (!allTags.some((t) => t.id === existingTag!.id)) setAllTags((prev) => [...prev, tag]);
+      setNewTag("");
+    }
+  };
+
+  const handleRemoveTag = async (tagId: string) => {
+    if (!selectedLead) return;
+    await supabase.from("lead_tags").delete().eq("lead_id", selectedLead.id).eq("tag_id", tagId);
+    setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, tags: l.tags.filter((t) => t.id !== tagId) } : l));
+    setSelectedLead((prev) => prev ? { ...prev, tags: prev.tags.filter((t) => t.id !== tagId) } : prev);
+  };
+
   if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   return (
@@ -205,6 +259,7 @@ export default function FunilPage() {
               <div className="space-y-2 min-h-[200px] p-2 rounded-lg bg-muted/30 border border-dashed border-border">
                 {getLeadsByStage(stage.id).map((lead) => (
                   <Card key={lead.id} draggable onDragStart={() => setDraggedLead(lead.id)}
+                    onClick={() => { setSelectedLead(lead); setShowLeadDetail(true); }}
                     className={cn("p-3 cursor-pointer hover:border-primary/40 transition-all", draggedLead === lead.id && "opacity-50")}>
                     <div className="flex items-start gap-2">
                       <GripVertical className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0 cursor-grab" />
@@ -335,6 +390,120 @@ export default function FunilPage() {
               handleAddLead();
             }}>Adicionar</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lead Detail Dialog */}
+      <Dialog open={showLeadDetail} onOpenChange={setShowLeadDetail}>
+        <DialogContent className="max-w-lg overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              {selectedLead && (
+                <>
+                  <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-sm font-bold text-white shrink-0">
+                    {getInitials(selectedLead.name)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate">{selectedLead.name}</p>
+                    <p className="text-sm font-normal text-muted-foreground">{formatPhone(selectedLead.phone)}</p>
+                  </div>
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>Detalhes do lead</DialogDescription>
+          </DialogHeader>
+
+          {selectedLead && (
+            <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-1">
+              {/* Contact & Source Info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="flex items-center gap-2 text-muted-foreground p-2 rounded-md bg-muted/50">
+                  <Phone className="h-4 w-4 shrink-0" /> <span className="truncate">{formatPhone(selectedLead.phone)}</span>
+                </div>
+                {selectedLead.email && (
+                  <div className="flex items-center gap-2 text-muted-foreground p-2 rounded-md bg-muted/50">
+                    <Mail className="h-4 w-4 shrink-0" /> <span className="truncate">{selectedLead.email}</span>
+                  </div>
+                )}
+                {selectedLead.source && (
+                  <div className="flex items-center gap-2 text-muted-foreground p-2 rounded-md bg-muted/50">
+                    <Globe className="h-4 w-4 shrink-0" /> <span className="truncate">{selectedLead.source}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Stage */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Etapa do Funil</Label>
+                <Select value={selectedLead.stage_id} onValueChange={async (val) => {
+                  await supabase.from("leads").update({ stage_id: val }).eq("id", selectedLead.id);
+                  setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, stage_id: val } : l));
+                  setSelectedLead({ ...selectedLead, stage_id: val });
+                }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{funnelStages.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+
+              {/* Tags */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1"><Tag className="h-3 w-3" /> Tags</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedLead.tags.map((tag) => (
+                    <span key={tag.id} className="text-xs px-2 py-1 rounded-full text-white flex items-center gap-1" style={{ backgroundColor: tag.color }}>
+                      {tag.name}
+                      <button onClick={() => handleRemoveTag(tag.id)}><X className="h-3 w-3" /></button>
+                    </span>
+                  ))}
+                </div>
+                {allTags.filter((t) => !selectedLead.tags.some((lt) => lt.id === t.id)).length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground">Clique para adicionar:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {allTags.filter((t) => !selectedLead.tags.some((lt) => lt.id === t.id)).map((tag) => (
+                        <button
+                          key={tag.id}
+                          onClick={async () => {
+                            if (!selectedLead) return;
+                            await supabase.from("lead_tags").insert({ lead_id: selectedLead.id, tag_id: tag.id });
+                            const t = { id: tag.id, name: tag.name, color: tag.color };
+                            setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, tags: [...l.tags, t] } : l));
+                            setSelectedLead((prev) => prev ? { ...prev, tags: [...prev.tags, t] } : prev);
+                          }}
+                          className="text-xs px-2 py-1 rounded-full border border-dashed border-border text-muted-foreground hover:text-white hover:border-transparent transition-colors"
+                          onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = tag.color; }}
+                          onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = "transparent"; }}
+                        >
+                          + {tag.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Input placeholder="Criar nova tag..." value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddTag()} className="h-8 text-xs" />
+                  <Button size="sm" variant="outline" onClick={handleAddTag} className="shrink-0 h-8 text-xs">
+                    <Plus className="h-3 w-3 mr-1" /> Criar
+                  </Button>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1"><StickyNote className="h-3 w-3" /> Observações</Label>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {selectedLead.notes.map((note) => (
+                    <div key={note.id} className="p-2.5 rounded-md bg-muted text-sm">
+                      <p>{note.content}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{new Date(note.created_at).toLocaleDateString("pt-BR")}</p>
+                    </div>
+                  ))}
+                </div>
+                <Textarea placeholder="Adicionar observação..." value={newNote} onChange={(e) => setNewNote(e.target.value)} className="min-h-[60px] text-sm" />
+                <Button size="sm" onClick={handleAddNote} className="w-full">Adicionar Nota</Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

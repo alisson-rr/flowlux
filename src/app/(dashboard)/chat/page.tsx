@@ -125,18 +125,31 @@ export default function ChatPage() {
 
   const loadLeadInfo = async (phone: string) => {
     const cleanPhone = phone.replace(/\D/g, "");
-    const { data } = await supabase
-      .from("leads")
-      .select("*, lead_tags(tags(*)), notes(*)")
-      .or(`phone.ilike.%${cleanPhone}%,phone.ilike.%${phone}%`)
-      .limit(1)
-      .single();
+    // Try multiple phone format variations to find the lead
+    const phoneVariants = [cleanPhone];
+    if (cleanPhone.startsWith("55") && cleanPhone.length > 11) {
+      phoneVariants.push(cleanPhone.slice(2)); // without country code
+    }
+    if (!cleanPhone.startsWith("55")) {
+      phoneVariants.push("55" + cleanPhone); // with country code
+    }
 
-    if (data) {
+    let foundLead = null;
+    for (const variant of phoneVariants) {
+      const { data } = await supabase
+        .from("leads")
+        .select("*, lead_tags(tags(*)), notes(*)")
+        .ilike("phone", `%${variant}%`)
+        .limit(1)
+        .single();
+      if (data) { foundLead = data; break; }
+    }
+
+    if (foundLead) {
       setLeadInfo({
-        ...data,
-        tags: data.lead_tags?.map((lt: any) => lt.tags).filter(Boolean) || [],
-        notes: data.notes || [],
+        ...foundLead,
+        tags: foundLead.lead_tags?.map((lt: any) => lt.tags).filter(Boolean) || [],
+        notes: foundLead.notes || [],
       });
     } else {
       setLeadInfo(null);
@@ -636,8 +649,17 @@ export default function ChatPage() {
                           if (!userData.user) return;
                           const phone = selectedConv.contact_phone;
                           const name = selectedConv.contact_name || phone;
+                          // Get default funnel and stage
+                          const { data: defaultFunnel } = await supabase.from("funnels").select("id").eq("user_id", userData.user.id).order("created_at").limit(1).single();
+                          let defaultStageId = null;
+                          if (defaultFunnel) {
+                            const { data: defaultStage } = await supabase.from("funnel_stages").select("id").eq("funnel_id", defaultFunnel.id).order("order").limit(1).single();
+                            defaultStageId = defaultStage?.id || null;
+                          }
                           const { data, error } = await supabase.from("leads").insert({
                             user_id: userData.user.id, name, phone, source: "WhatsApp",
+                            funnel_id: defaultFunnel?.id || null,
+                            stage_id: defaultStageId,
                           }).select().single();
                           if (!error && data) {
                             toast("Lead criado com sucesso!", "success");

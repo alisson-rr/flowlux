@@ -1,23 +1,31 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { ToastProvider } from "@/components/ui/toast";
 import { supabase } from "@/lib/supabase";
-import { AlertTriangle, X, Crown, Clock } from "lucide-react";
+import { AlertTriangle, X, Crown, Clock, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [disconnectedInstances, setDisconnectedInstances] = useState<string[]>([]);
   const [failedCount, setFailedCount] = useState(0);
   const [dismissBanner, setDismissBanner] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [dismissTrialBanner, setDismissTrialBanner] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [hasActivePlan, setHasActivePlan] = useState(true);
 
   useEffect(() => {
     const check = async () => {
       const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!userData.user) {
+        router.push("/login");
+        return;
+      }
       const [instRes, failedRes, subRes] = await Promise.all([
         supabase.from("whatsapp_instances").select("instance_name, status").eq("user_id", userData.user.id).eq("status", "disconnected").is("deleted_at", null),
         supabase.from("mass_messages").select("id", { count: "exact", head: true }).eq("user_id", userData.user.id).eq("status", "failed"),
@@ -25,14 +33,42 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       ]);
       if (instRes.data) setDisconnectedInstances(instRes.data.map((i: any) => i.instance_name));
       if (failedRes.count) setFailedCount(failedRes.count);
-      if (subRes.data?.status === "trial" && subRes.data?.trial_end) {
-        const diff = new Date(subRes.data.trial_end).getTime() - Date.now();
-        const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-        setTrialDaysLeft(days);
+
+      // Check if user has active subscription
+      const isAllowedPage = pathname === "/assinatura" || pathname?.startsWith("/assinatura/");
+      if (!subRes.data) {
+        setHasActivePlan(false);
+        if (!isAllowedPage) {
+          router.push("/assinatura");
+          return;
+        }
+      } else if (subRes.data.status === "trial" && subRes.data.trial_end) {
+        const trialEnd = new Date(subRes.data.trial_end);
+        if (trialEnd < new Date()) {
+          setHasActivePlan(false);
+          if (!isAllowedPage) {
+            router.push("/assinatura");
+            return;
+          }
+        } else {
+          const diff = trialEnd.getTime() - Date.now();
+          const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+          setTrialDaysLeft(days);
+        }
       }
+
+      setAuthChecked(true);
     };
     check();
-  }, []);
+  }, [pathname, router]);
+
+  if (!authChecked) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <ToastProvider>
