@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     // Check if user already has an active subscription
     const { data: activeSub } = await supabase
       .from("subscriptions")
-      .select("id, plan_id, status")
+      .select("id, plan_id, status, mp_preapproval_id")
       .eq("user_id", user_id)
       .in("status", ["active", "authorized", "trial"])
       .limit(1)
@@ -68,6 +68,17 @@ export async function POST(req: NextRequest) {
         existing_status: activeSub.status,
       }, { status: 409 });
     }
+
+    // Check if user has ever had a trial (any subscription with trial_start set)
+    const { data: trialHistory } = await supabase
+      .from("subscriptions")
+      .select("id")
+      .eq("user_id", user_id)
+      .not("trial_start", "is", null)
+      .limit(1);
+
+    const hadTrial = (trialHistory && trialHistory.length > 0);
+    console.log("[create-subscription] User trial history:", { hadTrial });
 
     // Clean up old broken pending subscriptions (no MP data)
     await supabase
@@ -108,10 +119,12 @@ export async function POST(req: NextRequest) {
         frequency_type: planConfig.frequency_type,
         transaction_amount: planConfig.amount,
         currency_id: "BRL",
-        free_trial: {
-          frequency: 7,
-          frequency_type: "days",
-        },
+        ...(hadTrial ? {} : {
+          free_trial: {
+            frequency: 7,
+            frequency_type: "days",
+          },
+        }),
       },
       payment_methods_allowed: {
         payment_types: [

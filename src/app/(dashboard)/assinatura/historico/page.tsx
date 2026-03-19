@@ -6,6 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   CreditCard,
   Loader2,
   ArrowLeft,
@@ -18,8 +26,12 @@ import {
   Calendar,
   DollarSign,
   AlertCircle,
+  ArrowRightLeft,
+  Ban,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
 
 interface Payment {
@@ -50,38 +62,102 @@ export default function HistoricoPagamentosPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const { toast } = useToast();
+
+  const loadData = async () => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+
+      // First try to find an active subscription
+      const { data: activeSub } = await supabase
+        .from("subscriptions")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .in("status", ["active", "authorized", "trial", "pending_payment", "pending"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (activeSub) {
+        setSubscription(activeSub);
+      } else {
+        // Fallback: find most recent subscription (including cancelled)
+        const { data: anySub } = await supabase
+          .from("subscriptions")
+          .select("*")
+          .eq("user_id", userData.user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (anySub) setSubscription(anySub);
+      }
+
+      const { data: payData } = await supabase
+        .from("subscription_payments")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("created_at", { ascending: false });
+
+      if (payData) setPayments(payData);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) return;
-
-        const [subRes, payRes] = await Promise.all([
-          supabase
-            .from("subscriptions")
-            .select("*")
-            .eq("user_id", userData.user.id)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .single(),
-          supabase
-            .from("subscription_payments")
-            .select("*")
-            .eq("user_id", userData.user.id)
-            .order("created_at", { ascending: false }),
-        ]);
-
-        if (subRes.data) setSubscription(subRes.data);
-        if (payRes.data) setPayments(payRes.data);
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
-      }
-    };
     loadData();
   }, []);
+
+  const isSubscriptionActive = (sub: Subscription | null): boolean => {
+    if (!sub) return false;
+    if (["active", "authorized", "trial"].includes(sub.status)) return true;
+    // Cancelled but still within the period
+    if (sub.status === "cancelled" && sub.current_period_end) {
+      return new Date(sub.current_period_end) > new Date();
+    }
+    return false;
+  };
+
+  const handleCancelSubscription = async () => {
+    try {
+      setCancelling(true);
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast("Erro de autenticação.", "error");
+        return;
+      }
+
+      const res = await fetch("/api/cancel-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userData.user.id }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast(data.error || "Erro ao cancelar assinatura.", "error");
+        return;
+      }
+
+      toast(data.message || "Assinatura cancelada com sucesso.", "success");
+      setCancelDialogOpen(false);
+      // Reload subscription data
+      setLoading(true);
+      await loadData();
+    } catch (err) {
+      console.error("Error cancelling subscription:", err);
+      toast("Erro ao cancelar assinatura.", "error");
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString("pt-BR", {
@@ -194,7 +270,7 @@ export default function HistoricoPagamentosPage() {
               </div>
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                  {subscription.status === "trial" ? "Teste até" : "Próxima cobrança"}
+                  {subscription.status === "trial" ? "Teste até" : subscription.status === "cancelled" ? "Acesso até" : "Próxima cobrança"}
                 </p>
                 <p className="font-semibold">
                   {subscription.trial_end && getTrialDaysLeft() > 0
@@ -210,6 +286,32 @@ export default function HistoricoPagamentosPage() {
               <div className="mt-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 Assinatura cancelada em {formatDate(subscription.cancelled_at)}
+                {subscription.current_period_end && new Date(subscription.current_period_end) > new Date() && (
+                  <span className="ml-1">
+                    — Acesso válido até {formatDate(subscription.current_period_end)}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Action buttons: Cancel and Change */}
+            {isSubscriptionActive(subscription) && subscription.status !== "cancelled" && (
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Link href="/assinatura?alterar=true">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <ArrowRightLeft className="h-4 w-4" />
+                    Alterar Plano
+                  </Button>
+                </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setCancelDialogOpen(true)}
+                >
+                  <Ban className="h-4 w-4" />
+                  Cancelar Assinatura
+                </Button>
               </div>
             )}
           </CardContent>
@@ -308,10 +410,60 @@ export default function HistoricoPagamentosPage() {
 
       {/* Back link */}
       <div className="text-center pb-4">
-        <Link href="/assinatura" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-          ← Voltar para planos
+        <Link href="/assinatura?alterar=true" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+          ← Ver planos disponíveis
         </Link>
       </div>
+
+      {/* Cancel Confirmation Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-5 w-5" />
+              Cancelar Assinatura
+            </DialogTitle>
+            <DialogDescription className="text-left space-y-3 pt-2">
+              <p>Tem certeza que deseja cancelar sua assinatura?</p>
+              {subscription?.current_period_end && (
+                <div className="p-3 rounded-lg bg-muted/50 border text-sm">
+                  <p className="flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
+                    <span>
+                      Você continuará tendo acesso até{" "}
+                      <strong>{formatDate(subscription.current_period_end)}</strong>.
+                      Após essa data, os recursos do plano serão desativados.
+                    </span>
+                  </p>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Esta ação não pode ser desfeita. Você poderá assinar novamente a qualquer momento.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setCancelDialogOpen(false)}
+              disabled={cancelling}
+            >
+              Manter Assinatura
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelSubscription}
+              disabled={cancelling}
+            >
+              {cancelling ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Cancelando...</>
+              ) : (
+                "Confirmar Cancelamento"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

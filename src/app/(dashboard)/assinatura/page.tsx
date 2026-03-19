@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -147,7 +148,11 @@ const PLANS = [
 export default function AssinaturaPage() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hadTrial, setHadTrial] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const isAlterarMode = searchParams.get("alterar") === "true";
 
   useEffect(() => {
     const loadSubscription = async () => {
@@ -155,6 +160,19 @@ export default function AssinaturaPage() {
         const { data: userData } = await supabase.auth.getUser();
         if (!userData.user) return;
 
+        // Check if user ever had a trial
+        const { data: trialHistory } = await supabase
+          .from("subscriptions")
+          .select("id")
+          .eq("user_id", userData.user.id)
+          .not("trial_start", "is", null)
+          .limit(1);
+
+        if (trialHistory && trialHistory.length > 0) {
+          setHadTrial(true);
+        }
+
+        // Check for active subscription
         const { data } = await supabase
           .from("subscriptions")
           .select("*")
@@ -164,7 +182,34 @@ export default function AssinaturaPage() {
           .limit(1)
           .single();
 
-        if (data) setSubscription(data);
+        if (data) {
+          setSubscription(data);
+          // If user has active subscription and not in alterar mode, redirect to history
+          if (!isAlterarMode) {
+            router.replace("/assinatura/historico");
+            return;
+          }
+        } else {
+          // Check for cancelled subscription with access still valid
+          const { data: cancelledSub } = await supabase
+            .from("subscriptions")
+            .select("*")
+            .eq("user_id", userData.user.id)
+            .eq("status", "cancelled")
+            .gt("current_period_end", new Date().toISOString())
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single();
+
+          if (cancelledSub) {
+            setSubscription(cancelledSub);
+            // Cancelled but still has access → redirect to history
+            if (!isAlterarMode) {
+              router.replace("/assinatura/historico");
+              return;
+            }
+          }
+        }
       } catch {
         // No subscription found
       } finally {
@@ -172,7 +217,7 @@ export default function AssinaturaPage() {
       }
     };
     loadSubscription();
-  }, []);
+  }, [isAlterarMode, router]);
 
   const [selectingPlan, setSelectingPlan] = useState<string | null>(null);
 
@@ -237,6 +282,43 @@ export default function AssinaturaPage() {
     }
   };
 
+  const handleChangePlan = async (plan: typeof PLANS[0]) => {
+    try {
+      setSelectingPlan(plan.id);
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast("Faça login para alterar o plano.", "error");
+        setSelectingPlan(null);
+        return;
+      }
+
+      const res = await fetch("/api/update-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userData.user.id,
+          new_plan_id: plan.id,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast(data.error || "Erro ao alterar plano.", "error");
+        setSelectingPlan(null);
+        return;
+      }
+
+      toast(data.message || "Plano alterado com sucesso!", "success");
+      // Redirect to history page after successful change
+      router.push("/assinatura/historico");
+    } catch (err) {
+      console.error("Error changing plan:", err);
+      toast("Erro ao alterar plano.", "error");
+      setSelectingPlan(null);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const map: Record<string, { label: string; variant: "success" | "outline" | "destructive" }> = {
       active: { label: "Ativo", variant: "success" },
@@ -269,9 +351,15 @@ export default function AssinaturaPage() {
     <div className="space-y-8 animate-fade-in max-w-5xl mx-auto">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">Escolha seu Plano</h1>
+        <h1 className="text-3xl font-bold">
+          {isAlterarMode ? "Alterar Plano" : "Escolha seu Plano"}
+        </h1>
         <p className="text-muted-foreground text-lg">
-          Comece com <span className="text-primary font-semibold">7 dias grátis</span> e escale seu negócio
+          {hadTrial ? (
+            "Escolha o plano ideal para o seu negócio"
+          ) : (
+            <>Comece com <span className="text-primary font-semibold">7 dias grátis</span> e escale seu negócio</>
+          )}
         </p>
       </div>
 
@@ -310,20 +398,22 @@ export default function AssinaturaPage() {
         </Card>
       )}
 
-      {/* Trial Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary/20 via-secondary/20 to-primary/20 p-6 text-center">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent" />
-        <div className="relative">
-          <div className="inline-flex items-center gap-2 bg-primary/20 rounded-full px-4 py-1.5 mb-3">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium text-primary">Oferta Especial</span>
+      {/* Trial Banner - only show if user never had a trial */}
+      {!hadTrial && (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary/20 via-secondary/20 to-primary/20 p-6 text-center">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent" />
+          <div className="relative">
+            <div className="inline-flex items-center gap-2 bg-primary/20 rounded-full px-4 py-1.5 mb-3">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-primary">Oferta Especial</span>
+            </div>
+            <h2 className="text-2xl font-bold mb-1">7 Dias Grátis para Testar</h2>
+            <p className="text-muted-foreground">
+              Teste todas as funcionalidades sem compromisso. Cancele quando quiser.
+            </p>
           </div>
-          <h2 className="text-2xl font-bold mb-1">7 Dias Grátis para Testar</h2>
-          <p className="text-muted-foreground">
-            Teste todas as funcionalidades sem compromisso. Cancele quando quiser.
-          </p>
         </div>
-      </div>
+      )}
 
       {/* Plans Grid */}
       <div className="grid md:grid-cols-3 gap-6">
@@ -382,10 +472,12 @@ export default function AssinaturaPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-                    <Check className="h-3 w-3" />
-                    7 dias grátis inclusos
-                  </p>
+                  {!hadTrial && (
+                    <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                      <Check className="h-3 w-3" />
+                      7 dias grátis inclusos
+                    </p>
+                  )}
                 </div>
               </CardHeader>
 
@@ -417,13 +509,13 @@ export default function AssinaturaPage() {
                           ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
                           : ""
                       )}
-                      onClick={() => handleSelectPlan(plan)}
+                      onClick={() => (isAlterarMode && subscription && subscription.status !== "cancelled") ? handleChangePlan(plan) : handleSelectPlan(plan)}
                       disabled={!!selectingPlan}
                     >
                       {selectingPlan === plan.id ? (
                         <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando...</>
                       ) : (
-                        <>Começar Teste Grátis<ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
+                        <>{hadTrial ? "Assinar Agora" : "Começar Teste Grátis"}<ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
                       )}
                     </Button>
                   )}
@@ -446,8 +538,8 @@ export default function AssinaturaPage() {
         <Card className="bg-muted/30 border-border/50">
           <CardContent className="p-4 text-center">
             <Clock className="h-8 w-8 mx-auto mb-2 text-blue-400" />
-            <p className="font-medium text-sm">7 Dias Grátis</p>
-            <p className="text-xs text-muted-foreground mt-1">Cancele a qualquer momento</p>
+            <p className="font-medium text-sm">{hadTrial ? "Ativação Imediata" : "7 Dias Grátis"}</p>
+            <p className="text-xs text-muted-foreground mt-1">{hadTrial ? "Acesso imediato ao assinar" : "Cancele a qualquer momento"}</p>
           </CardContent>
         </Card>
         <Card className="bg-muted/30 border-border/50">

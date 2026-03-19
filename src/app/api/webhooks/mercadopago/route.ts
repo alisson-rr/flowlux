@@ -273,6 +273,15 @@ export async function POST(req: NextRequest) {
         .eq("mp_preapproval_id", dataId)
         .single();
 
+      // Check if user has ever had a trial (to avoid giving trial again)
+      const { data: trialHistory } = await supabase
+        .from("subscriptions")
+        .select("id")
+        .eq("user_id", userId)
+        .not("trial_start", "is", null)
+        .limit(1);
+      const userHadTrial = (trialHistory && trialHistory.length > 0);
+
       if (existing) {
         // --- Update existing subscription based on MP status ---
         const updates: Record<string, any> = {
@@ -284,9 +293,14 @@ export async function POST(req: NextRequest) {
 
         if (mpStatus === "authorized") {
           if (existing.status === "pending_payment" || existing.status === "pending") {
-            updates.status = "trial";
-            updates.trial_start = new Date().toISOString().split("T")[0];
-            updates.trial_end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+            if (userHadTrial) {
+              // User already had trial before, go straight to active
+              updates.status = "active";
+            } else {
+              updates.status = "trial";
+              updates.trial_start = new Date().toISOString().split("T")[0];
+              updates.trial_end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+            }
           } else if (existing.status === "trial" || existing.status === "active" || existing.status === "authorized") {
             // Already active/trial, keep current status
           } else {
@@ -333,9 +347,13 @@ export async function POST(req: NextRequest) {
           };
 
           if (mpStatus === "authorized") {
-            updates.status = "trial";
-            updates.trial_start = new Date().toISOString().split("T")[0];
-            updates.trial_end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+            if (userHadTrial) {
+              updates.status = "active";
+            } else {
+              updates.status = "trial";
+              updates.trial_start = new Date().toISOString().split("T")[0];
+              updates.trial_end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+            }
           } else if (mpStatus === "cancelled") {
             updates.status = "cancelled";
             updates.cancelled_at = new Date().toISOString();
@@ -367,9 +385,13 @@ export async function POST(req: NextRequest) {
           };
 
           if (mpStatus === "authorized") {
-            newSub.status = "trial";
-            newSub.trial_start = new Date().toISOString().split("T")[0];
-            newSub.trial_end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+            if (userHadTrial) {
+              newSub.status = "active";
+            } else {
+              newSub.status = "trial";
+              newSub.trial_start = new Date().toISOString().split("T")[0];
+              newSub.trial_end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+            }
           }
 
           const { error: insertError } = await supabase.from("subscriptions").insert(newSub);
