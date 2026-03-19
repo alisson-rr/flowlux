@@ -209,6 +209,14 @@ export default function AssinaturaPage() {
 
       const data = await res.json();
 
+      if (res.status === 409) {
+        toast("Você já possui uma assinatura ativa.", "error");
+        setSelectingPlan(null);
+        // Reload to show current subscription
+        window.location.reload();
+        return;
+      }
+
       if (!res.ok || !data.init_point) {
         console.error("Error creating subscription:", data);
         toast(data.error || "Erro ao criar assinatura. Tente novamente.", "error");

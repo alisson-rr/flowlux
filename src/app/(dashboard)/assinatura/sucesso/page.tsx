@@ -4,92 +4,154 @@ import React, { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle, Crown, ArrowRight, Loader2, Sparkles, PartyPopper } from "lucide-react";
+import { CheckCircle, Crown, ArrowRight, Loader2, Sparkles, PartyPopper, RefreshCw } from "lucide-react";
 import Link from "next/link";
+
+const ACTIVE_STATUSES = ["active", "authorized", "trial"];
+const PLAN_NAMES: Record<string, string> = { starter: "Starter", pro: "Pro", black: "FlowLux Black" };
 
 export default function AssinaturaSucessoPage() {
   const [loading, setLoading] = useState(true);
   const [planName, setPlanName] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const pollCountRef = useRef(0);
 
-  useEffect(() => {
-    const checkSubscription = async () => {
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) return;
+  const checkSubscription = async (): Promise<boolean> => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return false;
 
-        const { data } = await supabase
-          .from("subscriptions")
-          .select("plan_id, status, mp_preapproval_id")
-          .eq("user_id", userData.user.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
+      const { data } = await supabase
+        .from("subscriptions")
+        .select("plan_id, status, mp_preapproval_id")
+        .eq("user_id", userData.user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
 
-        if (data) {
-          const names: Record<string, string> = { starter: "Starter", pro: "Pro", black: "FlowLux Black" };
-          setPlanName(names[data.plan_id] || data.plan_id);
+      if (data) {
+        setPlanName(PLAN_NAMES[data.plan_id] || data.plan_id);
 
-          // Only confirm if webhook already set status to trial/active/authorized
-          if (["active", "authorized", "trial"].includes(data.status)) {
-            setConfirmed(true);
-            setLoading(false);
-            return;
-          }
-          // pending_payment / pending = still waiting for MP webhook confirmation
+        if (ACTIVE_STATUSES.includes(data.status)) {
+          setConfirmed(true);
+          setLoading(false);
+          return true;
         }
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
       }
+    } catch {
+      // ignore
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      const found = await checkSubscription();
+      setLoading(false);
+      if (found) return;
+
+      // Poll every 4s for up to 3 minutes to detect webhook confirmation
+      pollRef.current = setInterval(async () => {
+        pollCountRef.current += 1;
+
+        if (pollCountRef.current > 45) {
+          // Stop after ~3 minutes
+          if (pollRef.current) clearInterval(pollRef.current);
+          setTimedOut(true);
+          return;
+        }
+
+        const success = await checkSubscription();
+        if (success && pollRef.current) {
+          clearInterval(pollRef.current);
+        }
+      }, 4000);
     };
 
-    checkSubscription();
-
-    // Poll every 5s for up to 3 minutes to detect webhook confirmation
-    pollRef.current = setInterval(async () => {
-      pollCountRef.current += 1;
-      if (pollCountRef.current > 36) {
-        // Stop after ~3 minutes
-        if (pollRef.current) clearInterval(pollRef.current);
-        return;
-      }
-
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) return;
-
-        const { data } = await supabase
-          .from("subscriptions")
-          .select("plan_id, status")
-          .eq("user_id", userData.user.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
-
-        if (data && ["active", "authorized", "trial"].includes(data.status)) {
-          const names: Record<string, string> = { starter: "Starter", pro: "Pro", black: "FlowLux Black" };
-          setPlanName(names[data.plan_id] || data.plan_id);
-          setConfirmed(true);
-          if (pollRef.current) clearInterval(pollRef.current);
-        }
-      } catch {
-        // ignore
-      }
-    }, 5000);
+    init();
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
+  const handleRetry = async () => {
+    setTimedOut(false);
+    setLoading(true);
+    pollCountRef.current = 0;
+
+    const found = await checkSubscription();
+    setLoading(false);
+
+    if (!found) {
+      // Resume polling
+      pollRef.current = setInterval(async () => {
+        pollCountRef.current += 1;
+        if (pollCountRef.current > 30) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setTimedOut(true);
+          return;
+        }
+        const success = await checkSubscription();
+        if (success && pollRef.current) {
+          clearInterval(pollRef.current);
+        }
+      }, 4000);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Timed out waiting for webhook
+  if (timedOut && !confirmed) {
+    return (
+      <div className="flex items-center justify-center min-h-[70vh] animate-fade-in">
+        <Card className="max-w-lg w-full border-yellow-500/30 shadow-xl shadow-yellow-500/10 overflow-hidden">
+          <div className="h-2 bg-gradient-to-r from-yellow-500 via-orange-500 to-yellow-500" />
+          <CardContent className="p-8 text-center space-y-6">
+            <div className="w-20 h-20 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto">
+              <RefreshCw className="h-10 w-10 text-yellow-500" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold mb-2">Processamento em Andamento</h1>
+              <p className="text-muted-foreground">
+                {planName ? (
+                  <>Seu plano <span className="font-semibold text-primary">{planName}</span> está sendo processado</>
+                ) : (
+                  <>Sua assinatura está sendo processada</>
+                )}
+              </p>
+            </div>
+            <div className="bg-yellow-500/10 rounded-xl p-4 space-y-2">
+              <p className="text-sm text-muted-foreground">
+                A confirmação do Mercado Pago pode levar alguns minutos. Se você completou o pagamento,
+                sua assinatura será ativada automaticamente.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Verifique seu e-mail para a confirmação do Mercado Pago.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 pt-2">
+              <Button onClick={handleRetry} className="w-full">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Verificar Novamente
+              </Button>
+              <Link href="/assinatura">
+                <Button variant="outline" className="w-full">
+                  Voltar para Planos
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }

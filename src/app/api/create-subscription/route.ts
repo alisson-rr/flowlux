@@ -32,16 +32,37 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Check if user already has an active subscription
+    const { data: activeSub } = await supabase
+      .from("subscriptions")
+      .select("id, plan_id, status")
+      .eq("user_id", user_id)
+      .in("status", ["active", "authorized", "trial"])
+      .limit(1)
+      .single();
+
+    if (activeSub) {
+      console.warn("[create-subscription] User already has active subscription:", activeSub.id);
+      return NextResponse.json({
+        error: "Você já possui uma assinatura ativa.",
+        existing_plan: activeSub.plan_id,
+        existing_status: activeSub.status,
+      }, { status: 409 });
+    }
+
+    // Clean up old broken pending subscriptions (no MP data)
+    await supabase
+      .from("subscriptions")
+      .delete()
+      .eq("user_id", user_id)
+      .in("status", ["pending", "pending_payment"])
+      .is("mp_preapproval_id", null);
+
     // Check if MP access token is configured
     if (!mpAccessToken) {
       console.error("[create-subscription] MERCADOPAGO_ACCESS_TOKEN not configured");
-      // Fallback: create subscription as pending_payment and return the generic MP link
-      const genericLinks: Record<string, string> = {
-        starter: `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${MP_PLAN_IDS.starter}`,
-        pro: `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${MP_PLAN_IDS.pro}`,
-        black: `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${MP_PLAN_IDS.black}`,
-      };
 
+      // Create subscription record as pending_payment
       const { error: dbError } = await supabase.from("subscriptions").insert({
         user_id,
         plan_id,
@@ -51,9 +72,13 @@ export async function POST(req: NextRequest) {
 
       if (dbError) console.error("[create-subscription] DB insert error (fallback):", dbError);
 
+      // Fallback: redirect to generic MP checkout
+      const genericLink = `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${mpPlanId}`;
+
       return NextResponse.json({
-        init_point: genericLinks[plan_id],
+        init_point: genericLink,
         fallback: true,
+        warning: "MP API not configured. external_reference not set - webhook matching will use email only.",
       });
     }
 
@@ -63,6 +88,7 @@ export async function POST(req: NextRequest) {
       external_reference: user_id,
       payer_email: user_email,
       back_url: back_url || "https://flowlux.vercel.app/assinatura/sucesso",
+      status: "pending",
     };
     console.log("[create-subscription] Calling MP API:", { ...mpPayload, payer_email: "***" });
 
@@ -76,13 +102,17 @@ export async function POST(req: NextRequest) {
     });
 
     const mpData = await mpResponse.json();
-    console.log("[create-subscription] MP API response:", { status: mpResponse.status, id: mpData.id, init_point: mpData.init_point ? "present" : "MISSING", mpStatus: mpData.status });
+    console.log("[create-subscription] MP API response:", {
+      status: mpResponse.status,
+      id: mpData.id,
+      init_point: mpData.init_point ? "present" : "MISSING",
+      mpStatus: mpData.status,
+    });
 
-    if (!mpResponse.ok) {
+    if (!mpResponse.ok || !mpData.init_point) {
       console.error("[create-subscription] MP API error:", JSON.stringify(mpData));
-      // Fallback: use generic link if MP API fails
-      const genericLink = `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${mpPlanId}`;
 
+      // Create subscription record and return generic link as fallback
       const { error: dbError } = await supabase.from("subscriptions").insert({
         user_id,
         plan_id,
@@ -91,6 +121,8 @@ export async function POST(req: NextRequest) {
       });
       if (dbError) console.error("[create-subscription] DB insert error (MP fail fallback):", dbError);
 
+      const genericLink = `https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=${mpPlanId}`;
+
       return NextResponse.json({
         init_point: genericLink,
         fallback: true,
@@ -98,7 +130,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Success: mpData contains id, init_point, status, external_reference
+    // Success: create subscription record with MP preapproval ID
     const { error: dbError } = await supabase.from("subscriptions").insert({
       user_id,
       plan_id,
@@ -112,7 +144,7 @@ export async function POST(req: NextRequest) {
       // Still return the init_point — the webhook will handle creating the subscription later
     }
 
-    console.log("[create-subscription] Success! Redirecting user to MP checkout.");
+    console.log("[create-subscription] Success! MP ID:", mpData.id);
 
     return NextResponse.json({
       init_point: mpData.init_point,

@@ -138,7 +138,7 @@ export interface Subscription {
   id: string;
   user_id: string;
   plan_id: "starter" | "pro" | "black";
-  status: "pending" | "authorized" | "paused" | "cancelled" | "trial" | "active";
+  status: "pending" | "pending_payment" | "authorized" | "paused" | "cancelled" | "trial" | "active";
   mp_preapproval_id?: string;
   mp_payer_id?: string;
   mp_payer_email?: string;

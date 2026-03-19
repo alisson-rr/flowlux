@@ -18,6 +18,8 @@ interface UseSubscriptionReturn {
   isActive: boolean;
 }
 
+const ACTIVE_STATUSES = ["active", "authorized", "trial"];
+
 export function useSubscription(): UseSubscriptionReturn {
   const [data, setData] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,12 +34,24 @@ export function useSubscription(): UseSubscriptionReturn {
           .from("subscriptions")
           .select("plan_id, status, trial_end")
           .eq("user_id", userData.user.id)
-          .in("status", ["active", "authorized", "trial"])
+          .in("status", ACTIVE_STATUSES)
           .order("created_at", { ascending: false })
           .limit(1)
           .single();
 
-        if (sub) setData(sub as SubscriptionData);
+        if (sub) {
+          // Check if trial has expired
+          if (sub.status === "trial" && sub.trial_end) {
+            const trialEnd = new Date(sub.trial_end);
+            if (trialEnd < new Date()) {
+              // Trial expired, don't consider it active
+              setData(null);
+              setLoading(false);
+              return;
+            }
+          }
+          setData(sub as SubscriptionData);
+        }
       } catch {
         // No subscription
       } finally {
@@ -49,7 +63,7 @@ export function useSubscription(): UseSubscriptionReturn {
 
   const plan: PlanId = data?.plan_id || "starter";
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.starter;
-  const isActive = !!data && ["active", "authorized", "trial"].includes(data.status);
+  const isActive = !!data && ACTIVE_STATUSES.includes(data.status);
 
   return { plan, limits, status: data?.status || "", loading, isActive };
 }

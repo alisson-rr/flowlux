@@ -127,6 +127,7 @@ export default function HistoricoPagamentosPage() {
       authorized: { label: "Autorizada", color: "text-green-400" },
       trial: { label: "Período de Teste", color: "text-blue-400" },
       pending: { label: "Pendente", color: "text-yellow-400" },
+      pending_payment: { label: "Aguardando Pagamento", color: "text-yellow-400" },
       paused: { label: "Pausada", color: "text-yellow-400" },
       cancelled: { label: "Cancelada", color: "text-red-400" },
     };

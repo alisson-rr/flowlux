@@ -42,19 +42,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           router.push("/assinatura");
           return;
         }
-      } else if (subRes.data.status === "trial" && subRes.data.trial_end) {
-        const trialEnd = new Date(subRes.data.trial_end);
-        if (trialEnd < new Date()) {
-          setHasActivePlan(false);
-          if (!isAllowedPage) {
-            router.push("/assinatura");
-            return;
+      } else {
+        const sub = subRes.data;
+        // Check if trial has expired
+        if (sub.status === "trial" && sub.trial_end) {
+          const trialEnd = new Date(sub.trial_end);
+          if (trialEnd < new Date()) {
+            setHasActivePlan(false);
+            if (!isAllowedPage) {
+              router.push("/assinatura");
+              return;
+            }
+          } else {
+            const diff = trialEnd.getTime() - Date.now();
+            const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+            setTrialDaysLeft(days);
           }
-        } else {
-          const diff = trialEnd.getTime() - Date.now();
-          const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-          setTrialDaysLeft(days);
         }
+        // "active" and "authorized" are always valid
       }
 
       setAuthChecked(true);
