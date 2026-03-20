@@ -17,7 +17,7 @@ import {
 import {
   Plus, Search, Phone, Mail, StickyNote, Tag, X, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Pencil, Globe, Archive, ArchiveRestore, Filter, SortAsc,
 } from "lucide-react";
-import { cn, formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
+import { cn, formatPhone, formatPhoneInput, normalizePhone, getInitials } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useSubscription } from "@/lib/use-subscription";
 import Link from "next/link";
@@ -124,7 +124,7 @@ export default function LeadsPage() {
     const { data, error } = await supabase.from("leads").insert({
       user_id: userData.user.id,
       name: newLead.name,
-      phone: newLead.phone,
+      phone: normalizePhone(newLead.phone),
       email: newLead.email || null,
       stage_id: selectedStage,
       funnel_id: selectedFunnel,
@@ -146,7 +146,7 @@ export default function LeadsPage() {
 
     const { error } = await supabase.from("leads").update({
       name: editLead.name,
-      phone: editLead.phone,
+      phone: normalizePhone(editLead.phone),
       email: editLead.email || null,
       source: editLead.source || null,
     }).eq("id", selectedLead.id);

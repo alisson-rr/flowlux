@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { evolutionApi } from "@/lib/evolution-api";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import {
 import {
   Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download, Zap, Timer, Play,
 } from "lucide-react";
-import { cn, formatPhone, getInitials } from "@/lib/utils";
+import { cn, formatPhone, normalizePhone, getInitials } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
 interface Conversation { id: string; instance_id: string; remote_jid: string; contact_name: string; contact_phone: string; last_message: string; last_message_at: string; unread_count: number; }
@@ -70,6 +70,7 @@ export default function ChatPage() {
 
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const selectedConvRef = useRef<Conversation | null>(null);
 
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
 
@@ -124,56 +125,98 @@ export default function ChatPage() {
   }, []);
 
   const normalizePhoneVariants = (phone: string): string[] => {
+    const normalized = normalizePhone(phone);
     const digits = phone.replace(/\D/g, "");
-    const result = [digits];
-    if (digits.startsWith("55") && digits.length > 11) {
-      result.push(digits.slice(2)); // without country code
+    const result = new Set<string>([normalized, digits]);
+    // Add variant without country code
+    if (normalized.startsWith("55") && normalized.length >= 12) {
+      result.add(normalized.slice(2));
     }
-    if (!digits.startsWith("55") && digits.length <= 11) {
-      result.push("55" + digits); // with country code
+    // Add variant with country code
+    if (!normalized.startsWith("55") && normalized.length <= 11) {
+      result.add("55" + normalized);
     }
-    return result;
+    // Also add the original digits without 9 (in case stored with 9)
+    if (digits.startsWith("55") && digits.length === 13 && digits[4] === "9") {
+      result.add(digits.slice(0, 4) + digits.slice(5));
+      result.add(digits.slice(2, 4) + digits.slice(5));
+    }
+    if (!digits.startsWith("55") && digits.length === 11 && digits[2] === "9") {
+      result.add(digits.slice(0, 2) + digits.slice(3));
+      result.add("55" + digits.slice(0, 2) + digits.slice(3));
+    }
+    return Array.from(result);
   };
 
-  const loadLeadInfo = async (phone: string) => {
-    const convVariants = normalizePhoneVariants(phone);
+  const phonesMatch = (a: string, b: string): boolean => {
+    const da = a.replace(/\D/g, "");
+    const db = b.replace(/\D/g, "");
+    if (!da || !db) return false;
+    if (da === db) return true;
+    const stripCountry = (d: string) => d.startsWith("55") && d.length >= 12 ? d.slice(2) : d;
+    const strip9 = (d: string) => (d.length === 11 && d[2] === "9") ? d.slice(0, 2) + d.slice(3) : d;
+    const add9 = (d: string) => (d.length === 10) ? d.slice(0, 2) + "9" + d.slice(2) : d;
+    const sa = stripCountry(da);
+    const sb = stripCountry(db);
+    if (sa === sb) return true;
+    const va = new Set([sa, strip9(sa), add9(sa)]);
+    const vb = [sb, strip9(sb), add9(sb)];
+    return vb.some((v) => va.has(v));
+  };
 
-    // Fetch all leads for this user and match by normalized phone digits
+  const fetchLeadByPhone = async (phone: string) => {
     const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) { setLeadInfo(null); setRightPanel("lead"); return; }
+    if (!userData.user) return null;
 
+    // Fetch lightweight list (id + phone) and match by normalized digits
     const { data: allLeads } = await supabase
       .from("leads")
-      .select("*, lead_tags(tags(*)), notes(*)")
+      .select("id, phone")
       .eq("user_id", userData.user.id)
       .is("deleted_at", null);
 
-    let foundLead = null;
-    if (allLeads) {
-      for (const lead of allLeads) {
-        const leadVariants = normalizePhoneVariants(lead.phone || "");
-        // Check if any variant from the conversation phone matches any variant from the lead phone
-        const match = convVariants.some((cv) => leadVariants.includes(cv));
-        if (match) { foundLead = lead; break; }
-      }
-    }
+    if (!allLeads || allLeads.length === 0) return null;
 
-    if (foundLead) {
-      setLeadInfo({
-        ...foundLead,
-        tags: foundLead.lead_tags?.map((lt: any) => lt.tags).filter(Boolean) || [],
-        notes: foundLead.notes || [],
-      });
-    } else {
-      setLeadInfo(null);
+    let matchedId: string | null = null;
+    for (const lead of allLeads) {
+      if (phonesMatch(phone, lead.phone || "")) { matchedId = lead.id; break; }
     }
+    if (!matchedId) return null;
+
+    // Fetch full data only for the matched lead
+    const { data: fullLead } = await supabase
+      .from("leads")
+      .select("*, lead_tags(tags(*)), notes(*)")
+      .eq("id", matchedId)
+      .single();
+
+    if (!fullLead) return null;
+    return {
+      ...fullLead,
+      tags: fullLead.lead_tags?.map((lt: any) => lt.tags).filter(Boolean) || [],
+      notes: fullLead.notes || [],
+    };
+  };
+
+  // Opens the lead panel (used by header click)
+  const loadLeadInfo = async (phone: string) => {
+    const found = await fetchLeadByPhone(phone);
+    setLeadInfo(found);
     setRightPanel("lead");
   };
 
+  // Pre-loads lead info silently without opening the panel
+  const preloadLeadInfo = async (phone: string) => {
+    const found = await fetchLeadByPhone(phone);
+    setLeadInfo(found);
+  };
+
   const refreshTags = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
     const [tagsRes, leadTagsRes] = await Promise.all([
-      supabase.from("tags").select("id, name, color"),
-      supabase.from("leads").select("phone, lead_tags(tag_id)"),
+      supabase.from("tags").select("id, name, color").eq("user_id", userData.user.id),
+      supabase.from("leads").select("phone, lead_tags(tag_id)").eq("user_id", userData.user.id),
     ]);
     if (tagsRes.data) setAllTags(tagsRes.data);
     if (leadTagsRes.data) {
@@ -183,19 +226,15 @@ export default function ChatPage() {
     }
   };
 
+  // Initial data load
   useEffect(() => {
     loadInitialData();
+  }, [loadInitialData]);
 
+  // Realtime: conversations (always active)
+  useEffect(() => {
     const channel = supabase
-      .channel("flowlux-realtime")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
-        const msg = payload.new as ChatMessage;
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
-        setTimeout(scrollToBottom, 100);
-      })
+      .channel("flowlux-conversations")
       .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, (payload) => {
         if (payload.eventType === "INSERT") {
           const conv = payload.new as Conversation;
@@ -205,20 +244,48 @@ export default function ChatPage() {
           });
         } else if (payload.eventType === "UPDATE") {
           const conv = payload.new as Conversation;
-          setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, ...conv } : c));
+          setConversations((prev) =>
+            prev.map((c) => c.id === conv.id ? { ...c, ...conv } : c)
+              .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
+          );
         }
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [loadInitialData]);
+  }, []);
+
+  // Realtime: messages (re-subscribe when conversation changes)
+  useEffect(() => {
+    if (!selectedConv) return;
+    const convId = selectedConv.id;
+
+    const channel = supabase
+      .channel(`flowlux-messages-${convId}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${convId}`,
+      }, (payload) => {
+        const msg = payload.new as ChatMessage;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        setTimeout(scrollToBottom, 100);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedConv?.id]);
 
   // === ACTIONS ===
   const handleStartConversation = async (lead: LeadOption) => {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
 
-    const phone = lead.phone.replace(/\D/g, "");
+    const phone = normalizePhone(lead.phone);
     const remoteJid = phone.startsWith("55") ? `${phone}@s.whatsapp.net` : `55${phone}@s.whatsapp.net`;
 
     if (!selectedInstanceId) { toast("Selecione um WhatsApp primeiro.", "warning"); return; }
@@ -238,49 +305,71 @@ export default function ChatPage() {
 
   const handleSelectConversation = async (conv: Conversation) => {
     setSelectedConv(conv);
+    selectedConvRef.current = conv;
     setRightPanel(null);
     setLeadInfo(null);
     await loadMessages(conv.id);
     if (conv.unread_count > 0) {
-      await supabase.from("conversations").update({ unread_count: 0 }).eq("id", conv.id);
+      supabase.from("conversations").update({ unread_count: 0 }).eq("id", conv.id).then();
       setConversations((prev) => prev.map((c) => (c.id === conv.id ? { ...c, unread_count: 0 } : c)));
     }
-    // Auto-load lead info for this conversation
-    loadLeadInfo(conv.contact_phone);
+    // Pre-load lead info silently (panel stays closed until header click)
+    preloadLeadInfo(conv.contact_phone);
   };
 
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && !selectedMedia) || !selectedConv || !selectedInstanceId) return;
-    setSendingMessage(true);
-    try {
-      const inst = instances.find((i) => i.id === selectedInstanceId);
-      if (!inst) { toast("Selecione um WhatsApp primeiro.", "warning"); setSendingMessage(false); return; }
+    const inst = instances.find((i) => i.id === selectedInstanceId);
+    if (!inst) { toast("Selecione um WhatsApp primeiro.", "warning"); return; }
 
-      // Send media if selected
-      if (selectedMedia) {
-        const isAudio = selectedMedia.file_type === "audio";
+    // Capture values and clear input instantly
+    const msgText = newMessage;
+    const media = selectedMedia;
+    const conv = selectedConv;
+    setNewMessage("");
+    setSelectedMedia(null);
+    setSendingMessage(true);
+
+    // Optimistically add message to UI
+    const optimisticMsg: ChatMessage = {
+      id: `temp-${Date.now()}`,
+      from_me: true,
+      content: media ? (media.file_type === "audio" ? "" : (msgText || media.file_name)) : msgText,
+      message_type: media ? media.file_type : "text",
+      media_url: media?.file_url,
+      status: "sending",
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setTimeout(scrollToBottom, 50);
+
+    try {
+      // Send via Evolution API (no delay, direct)
+      if (media) {
+        const isAudio = media.file_type === "audio";
         if (isAudio) {
-          await evolutionApi.sendAudio(inst.instance_name, selectedConv.remote_jid, selectedMedia.file_url);
+          await evolutionApi.sendAudio(inst.instance_name, conv.remote_jid, media.file_url);
         } else {
-          await evolutionApi.sendMedia(inst.instance_name, selectedConv.remote_jid, selectedMedia.file_url, selectedMedia.file_type, newMessage || "", selectedMedia.file_name);
+          await evolutionApi.sendMedia(inst.instance_name, conv.remote_jid, media.file_url, media.file_type, msgText || "", media.file_name);
         }
-        await supabase.from("messages").insert({
-          conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
-          message_type: selectedMedia.file_type, content: isAudio ? "" : (newMessage || selectedMedia.file_name), media_url: selectedMedia.file_url, status: "sent",
-        });
-        setSelectedMedia(null);
       } else {
-        // Text only
-        await evolutionApi.sendText(inst.instance_name, selectedConv.remote_jid, newMessage);
-        await supabase.from("messages").insert({
-          conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
-          message_type: "text", content: newMessage, status: "sent",
-        });
+        await evolutionApi.sendText(inst.instance_name, conv.remote_jid, msgText);
       }
 
-      await supabase.from("conversations").update({ last_message: newMessage || "[Mídia]", last_message_at: new Date().toISOString() }).eq("id", selectedConv.id);
-      setNewMessage("");
-    } catch (err: any) { console.error("Error sending message:", err); toast("Erro ao enviar mensagem: " + (err?.message || ""), "error"); } finally { setSendingMessage(false); }
+      // DB operations fire-and-forget (realtime will sync)
+      const msgInsert = media
+        ? { conversation_id: conv.id, remote_jid: conv.remote_jid, from_me: true, message_type: media.file_type, content: media.file_type === "audio" ? "" : (msgText || media.file_name), media_url: media.file_url, status: "sent" }
+        : { conversation_id: conv.id, remote_jid: conv.remote_jid, from_me: true, message_type: "text" as const, content: msgText, status: "sent" };
+      supabase.from("messages").insert(msgInsert).then();
+      supabase.from("conversations").update({ last_message: msgText || "[Mídia]", last_message_at: new Date().toISOString() }).eq("id", conv.id).then();
+    } catch (err: any) {
+      console.error("Error sending message:", err);
+      toast("Erro ao enviar mensagem: " + (err?.message || ""), "error");
+      // Remove optimistic message on failure
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+    } finally {
+      setSendingMessage(false);
+    }
   };
 
   const handleAddNote = async () => {
@@ -379,17 +468,23 @@ export default function ChatPage() {
     return labels[type] || type;
   };
 
-  // === FILTERS ===
-  const filteredLeads = leads.filter((l) => l.name.toLowerCase().includes(leadSearch.toLowerCase()) || l.phone.includes(leadSearch));
+  // === FILTERS (memoized) ===
+  const filteredLeads = useMemo(() => {
+    const term = leadSearch.toLowerCase();
+    return leads.filter((l) => l.name.toLowerCase().includes(term) || l.phone.includes(leadSearch));
+  }, [leads, leadSearch]);
 
-  const filteredConversations = conversations.filter((c) => {
-    const matchesSearch = c.contact_name?.toLowerCase().includes(searchTerm.toLowerCase()) || c.contact_phone?.includes(searchTerm);
-    if (!matchesSearch) return false;
-    if (selectedInstanceId && c.instance_id !== selectedInstanceId) return false;
-    if (!filterTag) return true;
-    const phone = c.contact_phone?.replace(/\D/g, "") || "";
-    return convLeadTags[phone]?.includes(filterTag);
-  });
+  const filteredConversations = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return conversations.filter((c) => {
+      const matchesSearch = c.contact_name?.toLowerCase().includes(term) || c.contact_phone?.includes(searchTerm);
+      if (!matchesSearch) return false;
+      if (selectedInstanceId && c.instance_id !== selectedInstanceId) return false;
+      if (!filterTag) return true;
+      const phone = c.contact_phone?.replace(/\D/g, "") || "";
+      return convLeadTags[phone]?.includes(filterTag);
+    });
+  }, [conversations, searchTerm, selectedInstanceId, filterTag, convLeadTags]);
 
   const formatTime = (date: string) => {
     if (!date) return "";
@@ -674,7 +769,7 @@ export default function ChatPage() {
                             defaultStageId = defaultStage?.id || null;
                           }
                           const { data, error } = await supabase.from("leads").insert({
-                            user_id: userData.user.id, name, phone, source: "WhatsApp",
+                            user_id: userData.user.id, name, phone: normalizePhone(phone), source: "WhatsApp",
                             funnel_id: defaultFunnel?.id || null,
                             stage_id: defaultStageId,
                           }).select().single();

@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Search, GripVertical, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Globe, StickyNote, Mail, UserPlus, Tag, X, Phone, Pencil, Archive, ArchiveRestore,
 } from "lucide-react";
-import { cn, formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
+import { cn, formatPhone, formatPhoneInput, normalizePhone, getInitials } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
 interface Lead { id: string; name: string; phone: string; email?: string; stage_id: string; source?: string; archived: boolean; created_at: string; tags: { id: string; name: string; color: string }[]; notes: { id: string; content: string; created_at: string }[]; }
@@ -119,7 +119,7 @@ export default function FunilPage() {
     if (!userData.user) return;
     const stageId = newLeadStage || funnelStages[0]?.id;
     const { data, error } = await supabase.from("leads").insert({
-      user_id: userData.user.id, name: newLead.name, phone: newLead.phone,
+      user_id: userData.user.id, name: newLead.name, phone: normalizePhone(newLead.phone),
       email: newLead.email || null, stage_id: stageId, source: newLead.source || null,
       funnel_id: selectedFunnelId,
     }).select("*, lead_tags(tags(*)), notes(*)").single();

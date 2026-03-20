@@ -5,8 +5,35 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function normalizePhone(phone: string): string {
+  let digits = phone.replace(/\D/g, "");
+  let hasCountryCode = false;
+  if (digits.startsWith("55") && digits.length >= 12) {
+    hasCountryCode = true;
+    digits = digits.slice(2);
+  }
+  // DD9XXXXXXXX (11 digits, 3rd digit is 9) → DDXXXXXXXX (10 digits)
+  if (digits.length === 11 && digits[2] === "9") {
+    digits = digits.slice(0, 2) + digits.slice(3);
+  }
+  if (hasCountryCode) {
+    digits = "55" + digits;
+  }
+  return digits;
+}
+
 export function formatPhone(phone: string): string {
   const cleaned = phone.replace(/\D/g, "");
+  // 55 + DD + 9XXXX + XXXX (13 digits with country code)
+  if (cleaned.length === 13 && cleaned.startsWith("55")) {
+    const local = cleaned.slice(2);
+    return `+55 (${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  }
+  // 55 + DD + XXXX + XXXX (12 digits with country code)
+  if (cleaned.length === 12 && cleaned.startsWith("55")) {
+    const local = cleaned.slice(2);
+    return `+55 (${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+  }
   if (cleaned.length === 11) {
     return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 7)}-${cleaned.slice(7)}`;
   }
