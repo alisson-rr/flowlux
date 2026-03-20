@@ -12,6 +12,7 @@ import CommunitySection from "@/components/landing/CommunitySection";
 import FAQSection from "@/components/landing/FAQSection";
 import ClosingSection from "@/components/landing/ClosingSection";
 import FooterSection from "@/components/landing/FooterSection";
+import WhatsAppButton from "@/components/landing/WhatsAppButton";
 
 export default function Home() {
   return (
@@ -30,6 +31,7 @@ export default function Home() {
       <FAQSection />
       <ClosingSection />
       <FooterSection />
+      <WhatsAppButton />
     </div>
   );
 }
