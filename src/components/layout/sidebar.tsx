@@ -14,7 +14,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  GraduationCap,
+  Rocket,
   FolderOpen,
   Headset,
   Kanban,
@@ -29,7 +29,7 @@ const navItems = [
   { label: "Leads", href: "/leads", icon: Users },
   { label: "Automação", href: "/automacao", icon: Zap },
   { label: "Mídia", href: "/midia", icon: FolderOpen },
-  { label: "Área de Membros", href: "/membros", icon: GraduationCap },
+  { label: "Evolua seu Produto", href: "/evolua", icon: Rocket },
   { label: "Assinatura", href: "/assinatura", icon: Crown },
   { label: "Integrações", href: "/configuracoes", icon: Plug },
 ];
