@@ -8,6 +8,8 @@ const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 // Plan configurations
 // Starter & Pro: monthly subscriptions via Preapproval API
 // Black: one-time annual payment (12x R$59 = R$708) via Checkout Pro (Preferences API)
+// IMPORTANT: Interest-free installments ("sem juros") must be configured in the
+// Mercado Pago seller dashboard: Seu negócio > Configurações > Oferecer parcelas sem acréscimo
 const PLAN_CONFIG: Record<string, {
   name: string;
   amount: number;
@@ -41,10 +43,10 @@ const PLAN_CONFIG: Record<string, {
 };
 
 // Fallback: generic MP checkout links (preapproval_plan_id based)
+// Note: Black plan uses Checkout Pro (one-time payment), not preapproval — no fallback link available
 const MP_GENERIC_LINKS: Record<string, string> = {
   starter: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=2a69ac12835b4077bbf7279faa7d61c6",
   pro: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=d9bbcdeb8cdd488994afa7c88d94f75e",
-  black: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=e54d3d648c9045d3ac50101e493e8e84",
 };
 
 // ========================================
@@ -177,15 +179,17 @@ async function createCheckoutFlow(
       email: userEmail,
     },
     payment_methods: {
+      excluded_payment_types: [
+        { id: "ticket" },
+      ],
       installments: planConfig.installments || 12,
-      default_installments: planConfig.installments || 12,
     },
     back_urls: {
       success: backUrl,
       failure: backUrl.replace("/sucesso", ""),
       pending: backUrl,
     },
-    auto_return: "approved",
+    ...(backUrl.startsWith("https") ? { auto_return: "approved" } : {}),
     external_reference: userId,
     notification_url: webhookUrl,
     statement_descriptor: planConfig.name,
@@ -216,19 +220,11 @@ async function createCheckoutFlow(
   if (!mpResponse.ok || !mpData.init_point) {
     console.error("[create-subscription] MP Checkout Pro error:", JSON.stringify(mpData));
 
-    const { error: dbError } = await supabase.from("subscriptions").insert({
-      user_id: userId,
-      plan_id: planId,
-      status: "pending_payment",
-      mp_payer_email: userEmail,
-    });
-    if (dbError) console.error("[create-subscription] DB insert error (fallback):", dbError);
-
+    // Checkout Pro (Black plan) has no fallback link — return error
     return NextResponse.json({
-      init_point: MP_GENERIC_LINKS[planId],
-      fallback: true,
+      error: "Erro ao criar pagamento no Mercado Pago. Tente novamente.",
       mp_error: mpData.message || mpData.error || "MP Checkout Pro error",
-    });
+    }, { status: 502 });
   }
 
   // Insert pending subscription — mp_preference_id stored in mp_preapproval_id field for reuse

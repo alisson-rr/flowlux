@@ -41,7 +41,10 @@ export async function POST(req: NextRequest) {
     });
 
     // Cancel on Mercado Pago if we have a preapproval ID
-    if (subscription.mp_preapproval_id && mpAccessToken) {
+    // Black plan (Checkout Pro) uses pref_ prefix — it's a one-time payment, nothing to cancel on MP side
+    const isCheckoutPlan = subscription.mp_preapproval_id?.startsWith("pref_") || subscription.plan_id === "black";
+
+    if (subscription.mp_preapproval_id && mpAccessToken && !isCheckoutPlan) {
       const mpRes = await fetch(
         `https://api.mercadopago.com/preapproval/${subscription.mp_preapproval_id}`,
         {
@@ -67,6 +70,8 @@ export async function POST(req: NextRequest) {
           { status: 500 }
         );
       }
+    } else if (isCheckoutPlan) {
+      console.log("[cancel-subscription] Black plan (Checkout Pro) — skipping MP API call, only updating DB");
     }
 
     // Update subscription in database
