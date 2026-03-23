@@ -143,7 +143,7 @@ export default function ConfiguracoesPage() {
     setCreatingInstance(true);
 
     try {
-      const result = await evolutionApi.createInstance(newInstanceName, "https://webhook.devnoflow.com.br/webhook/flowlux-webhook");
+      const result = await evolutionApi.createInstance(newInstanceName, "https://webhook.devnoflow.com.br/webhook/flow-hook");
 
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;

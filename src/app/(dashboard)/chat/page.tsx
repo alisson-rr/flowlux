@@ -28,6 +28,20 @@ interface FlowStepOption { id: string; step_order: number; step_type: string; co
 
 const TAG_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EF4444", "#EC4899", "#06B6D4", "#EAB308"];
 
+const detectMediaType = (url: string, declaredType: string): string => {
+  if (!url) return declaredType;
+  const ext = url.split("?")[0].split(".").pop()?.toLowerCase() || "";
+  const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic"];
+  const videoExts = ["mp4", "mov", "avi", "mkv", "webm", "3gp"];
+  const audioExts = ["ogg", "mp3", "wav", "m4a", "aac", "opus", "amr"];
+  const docExts = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "zip", "rar"];
+  if (imageExts.includes(ext)) return "image";
+  if (videoExts.includes(ext)) return "video";
+  if (audioExts.includes(ext)) return "audio";
+  if (docExts.includes(ext)) return "document";
+  return declaredType;
+};
+
 interface InstanceOption { id: string; instance_name: string; }
 
 export default function ChatPage() {
@@ -271,6 +285,11 @@ export default function ChatPage() {
         const msg = payload.new as ChatMessage;
         setMessages((prev) => {
           if (prev.some((m) => m.id === msg.id)) return prev;
+          // Remove optimistic temp messages when the real DB message arrives
+          if (msg.from_me) {
+            const withoutTemp = prev.filter((m) => !m.id.startsWith("temp-"));
+            return [...withoutTemp, msg];
+          }
           return [...prev, msg];
         });
         setTimeout(scrollToBottom, 100);
@@ -603,24 +622,26 @@ export default function ChatPage() {
                 {/* Messages Column */}
                 <div className="flex-1 flex flex-col">
                   <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-background/50">
-                    {messages.map((msg) => (
+                    {messages.map((msg) => {
+                      const effectiveType = msg.media_url ? detectMediaType(msg.media_url, msg.message_type) : msg.message_type;
+                      return (
                       <div key={msg.id} className={cn("flex", msg.from_me ? "justify-end" : "justify-start")}>
                         <div className={cn("max-w-[70%] rounded-2xl px-4 py-2.5 text-sm", msg.from_me ? "bg-primary text-primary-foreground rounded-br-md" : "bg-card border border-border rounded-bl-md")}>
-                          {msg.media_url && msg.message_type === "image" && (
+                          {msg.media_url && effectiveType === "image" && (
                             <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block mb-2">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img src={msg.media_url} alt="" className="rounded-lg max-h-48 w-auto object-cover" loading="lazy" />
                             </a>
                           )}
-                          {msg.media_url && msg.message_type === "video" && (
+                          {msg.media_url && effectiveType === "video" && (
                             <video src={msg.media_url} controls className="rounded-lg max-h-48 w-full mb-2" preload="metadata" />
                           )}
-                          {msg.media_url && msg.message_type === "audio" && (
+                          {msg.media_url && effectiveType === "audio" && (
                             <div className="mb-2 min-w-[240px]">
                               <audio src={msg.media_url} controls className="w-full h-10" preload="metadata" />
                             </div>
                           )}
-                          {msg.media_url && msg.message_type === "document" && (
+                          {msg.media_url && effectiveType === "document" && (
                             <a href={msg.media_url} target="_blank" rel="noopener noreferrer"
                               className={cn("flex items-center gap-2 p-2 rounded-lg mb-2", msg.from_me ? "bg-primary-foreground/10" : "bg-muted")}>
                               <FileText className="h-5 w-5 shrink-0" />
@@ -628,13 +649,22 @@ export default function ChatPage() {
                               <Download className="h-4 w-4 shrink-0 ml-auto" />
                             </a>
                           )}
-                          {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
+                          {msg.media_url && effectiveType !== "image" && effectiveType !== "video" && effectiveType !== "audio" && effectiveType !== "document" && effectiveType !== "text" && (
+                            <a href={msg.media_url} target="_blank" rel="noopener noreferrer"
+                              className={cn("flex items-center gap-2 p-2 rounded-lg mb-2", msg.from_me ? "bg-primary-foreground/10" : "bg-muted")}>
+                              <FileText className="h-5 w-5 shrink-0" />
+                              <span className="text-xs truncate">{msg.content || "Arquivo"}</span>
+                              <Download className="h-4 w-4 shrink-0 ml-auto" />
+                            </a>
+                          )}
+                          {msg.content && !(effectiveType === "document" && msg.media_url) && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
                           <p className={cn("text-[10px] mt-1", msg.from_me ? "text-primary-foreground/60" : "text-muted-foreground")}>
                             {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                           </p>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                     <div ref={messagesEndRef} />
                   </div>
 

@@ -365,7 +365,7 @@ export default function AutomacaoPage() {
         user_id: userData.user.id, lead_id: newScheduled.lead_id, instance_id: newScheduled.instance_id,
         message: newScheduled.message, scheduled_at: newScheduled.scheduled_at, status: "pending",
       }).select("*, leads(name)").single();
-      if (!error && data) setScheduledMessages((prev) => [...prev, { ...data, lead_name: (data as any).leads?.name }]);
+      if (!error && data) setScheduledMessages((prev) => [{ ...data, lead_name: (data as any).leads?.name }, ...prev]);
     }
     setNewScheduled({ lead_id: "", message: "", scheduled_at: "", instance_id: instances[0]?.id || "" });
     setShowAddScheduled(false);

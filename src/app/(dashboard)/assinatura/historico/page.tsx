@@ -270,7 +270,11 @@ export default function HistoricoPagamentosPage() {
               </div>
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                  {subscription.status === "trial" ? "Teste até" : subscription.status === "cancelled" ? "Acesso até" : "Próxima cobrança"}
+                  {subscription.status === "trial" && subscription.trial_end && getTrialDaysLeft() > 0
+                    ? "Teste até"
+                    : subscription.status === "cancelled"
+                    ? "Acesso até"
+                    : "Acesso até"}
                 </p>
                 <p className="font-semibold">
                   {subscription.trial_end && getTrialDaysLeft() > 0

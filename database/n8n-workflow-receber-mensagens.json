@@ -3,128 +3,61 @@
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "flowlux-webhook",
-        "options": {}
-      },
-      "id": "wh-001",
-      "name": "Webhook Evolution",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [250, 300],
-      "webhookId": "flowlux-msg-webhook"
-    },
-    {
-      "parameters": {
-        "jsCode": "const data = $input.first().json;\nconst body = data.body || data;\n\n// Filtrar apenas MESSAGES_UPSERT\nif (body.event !== 'messages.upsert') {\n  return [];\n}\n\nconst instance = body.instance;\nconst msgData = body.data;\nif (!msgData || !msgData.key) return [];\n\nconst key = msgData.key;\nconst remoteJid = key.remoteJid || '';\nconst fromMe = key.fromMe || false;\n\n// Ignorar mensagens de grupo\nif (remoteJid.includes('@g.us')) return [];\n\n// Extrair conteúdo\nlet content = '';\nlet messageType = 'text';\nlet mediaUrl = '';\n\nconst msg = msgData.message || {};\nif (msg.conversation) {\n  content = msg.conversation;\n} else if (msg.extendedTextMessage) {\n  content = msg.extendedTextMessage.text || '';\n} else if (msg.imageMessage) {\n  content = msg.imageMessage.caption || '';\n  messageType = 'image';\n  mediaUrl = msg.imageMessage.url || '';\n} else if (msg.videoMessage) {\n  content = msg.videoMessage.caption || '';\n  messageType = 'video';\n  mediaUrl = msg.videoMessage.url || '';\n} else if (msg.audioMessage) {\n  messageType = 'audio';\n  mediaUrl = msg.audioMessage.url || '';\n} else if (msg.documentMessage) {\n  content = msg.documentMessage.fileName || '';\n  messageType = 'document';\n  mediaUrl = msg.documentMessage.url || '';\n} else {\n  // Tipo não suportado (sticker, location, etc)\n  return [];\n}\n\nconst contactPhone = remoteJid.replace('@s.whatsapp.net', '');\nconst contactName = msgData.pushName || contactPhone;\n\nreturn [{\n  json: {\n    instance_name: instance,\n    remote_jid: remoteJid,\n    from_me: fromMe,\n    message_type: messageType,\n    content: content,\n    media_url: mediaUrl || null,\n    contact_name: contactName,\n    contact_phone: contactPhone\n  }\n}];"
-      },
-      "id": "parse-001",
-      "name": "1. Parse Mensagem",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [480, 300]
-    },
-    {
-      "parameters": {
-        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/whatsapp_instances?instance_name=eq.{{ $json.instance_name }}&select=id,user_id,instance_name&limit=1",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/conversations?instance_id=eq.{{ $json.id }}&remote_jid=eq.{{ $('normalizacao').item.json.http.remoteJid }}&select=id&limit=1",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "options": {}
       },
-      "id": "inst-001",
-      "name": "2. Buscar Instância",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [700, 300],
-      "credentials": {
-        "supabaseApi": {
-          "id": "Pv48djwcm2OcpOqt",
-          "name": "FlowLux"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
-          "conditions": [
-            {
-              "id": "has-inst",
-              "leftValue": "={{ $json[0]?.id }}",
-              "rightValue": "",
-              "operator": { "type": "string", "operation": "isNotEmpty" }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "check-inst-001",
-      "name": "Instância existe?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [920, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "const parsed = $('1. Parse Mensagem').first().json;\nconst instArr = $('2. Buscar Instância').first().json;\nconst inst = Array.isArray(instArr) ? instArr[0] : instArr;\n\nreturn [{\n  json: {\n    ...parsed,\n    instance_id: inst.id,\n    user_id: inst.user_id\n  }\n}];"
-      },
-      "id": "merge-001",
-      "name": "3. Juntar Dados",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1140, 220]
-    },
-    {
-      "parameters": {
-        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/conversations?instance_id=eq.{{ $json.instance_id }}&remote_jid=eq.{{ $json.remote_jid }}&select=id&limit=1",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "supabaseApi",
-        "options": {}
-      },
-      "id": "conv-001",
+      "id": "cc03117e-3cc1-446d-a2f0-e6031b4718b3",
       "name": "4. Buscar Conversa",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1360, 220],
+      "position": [
+        -1360,
+        2032
+      ],
+      "alwaysOutputData": true,
       "credentials": {
         "supabaseApi": {
           "id": "Pv48djwcm2OcpOqt",
           "name": "FlowLux"
         }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const parsed = $('3. Juntar Dados').first().json;\nconst convArr = $('4. Buscar Conversa').first().json;\nconst conv = Array.isArray(convArr) ? convArr[0] : convArr;\nconst conversationId = conv?.id || null;\n\nreturn [{\n  json: {\n    ...parsed,\n    conversation_id: conversationId,\n    needs_new: !conversationId\n  }\n}];"
       },
-      "id": "prep-001",
-      "name": "5. Preparar",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1580, 220]
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
           "conditions": [
             {
               "id": "needs-new",
-              "leftValue": "={{ $json.needs_new }}",
+              "leftValue": "={{ $json.id }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "equals" }
+              "operator": {
+                "type": "string",
+                "operation": "notExists",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
         },
         "options": {}
       },
-      "id": "if-new-001",
+      "id": "2babf565-b6b7-4ca3-93ca-55d424097346",
       "name": "Nova conversa?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1800, 220]
+      "position": [
+        -1136,
+        2032
+      ]
     },
     {
       "parameters": {
@@ -135,19 +68,224 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Prefer", "value": "return=representation" }
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"user_id\": \"{{ $('5. Preparar').item.json.user_id }}\",\n  \"instance_id\": \"{{ $('5. Preparar').item.json.instance_id }}\",\n  \"remote_jid\": \"{{ $('5. Preparar').item.json.remote_jid }}\",\n  \"contact_name\": \"{{ $('5. Preparar').item.json.contact_name }}\",\n  \"contact_phone\": \"{{ $('5. Preparar').item.json.contact_phone }}\",\n  \"last_message\": \"{{ $('5. Preparar').item.json.message_type === 'text' ? $('5. Preparar').item.json.content.substring(0,100) : '[' + $('5. Preparar').item.json.message_type + ']' }}\",\n  \"last_message_at\": \"{{ new Date().toISOString() }}\",\n  \"unread_count\": {{ $('5. Preparar').item.json.from_me ? 0 : 1 }}\n}",
+        "jsonBody": "={\n  \"user_id\": \"{{ $('2. Buscar Instância').item.json.user_id }}\",\n  \"instance_id\": \"{{ $('2. Buscar Instância').item.json.id }}\",\n  \"remote_jid\": \"{{ $('normalizacao').item.json.http.remoteJid }}\",\n  \"contact_name\": \"{{ $('normalizacao').item.json.msg.name }}\",\n  \"contact_phone\": \"{{ $('normalizacao').item.json.http.remoteJid.replace('@s.whatsapp.net', '') }}\",\n  \"last_message\": \"Nova mensagem\",\n  \"last_message_at\": \"{{ new Date().toISOString() }}\",\n  \"unread_count\": 1\n}",
         "options": {}
       },
-      "id": "create-conv-001",
+      "id": "46a5ce3e-5158-4314-bf0a-c5e2b5f4140b",
       "name": "6a. Criar Conversa",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2020, 120],
+      "position": [
+        -1136,
+        1824
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "flow-hook",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2000,
+        2032
+      ],
+      "id": "b44abd9c-7ac8-4a1c-848b-ed365a4504aa",
+      "name": "Webhook",
+      "webhookId": "a49d9eaa-8e51-4e70-bcdf-67b15aed7926"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "00a9ffc1-8f69-4563-92bc-8cdd35a5b223",
+              "name": "msg.conteudo",
+              "value": "={{ $json.body.data.message.conversation || $json.body.data.message.extendedTextMessage?.text || $json.body.data.message.imageMessage?.caption || $json.body.data.message.videoMessage?.caption || $json.body.data.message.documentMessage?.caption || \"\"}}",
+              "type": "string"
+            },
+            {
+              "id": "c8e5cb50-829e-439a-8d6a-7a018ace4094",
+              "name": "msg.id",
+              "value": "={{ $json.body.data.key.id }}",
+              "type": "string"
+            },
+            {
+              "id": "b5c76bfd-3e7e-4985-b563-ca18f1adb79b",
+              "name": "msg.timestamp",
+              "value": "={{ $json.body.data.messageTimestamp.toDateTime('s') }}",
+              "type": "string"
+            },
+            {
+              "id": "f28fa2cf-996e-4c82-abef-7b487c3ec6f2",
+              "name": "msg.event",
+              "value": "={{ $json.body.event }}",
+              "type": "string"
+            },
+            {
+              "id": "9f1a2db0-ae02-4822-a09d-6d791d72eb6a",
+              "name": "msg.fromMe",
+              "value": "={{ $json.body.data.key.fromMe }}",
+              "type": "boolean"
+            },
+            {
+              "id": "8bd34f53-fa4d-45cd-a9d7-aa536647b682",
+              "name": "http.instance",
+              "value": "={{ $json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "05bc9219-87c8-4199-822c-537edfe7b04b",
+              "name": "http.server_url",
+              "value": "={{ $json.body.server_url }}",
+              "type": "string"
+            },
+            {
+              "id": "761f5056-1aee-4e47-990b-714c3fa8ffd7",
+              "name": "http.remoteJid",
+              "value": "={{ $json.body.data.key.remoteJid }}",
+              "type": "string"
+            },
+            {
+              "id": "856f946c-9c57-479f-a4be-ca84c9580b1d",
+              "name": "msg.base64",
+              "value": "={{ $json.body.data.message.base64||\"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "162875f7-88a5-43d0-a00d-032d6db9fc9b",
+              "name": "msg.messageType",
+              "value": "={{ $json.body.data.messageType }}",
+              "type": "string"
+            },
+            {
+              "id": "ee0344d4-5041-4676-80d4-9c2dba0d0da6",
+              "name": "msg.name",
+              "value": "={{ $json.body.data.pushName }}",
+              "type": "string"
+            },
+            {
+              "id": "a1b2c3d4-1111-2222-3333-444455556666",
+              "name": "msg.dbType",
+              "value": "={{ ({'conversation':'text','extendedTextMessage':'text','imageMessage':'image','videoMessage':'video','audioMessage':'audio','documentMessage':'document','documentWithCaptionMessage':'document','stickerMessage':'image'})[$json.body.data.messageType] || 'text' }}",
+              "type": "string"
+            },
+            {
+              "id": "a1b2c3d4-5555-6666-7777-888899990000",
+              "name": "msg.mimetype",
+              "value": "={{ $json.body.data.message.imageMessage?.mimetype || $json.body.data.message.audioMessage?.mimetype || $json.body.data.message.videoMessage?.mimetype || $json.body.data.message.documentMessage?.mimetype || $json.body.data.message.stickerMessage?.mimetype || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "a1b2c3d4-aaaa-bbbb-cccc-ddddeeeeffff",
+              "name": "msg.fileName",
+              "value": "={{ $json.body.data.message.documentMessage?.fileName || $json.body.data.message.documentMessage?.title || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1792,
+        2032
+      ],
+      "id": "7e294d2d-6a39-4e5c-b678-7572f09d8df9",
+      "name": "normalizacao"
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "msg.base64",
+        "binaryPropertyName": "=imagem",
+        "options": {
+          "fileName": "=media_{{DateTime.now().toFormat('yyyyLLdd_HHmmss')}}.{{ $('normalizacao').item.json.msg.mimetype.split('/').pop().split(';')[0] || 'bin' }}",
+          "mimeType": "={{ $('normalizacao').item.json.msg.mimetype }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        1840
+      ],
+      "id": "a2d4377f-cc41-4362-9a44-e9b70b94734c",
+      "name": "Convert to File1"
+    },
+    {
+      "parameters": {
+        "content": "## Multimidia",
+        "height": 896,
+        "width": 464
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -688,
+        1600
+      ],
+      "typeVersion": 1,
+      "id": "bb05627a-fe75-4707-97b3-1775e942bd60",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "# Imagem \n\n[\n  {\n    \"headers\": {\n      \"host\": \"editor.devnoflow.com.br\",\n      \"user-agent\": \"axios/1.13.2\",\n      \"content-length\": \"22208\",\n      \"accept\": \"application/json, text/plain, */*\",\n      \"accept-encoding\": \"gzip, compress, deflate, br\",\n      \"content-type\": \"application/json\",\n      \"x-forwarded-for\": \"172.18.0.1\",\n      \"x-forwarded-host\": \"editor.devnoflow.com.br\",\n      \"x-forwarded-port\": \"443\",\n      \"x-forwarded-proto\": \"https\",\n      \"x-forwarded-server\": \"2c2c11a7a4ce\",\n      \"x-real-ip\": \"172.18.0.1\"\n    },\n    \"params\": {},\n    \"query\": {},\n    \"body\": {\n      \"event\": \"messages.upsert\",\n      \"instance\": \"vendas\",\n      \"data\": {\n        \"key\": {\n          \"remoteJid\": \"555194408307@s.whatsapp.net\",\n          \"remoteJidAlt\": \"278425835204747@lid\",\n          \"fromMe\": false,\n          \"id\": \"3EB09249717B65370A6EF0\",\n          \"participant\": \"\",\n          \"addressingMode\": \"pn\"\n        },\n        \"pushName\": \"Alisson Rosa\",\n        \"status\": \"DELIVERY_ACK\",\n        \"message\": {\n          \"imageMessage\": {\n            \"interactiveAnnotations\": [],\n            \"scanLengths\": [],\n            \"annotations\": [],\n            \"url\": \"https://mmg.whatsapp.net/o1/v/t24/f2/m232/AQPky8I2v_JLa5z2p3f1kRVw2AvqMp5zc7IkoxN1SlsUsuxcwb3XAiU24Qe0hH9dxewj_lRsIGwC9_oedTUfYXj-KCtBti3Ww3n0Zd8snw?ccb=9-4&oh=01_Q5Aa4AE91CXW_UsgY8xjN2WpOEzzqDlj-NcQBr7avpIPQaBh0A&oe=69E8DD77&_nc_sid=e6ed6c&mms3=true\",\n            \"mimetype\": \"image/jpeg\",\n            \"fileSha256\": {\n              \"0\": 209,\n              \"1\": 195,\n              \"2\": 105,\n              \"3\": 98,\n              \"4\": 12,\n              \"5\": 245,\n              \"6\": 180,\n              \"7\": 179,\n              \"8\": 227,\n              \"9\": 198,\n              \"10\": 144,\n              \"11\": 68,\n              \"12\": 9,\n              \"13\": 145,\n              \"14\": 211,\n              \"15\": 194,\n              \"16\": 43,\n              \"17\": 124,\n              \"18\": 49,\n              \"19\": 41,\n              \"20\": 181,\n              \"21\": 184,\n              \"22\": 96,\n              \"23\": 138,\n              \"24\": 195,\n              \"25\": 129,\n              \"26\": 37,\n              \"27\": 38,\n              \"28\": 55,\n              \"29\": 239,\n              \"30\": 251,\n              \"31\": 215\n            },\n            \"fileLength\": {\n              \"low\": 4553,\n              \"high\": 0,\n              \"unsigned\": true\n            },\n            \"height\": 214,\n            \"width\": 291,\n            \"mediaKey\": {\n              \"0\": 27,\n              \"1\": 32,\n              \"2\": 245,\n              \"3\": 10,\n              \"4\": 22,\n              \"5\": 136,\n              \"6\": 241,\n              \"7\": 166,\n              \"8\": 255,\n              \"9\": 216,\n              \"10\": 51,\n              \"11\": 104,\n              \"12\": 165,\n              \"13\": 69,\n              \"14\": 109,\n              \"15\": 54,\n              \"16\": 215,\n              \"17\": 4,\n              \"18\": 167,\n              \"19\": 224,\n              \"20\": 137,\n              \"21\": 20,\n              \"22\": 67,\n              \"23\": 212,\n              \"24\": 173,\n              \"25\": 81,\n              \"26\": 138,\n              \"27\": 60,\n              \"28\": 98,\n              \"29\": 251,\n              \"30\": 17,\n              \"31\": 70\n            },\n            \"fileEncSha256\": {\n              \"0\": 210,\n              \"1\": 169,\n              \"2\": 223,\n              \"3\": 102,\n              \"4\": 91,\n              \"5\": 90,\n              \"6\": 214,\n              \"7\": 222,\n              \"8\": 22,\n              \"9\": 24,\n              \"10\": 24,\n              \"11\": 178,\n              \"12\": 225,\n              \"13\": 196,\n              \"14\": 7,\n              \"15\": 138,\n              \"16\": 107,\n              \"17\": 227,\n              \"18\": 136,\n              \"19\": 116,\n              \"20\": 191,\n              \"21\": 173,\n              \"22\": 149,\n              \"23\": 73,\n              \"24\": 59,\n              \"25\": 128,\n              \"26\": 13,\n              \"27\": 162,\n              \"28\": 151,\n              \"29\": 139,\n              \"30\": 100,\n              \"31\": 193\n            },\n            \"directPath\": \"/o1/v/t24/f2/m232/AQPky8I2v_JLa5z2p3f1kRVw2AvqMp5zc7IkoxN1SlsUsuxcwb3XAiU24Qe0hH9dxewj_lRsIGwC9_oedTUfYXj-KCtBti3Ww3n0Zd8snw?ccb=9-4&oh=01_Q5Aa4AE91CXW_UsgY8xjN2WpOEzzqDlj-NcQBr7avpIPQaBh0A&oe=69E8DD77&_nc_sid=e6ed6c\",\n            \"mediaKeyTimestamp\": {\n              \"low\": 1774277941,\n              \"high\": 0,\n              \"unsigned\": false\n            },\n            \"jpegThumbnail\": {\n              \"0\": 255,\n              \"1\": 216,\n              \"2\": 255,\n              \"3\": 224,\n              \"4\": 0,\n              \"5\": 16,\n              \"6\": 74,\n              \"7\": 70,\n              \"8\": 73,\n              \"9\": 70,\n              \"10\": 0,\n              \"11\": 1,\n              \"12\": 1,\n              \"13\": 0,\n              \"14\": 0,\n              \"15\": 1,\n              \"16\": 0,\n              \"17\": 1,\n              \"18\": 0,\n              \"19\": 0,\n              \"20\": 255,\n              \"21\": 226,\n              \"22\": 1,\n              \"23\": 216,\n              \"24\": 73,\n              \"25\": 67,\n              \"26\": 67,\n              \"27\": 95,\n              \"28\": 80,\n              \"29\": 82,\n              \"30\": 79,\n              \"31\": 70,\n              \"32\": 73,\n              \"33\": 76,\n              \"34\": 69,\n              \"35\": 0,\n              \"36\": 1,\n              \"37\": 1,\n              \"38\": 0,\n              \"39\": 0,\n              \"40\": 1,\n              \"41\": 200,\n              \"42\": 0,\n              \"43\": 0,\n              \"44\": 0,\n              \"45\": 0,\n              \"46\": 4,\n              \"47\": 48,\n              \"48\": 0,\n              \"49\": 0,\n              \"50\": 109,\n              \"51\": 110,\n              \"52\": 116,\n              \"53\": 114,\n              \"54\": 82,\n              \"55\": 71,\n              \"56\": 66,\n              \"57\": 32,\n              \"58\": 88,\n              \"59\": 89,\n              \"60\": 90,\n              \"61\": 32,\n              \"62\": 7,\n              \"63\": 224,\n              \"64\": 0,\n              \"65\": 1,\n              \"66\": 0,\n              \"67\": 1,\n              \"68\": 0,\n              \"69\": 0,\n              \"70\": 0,\n              \"71\": 0,\n              \"72\": 0,\n              \"73\": 0,\n              \"74\": 97,\n              \"75\": 99,\n              \"76\": 115,\n              \"77\": 112,\n              \"78\": 0,\n              \"79\": 0,\n              \"80\": 0,\n              \"81\": 0,\n              \"82\": 0,\n              \"83\": 0,\n              \"84\": 0,\n              \"85\": 0,\n              \"86\": 0,\n              \"87\": 0,\n              \"88\": 0,\n              \"89\": 0,\n              \"90\": 0,\n              \"91\": 0,\n              \"92\": 0,\n              \"93\": 0,\n              \"94\": 0,\n              \"95\": 0,\n              \"96\": 0,\n              \"97\": 0,\n              \"98\": 0,\n              \"99\": 0,\n              \"100\": 0,\n              \"101\": 0,\n              \"102\": 0,\n              \"103\": 0,\n              \"104\": 0,\n              \"105\": 1,\n              \"106\": 0,\n              \"107\": 0,\n              \"108\": 246,\n              \"109\": 214,\n              \"110\": 0,\n              \"111\": 1,\n              \"112\": 0,\n              \"113\": 0,\n              \"114\": 0,\n              \"115\": 0,\n              \"116\": 211,\n              \"117\": 45,\n              \"118\": 0,\n              \"119\": 0,\n              \"120\": 0,\n              \"121\": 0,\n              \"122\": 0,\n              \"123\": 0,\n              \"124\": 0,\n              \"125\": 0,\n              \"126\": 0,\n              \"127\": 0,\n              \"128\": 0,\n              \"129\": 0,\n              \"130\": 0,\n              \"131\": 0,\n              \"132\": 0,\n              \"133\": 0,\n              \"134\": 0,\n              \"135\": 0,\n              \"136\": 0,\n              \"137\": 0,\n              \"138\": 0,\n              \"139\": 0,\n              \"140\": 0,\n              \"141\": 0,\n              \"142\": 0,\n              \"143\": 0,\n              \"144\": 0,\n              \"145\": 0,\n              \"146\": 0,\n              \"147\": 0,\n              \"148\": 0,\n              \"149\": 0,\n              \"150\": 0,\n              \"151\": 0,\n              \"152\": 0,\n              \"153\": 0,\n              \"154\": 0,\n              \"155\": 0,\n              \"156\": 0,\n              \"157\": 0,\n              \"158\": 0,\n              \"159\": 0,\n              \"160\": 0,\n              \"161\": 0,\n              \"162\": 0,\n              \"163\": 0,\n              \"164\": 0,\n              \"165\": 0,\n              \"166\": 0,\n              \"167\": 0,\n              \"168\": 0,\n              \"169\": 9,\n              \"170\": 100,\n              \"171\": 101,\n              \"172\": 115,\n              \"173\": 99,\n              \"174\": 0,\n              \"175\": 0,\n              \"176\": 0,\n              \"177\": 240,\n              \"178\": 0,\n              \"179\": 0,\n              \"180\": 0,\n              \"181\": 36,\n              \"182\": 114,\n              \"183\": 88,\n              \"184\": 89,\n              \"185\": 90,\n              \"186\": 0,\n              \"187\": 0,\n              \"188\": 1,\n              \"189\": 20,\n              \"190\": 0,\n              \"191\": 0,\n              \"192\": 0,\n              \"193\": 20,\n              \"194\": 103,\n              \"195\": 88,\n              \"196\": 89,\n              \"197\": 90,\n              \"198\": 0,\n              \"199\": 0,\n              \"200\": 1,\n              \"201\": 40,\n              \"202\": 0,\n              \"203\": 0,\n              \"204\": 0,\n              \"205\": 20,\n              \"206\": 98,\n              \"207\": 88,\n              \"208\": 89,\n              \"209\": 90,\n              \"210\": 0,\n              \"211\": 0,\n              \"212\": 1,\n              \"213\": 60,\n              \"214\": 0,\n              \"215\": 0,\n              \"216\": 0,\n              \"217\": 20,\n              \"218\": 119,\n              \"219\": 116,\n              \"220\": 112,\n              \"221\": 116,\n              \"222\": 0,\n              \"223\": 0,\n              \"224\": 1,\n              \"225\": 80,\n              \"226\": 0,\n              \"227\": 0,\n              \"228\": 0,\n              \"229\": 20,\n              \"230\": 114,\n              \"231\": 84,\n              \"232\": 82,\n              \"233\": 67,\n              \"234\": 0,\n              \"235\": 0,\n              \"236\": 1,\n              \"237\": 100,\n              \"238\": 0,\n              \"239\": 0,\n              \"240\": 0,\n              \"241\": 40,\n              \"242\": 103,\n              \"243\": 84,\n              \"244\": 82,\n              \"245\": 67,\n              \"246\": 0,\n              \"247\": 0,\n              \"248\": 1,\n              \"249\": 100,\n              \"250\": 0,\n              \"251\": 0,\n              \"252\": 0,\n              \"253\": 40,\n              \"254\": 98,\n              \"255\": 84,\n              \"256\": 82,\n              \"257\": 67,\n              \"258\": 0,\n              \"259\": 0,\n              \"260\": 1,\n              \"261\": 100,\n              \"262\": 0,\n              \"263\": 0,\n              \"264\": 0,\n              \"265\": 40,\n              \"266\": 99,\n              \"267\": 112,\n              \"268\": 114,\n              \"269\": 116,\n              \"270\": 0,\n              \"271\": 0,\n              \"272\": 1,\n              \"273\": 140,\n              \"274\": 0,\n              \"275\": 0,\n              \"276\": 0,\n              \"277\": 60,\n              \"278\": 109,\n              \"279\": 108,\n              \"280\": 117,\n              \"281\": 99,\n              \"282\": 0,\n              \"283\": 0,\n              \"284\": 0,\n              \"285\": 0,\n              \"286\": 0,\n              \"287\": 0,\n              \"288\": 0,\n              \"289\": 1,\n              \"290\": 0,\n              \"291\": 0,\n              \"292\": 0,\n              \"293\": 12,\n              \"294\": 101,\n              \"295\": 110,\n              \"296\": 85,\n              \"297\": 83,\n              \"298\": 0,\n              \"299\": 0,\n              \"300\": 0,\n              \"301\": 8,\n              \"302\": 0,\n              \"303\": 0,\n              \"304\": 0,\n              \"305\": 28,\n              \"306\": 0,\n              \"307\": 115,\n              \"308\": 0,\n              \"309\": 82,\n              \"310\": 0,\n              \"311\": 71,\n              \"312\": 0,\n              \"313\": 66,\n              \"314\": 88,\n              \"315\": 89,\n              \"316\": 90,\n              \"317\": 32,\n              \"318\": 0,\n              \"319\": 0,\n              \"320\": 0,\n              \"321\": 0,\n              \"322\": 0,\n              \"323\": 0,\n              \"324\": 111,\n              \"325\": 162,\n              \"326\": 0,\n              \"327\": 0,\n              \"328\": 56,\n              \"329\": 245,\n              \"330\": 0,\n              \"331\": 0,\n              \"332\": 3,\n              \"333\": 144,\n              \"334\": 88,\n              \"335\": 89,\n              \"336\": 90,\n              \"337\": 32,\n              \"338\": 0,\n              \"339\": 0,\n              \"340\": 0,\n              \"341\": 0,\n              \"342\": 0,\n              \"343\": 0,\n              \"344\": 98,\n              \"345\": 153,\n              \"346\": 0,\n              \"347\": 0,\n              \"348\": 183,\n              \"349\": 133,\n              \"350\": 0,\n              \"351\": 0,\n              \"352\": 24,\n              \"353\": 218,\n              \"354\": 88,\n              \"355\": 89,\n              \"356\": 90,\n              \"357\": 32,\n              \"358\": 0,\n              \"359\": 0,\n              \"360\": 0,\n              \"361\": 0,\n              \"362\": 0,\n              \"363\": 0,\n              \"364\": 36,\n              \"365\": 160,\n              \"366\": 0,\n              \"367\": 0,\n              \"368\": 15,\n              \"369\": 132,\n              \"370\": 0,\n              \"371\": 0,\n              \"372\": 182,\n              \"373\": 207,\n              \"374\": 88,\n              \"375\": 89,\n              \"376\": 90,\n              \"377\": 32,\n              \"378\": 0,\n              \"379\": 0,\n              \"380\": 0,\n              \"381\": 0,\n              \"382\": 0,\n              \"383\": 0,\n              \"384\": 246,\n              \"385\": 214,\n              \"386\": 0,\n              \"387\": 1,\n              \"388\": 0,\n              \"389\": 0,\n              \"390\": 0,\n              \"391\": 0,\n              \"392\": 211,\n              \"393\": 45,\n              \"394\": 112,\n              \"395\": 97,\n              \"396\": 114,\n              \"397\": 97,\n              \"398\": 0,\n              \"399\": 0,\n              \"400\": 0,\n              \"401\": 0,\n              \"402\": 0,\n              \"403\": 4,\n              \"404\": 0,\n              \"405\": 0,\n              \"406\": 0,\n              \"407\": 2,\n              \"408\": 102,\n              \"409\": 102,\n              \"410\": 0,\n              \"411\": 0,\n              \"412\": 242,\n              \"413\": 167,\n              \"414\": 0,\n              \"415\": 0,\n              \"416\": 13,\n              \"417\": 89,\n              \"418\": 0,\n              \"419\": 0,\n              \"420\": 19,\n              \"421\": 208,\n              \"422\": 0,\n              \"423\": 0,\n              \"424\": 10,\n              \"425\": 91,\n              \"426\": 0,\n              \"427\": 0,\n              \"428\": 0,\n              \"429\": 0,\n              \"430\": 0,\n              \"431\": 0,\n              \"432\": 0,\n              \"433\": 0,\n              \"434\": 109,\n              \"435\": 108,\n              \"436\": 117,\n              \"437\": 99,\n              \"438\": 0,\n              \"439\": 0,\n              \"440\": 0,\n              \"441\": 0,\n              \"442\": 0,\n              \"443\": 0,\n              \"444\": 0,\n              \"445\": 1,\n              \"446\": 0,\n              \"447\": 0,\n              \"448\": 0,\n              \"449\": 12,\n              \"450\": 101,\n              \"451\": 110,\n              \"452\": 85,\n              \"453\": 83,\n              \"454\": 0,\n              \"455\": 0,\n              \"456\": 0,\n              \"457\": 32,\n              \"458\": 0,\n              \"459\": 0,\n              \"460\": 0,\n              \"461\": 28,\n              \"462\": 0,\n              \"463\": 71,\n              \"464\": 0,\n              \"465\": 111,\n              \"466\": 0,\n              \"467\": 111,\n              \"468\": 0,\n              \"469\": 103,\n              \"470\": 0,\n              \"471\": 108,\n              \"472\": 0,\n              \"473\": 101,\n              \"474\": 0,\n              \"475\": 32,\n              \"476\": 0,\n              \"477\": 73,\n              \"478\": 0,\n              \"479\": 110,\n              \"480\": 0,\n              \"481\": 99,\n              \"482\": 0,\n              \"483\": 46,\n              \"484\": 0,\n              \"485\": 32,\n              \"486\": 0,\n              \"487\": 50,\n              \"488\": 0,\n              \"489\": 48,\n              \"490\": 0,\n              \"491\": 49,\n              \"492\": 0,\n              \"493\": 54,\n              \"494\": 255,\n              \"495\": 219,\n              \"496\": 0,\n              \"497\": 67,\n              \"498\": 0,\n              \"499\": 3,\n              \"500\": 2,\n              \"501\": 2,\n              \"502\": 2,\n              \"503\": 2,\n              \"504\": 2,\n              \"505\": 3,\n              \"506\": 2,\n              \"507\": 2,\n              \"508\": 2,\n              \"509\": 3,\n              \"510\": 3,\n              \"511\": 3,\n              \"512\": 3,\n              \"513\": 4,\n              \"514\": 6,\n              \"515\": 4,\n              \"516\": 4,\n              \"517\": 4,\n              \"518\": 4,\n              \"519\": 4,\n              \"520\": 8,\n              \"521\": 6,\n              \"522\": 6,\n              \"523\": 5,\n              \"524\": 6,\n              \"525\": 9,\n              \"526\": 8,\n              \"527\": 10,\n              \"528\": 10,\n              \"529\": 9,\n              \"530\": 8,\n              \"531\": 9,\n              \"532\": 9,\n              \"533\": 10,\n              \"534\": 12,\n              \"535\": 15,\n              \"536\": 12,\n              \"537\": 10,\n              \"538\": 11,\n              \"539\": 14,\n              \"540\": 11,\n              \"541\": 9,\n              \"542\": 9,\n              \"543\": 13,\n              \"544\": 17,\n              \"545\": 13,\n              \"546\": 14,\n              \"547\": 15,\n              \"548\": 16,\n              \"549\": 16,\n              \"550\": 17,\n              \"551\": 16,\n              \"552\": 10,\n              \"553\": 12,\n              \"554\": 18,\n              \"555\": 19,\n              \"556\": 18,\n              \"557\": 16,\n              \"558\": 19,\n              \"559\": 15,\n              \"560\": 16,\n              \"561\": 16,\n              \"562\": 16,\n              \"563\": 255,\n              \"564\": 219,\n              \"565\": 0,\n              \"566\": 67,\n              \"567\": 1,\n              \"568\": 3,\n              \"569\": 3,\n              \"570\": 3,\n              \"571\": 4,\n              \"572\": 3,\n              \"573\": 4,\n              \"574\": 8,\n              \"575\": 4,\n              \"576\": 4,\n              \"577\": 8,\n              \"578\": 16,\n              \"579\": 11,\n              \"580\": 9,\n              \"581\": 11,\n              \"582\": 16,\n              \"583\": 16,\n              \"584\": 16,\n              \"585\": 16,\n              \"586\": 16,\n              \"587\": 16,\n              \"588\": 16,\n              \"589\": 16,\n              \"590\": 16,\n              \"591\": 16,\n              \"592\": 16,\n              \"593\": 16,\n              \"594\": 16,\n              \"595\": 16,\n              \"596\": 16,\n              \"597\": 16,\n              \"598\": 16,\n              \"599\": 16,\n              \"600\": 16,\n              \"601\": 16,\n              \"602\": 16,\n              \"603\": 16,\n              \"604\": 16,\n              \"605\": 16,\n              \"606\": 16,\n              \"607\": 16,\n              \"608\": 16,\n              \"609\": 16,\n              \"610\": 16,\n              \"611\": 16,\n              \"612\": 16,\n              \"613\": 16,\n              \"614\": 16,\n              \"615\": 16,\n              \"616\": 16,\n              \"617\": 16,\n              \"618\": 16,\n              \"619\": 16,\n              \"620\": 16,\n              \"621\": 16,\n              \"622\": 16,\n              \"623\": 16,\n              \"624\": 16,\n              \"625\": 16,\n              \"626\": 16,\n              \"627\": 16,\n              \"628\": 16,\n              \"629\": 16,\n              \"630\": 16,\n              \"631\": 16,\n              \"632\": 255,\n              \"633\": 192,\n              \"634\": 0,\n              \"635\": 17,\n              \"636\": 8,\n              \"637\": 0,\n              \"638\": 73,\n              \"639\": 0,\n              \"640\": 100,\n              \"641\": 3,\n              \"642\": 1,\n              \"643\": 34,\n              \"644\": 0,\n              \"645\": 2,\n              \"646\": 17,\n              \"647\": 1,\n              \"648\": 3,\n              \"649\": 17,\n              \"650\": 1,\n              \"651\": 255,\n              \"652\": 196,\n              \"653\": 0,\n              \"654\": 25,\n              \"655\": 0,\n              \"656\": 1,\n              \"657\": 1,\n              \"658\": 1,\n              \"659\": 1,\n              \"660\": 1,\n              \"661\": 1,\n              \"662\": 0,\n              \"663\": 0,\n              \"664\": 0,\n              \"665\": 0,\n              \"666\": 0,\n              \"667\": 0,\n              \"668\": 0,\n              \"669\": 0,\n              \"670\": 0,\n              \"671\": 0,\n              \"672\": 0,\n              \"673\": 1,\n              \"674\": 4,\n              \"675\": 5,\n              \"676\": 6,\n              \"677\": 8,\n              \"678\": 255,\n              \"679\": 196,\n              \"680\": 0,\n              \"681\": 46,\n              \"682\": 16,\n              \"683\": 0,\n              \"684\": 2,\n              \"685\": 1,\n              \"686\": 3,\n              \"687\": 2,\n              \"688\": 4,\n              \"689\": 5,\n              \"690\": 3,\n              \"691\": 4,\n              \"692\": 3,\n              \"693\": 0,\n              \"694\": 0,\n              \"695\": 0,\n              \"696\": 0,\n              \"697\": 0,\n              \"698\": 0,\n              \"699\": 1,\n              \"700\": 17,\n              \"701\": 0,\n              \"702\": 2,\n              \"703\": 33,\n              \"704\": 49,\n              \"705\": 18,\n              \"706\": 65,\n              \"707\": 3,\n              \"708\": 5,\n              \"709\": 34,\n              \"710\": 81,\n              \"711\": 4,\n              \"712\": 20,\n              \"713\": 97,\n              \"714\": 129,\n              \"715\": 145,\n              \"716\": 113,\n              \"717\": 161,\n              \"718\": 178,\n              \"719\": 50,\n              \"720\": 52,\n              \"721\": 82,\n              \"722\": 193,\n              \"723\": 98,\n              \"724\": 225,\n              \"725\": 240,\n              \"726\": 255,\n              \"727\": 196,\n              \"728\": 0,\n              \"729\": 25,\n              \"730\": 1,\n              \"731\": 1,\n              \"732\": 0,\n              \"733\": 3,\n              \"734\": 1,\n              \"735\": 1,\n              \"736\": 0,\n              \"737\": 0,\n              \"738\": 0,\n              \"739\": 0,\n              \"740\": 0,\n              \"741\": 0,\n              \"742\": 0,\n              \"743\": 0,\n              \"744\": 0,\n              \"745\": 0,\n              \"746\": 0,\n              \"747\": 0,\n              \"748\": 4,\n              \"749\": 5,\n              \"750\": 6,\n              \"751\": 3,\n              \"752\": 2,\n              \"753\": 255,\n              \"754\": 196,\n              \"755\": 0,\n              \"756\": 30,\n              \"757\": 17,\n              \"758\": 1,\n              \"759\": 0,\n              \"760\": 1,\n              \"761\": 4,\n              \"762\": 3,\n              \"763\": 1,\n              \"764\": 1,\n              \"765\": 0,\n              \"766\": 0,\n              \"767\": 0,\n              \"768\": 0,\n              \"769\": 0,\n              \"770\": 0,\n              \"771\": 0,\n              \"772\": 0,\n              \"773\": 0,\n              \"774\": 0,\n              \"775\": 1,\n              \"776\": 2,\n              \"777\": 3,\n              \"778\": 4,\n              \"779\": 50,\n              \"780\": 52,\n              \"781\": 113,\n              \"782\": 177,\n              \"783\": 17,\n              \"784\": 18,\n              \"785\": 255,\n              \"786\": 218,\n              \"787\": 0,\n              \"788\": 12,\n              \"789\": 3,\n              \"790\": 1,\n              \"791\": 0,\n              \"792\": 2,\n              \"793\": 17,\n              \"794\": 3,\n              \"795\": 17,\n              \"796\": 0,\n              \"797\": 63,\n              \"798\": 0,\n              \"799\": 248,\n              \"800\": 95,\n              \"801\": 197,\n              \"802\": 113,\n              \"803\": 184,\n              \"804\": 117,\n              \"805\": 105,\n              \"806\": 240,\n              \"807\": 254,\n              \"808\": 28,\n              \"809\": 212,\n              \"810\": 120,\n              \"811\": 28,\n              \"812\": 22,\n              \"813\": 40,\n              \"814\": 53,\n              \"815\": 102,\n              \"816\": 178,\n              \"817\": 115,\n              \"818\": 89,\n              \"819\": 27,\n              \"820\": 18,\n              \"821\": 135,\n              \"822\": 208,\n              \"823\": 0,\n              \"824\": 46,\n              \"825\": 156,\n              \"826\": 207,\n              \"827\": 17,\n              \"828\": 48,\n              \"829\": 213,\n              \"830\": 79,\n              \"831\": 234,\n              \"832\": 126,\n              \"833\": 174,\n              \"834\": 34,\n              \"835\": 62,\n              \"836\": 17,\n              \"837\": 17,\n              \"838\": 60,\n              \"839\": 142,\n              \"840\": 23,\n              \"841\": 53,\n              \"842\": 253,\n              \"843\": 247,\n              \"844\": 20,\n              \"845\": 233,\n              \"846\": 254,\n              \"847\": 23,\n              \"848\": 237,\n              \"849\": 208,\n              \"850\": 38,\n              \"851\": 66,\n              \"852\": 24,\n              \"853\": 3,\n              \"854\": 74,\n              \"855\": 127,\n              \"856\": 121,\n              \"857\": 179,\n              \"858\": 154,\n              \"859\": 129,\n              \"860\": 231,\n              \"861\": 184,\n              \"862\": 167,\n              \"863\": 80,\n              \"864\": 99,\n              \"865\": 69,\n              \"866\": 183,\n              \"867\": 61,\n              \"868\": 34,\n              \"869\": 100,\n              \"870\": 88,\n              \"871\": 184,\n              \"872\": 191,\n              \"873\": 218,\n              \"874\": 108,\n              \"875\": 176,\n              \"876\": 248,\n              \"877\": 244,\n              \"878\": 117,\n              \"879\": 30,\n              \"880\": 42,\n              \"881\": 238,\n              \"882\": 239,\n              \"883\": 40,\n              \"884\": 3,\n              \"885\": 4,\n              \"886\": 233,\n              \"887\": 104,\n              \"888\": 124,\n              \"889\": 65,\n              \"890\": 197,\n              \"891\": 229,\n              \"892\": 1,\n              \"893\": 130,\n              \"894\": 117,\n              \"895\": 0,\n              \"896\": 182,\n              \"897\": 239,\n              \"898\": 121,\n              \"899\": 54,\n              \"900\": 146,\n              \"901\": 92,\n              \"902\": 192,\n              \"903\": 14,\n              \"904\": 17,\n              \"905\": 42,\n              \"906\": 61,\n              \"907\": 111,\n              \"908\": 0,\n              \"909\": 50,\n              \"910\": 152,\n              \"911\": 25,\n              \"912\": 188,\n              \"913\": 64,\n              \"914\": 17,\n              \"915\": 232,\n              \"916\": 67,\n              \"917\": 31,\n              \"918\": 212,\n              \"919\": 45,\n              \"920\": 224,\n              \"921\": 132,\n              \"922\": 80,\n              \"923\": 32,\n              \"924\": 226,\n              \"925\": 241,\n              \"926\": 182,\n              \"927\": 96,\n              \"928\": 83,\n              \"929\": 129,\n              \"930\": 210,\n              \"931\": 173,\n              \"932\": 111,\n              \"933\": 88,\n              \"934\": 130,\n              \"935\": 16,\n              \"936\": 7,\n              \"937\": 80,\n              \"938\": 44,\n              \"939\": 52,\n              \"940\": 54,\n              \"941\": 136,\n              \"942\": 30,\n              \"943\": 158,\n              \"944\": 34,\n              \"945\": 38,\n              \"946\": 17,\n              \"947\": 112,\n              \"948\": 68,\n              \"949\": 68,\n              \"950\": 14,\n              \"951\": 23,\n              \"952\": 53,\n              \"953\": 94,\n              \"954\": 127,\n              \"955\": 139,\n              \"956\": 244,\n              \"957\": 163,\n              \"958\": 241,\n              \"959\": 19,\n              \"960\": 36,\n              \"961\": 217,\n              \"962\": 205,\n              \"963\": 77,\n              \"964\": 67,\n              \"965\": 198,\n              \"966\": 241,\n              \"967\": 105,\n              \"968\": 21,\n              \"969\": 116,\n              \"970\": 147,\n              \"971\": 67,\n              \"972\": 15,\n              \"973\": 39,\n              \"974\": 64,\n              \"975\": 219,\n              \"976\": 230,\n              \"977\": 99,\n              \"978\": 212,\n              \"979\": 109,\n              \"980\": 115,\n              \"981\": 108,\n              \"982\": 95,\n              \"983\": 19,\n              \"984\": 101,\n              \"985\": 135,\n              \"986\": 199,\n              \"987\": 163,\n              \"988\": 168,\n              \"989\": 241,\n              \"990\": 87,\n              \"991\": 119,\n              \"992\": 121,\n              \"993\": 54,\n              \"994\": 81,\n              \"995\": 2,\n              \"996\": 170,\n              \"997\": 145,\n              \"998\": 85,\n              \"999\": 33,\n              \"1000\": 80,\n              \"1001\": 184,\n              \"1002\": 105,\n              \"1003\": 134,\n              \"1004\": 62,\n              \"1005\": 110,\n              \"1006\": 190,\n              \"1007\": 32,\n              \"1008\": 146,\n              \"1009\": 147,\n              \"1010\": 176,\n              \"1011\": 146,\n              \"1012\": 92,\n              \"1013\": 209,\n              \"1014\": 90,\n              \"1015\": 251,\n              \"1016\": 75,\n              \"1017\": 190,\n              \"1018\": 99,\n              \"1019\": 81,\n              \"1020\": 100,\n              \"1021\": 234,\n              \"1022\": 185,\n              \"1023\": 108,\n              \"1024\": 188,\n              \"1025\": 247,\n              \"1026\": 134,\n              \"1027\": 112,\n              \"1028\": 237,\n              \"1029\": 218,\n              \"1030\": 0,\n              \"1031\": 163,\n              \"1032\": 104,\n              \"1033\": 130,\n              \"1034\": 106,\n              \"1035\": 96,\n              \"1036\": 154,\n              \"1037\": 153,\n              \"1038\": 176,\n              \"1039\": 111,\n              \"1040\": 101,\n              \"1041\": 104,\n              \"1042\": 103,\n              \"1043\": 14,\n              \"1044\": 221,\n              \"1045\": 160,\n              \"1046\": 45,\n              \"1047\": 176,\n              \"1048\": 137,\n              \"1049\": 73,\n              \"1050\": 168,\n              \"1051\": 138,\n              \"1052\": 69,\n              \"1053\": 85,\n              \"1054\": 52,\n              \"1055\": 16,\n              \"1056\": 187,\n              \"1057\": 87,\n              \"1058\": 196,\n              \"1059\": 64,\n              \"1060\": 244,\n              \"1061\": 241,\n              \"1062\": 17,\n              \"1063\": 48,\n              \"1064\": 139,\n              \"1065\": 130,\n              \"1066\": 34,\n              \"1067\": 32,\n              \"1068\": 112,\n              \"1069\": 249,\n              \"1070\": 170,\n              \"1071\": 243,\n              \"1072\": 220,\n              \"1073\": 91,\n              \"1074\": 23,\n              \"1075\": 209,\n              \"1076\": 119,\n              \"1077\": 254,\n              \"1078\": 34,\n              \"1079\": 99,\n              \"1080\": 181,\n              \"1081\": 186,\n              \"1082\": 79,\n              \"1083\": 173,\n              \"1084\": 243,\n              \"1085\": 54,\n              \"1086\": 115,\n              \"1087\": 87,\n              \"1088\": 231,\n              \"1089\": 120,\n              \"1090\": 184,\n              \"1091\": 93,\n              \"1092\": 29,\n              \"1093\": 159,\n              \"1094\": 233,\n              \"1095\": 19,\n              \"1096\": 34,\n              \"1097\": 40,\n              \"1098\": 99,\n              \"1099\": 210,\n              \"1100\": 108,\n              \"1101\": 176,\n              \"1102\": 248,\n              \"1103\": 244,\n              \"1104\": 117,\n              \"1105\": 30,\n              \"1106\": 42,\n              \"1107\": 238,\n              \"1108\": 239,\n              \"1109\": 40,\n              \"1110\": 18,\n              \"1111\": 44,\n              \"1112\": 23,\n              \"1113\": 178,\n              \"1114\": 56,\n              \"1115\": 255,\n              \"1116\": 0,\n              \"1117\": 132,\n              \"1118\": 125,\n              \"1119\": 5,\n              \"1120\": 224,\n              \"1121\": 61,\n              \"1122\": 37,\n              \"1123\": 16,\n              \"1124\": 149,\n              \"1125\": 218,\n              \"1126\": 238,\n              \"1127\": 49,\n              \"1128\": 30,\n              \"1129\": 242,\n              \"1130\": 75,\n              \"1131\": 153,\n              \"1132\": 107,\n              \"1133\": 218,\n              \"1134\": 219,\n              \"1135\": 7,\n              \"1136\": 30,\n              \"1137\": 208,\n              \"1138\": 47,\n              \"1139\": 130,\n              \"1140\": 55,\n              \"1141\": 135,\n              \"1142\": 124,\n              \"1143\": 192,\n              \"1144\": 90,\n              \"1145\": 202,\n              \"1146\": 155,\n              \"1147\": 90,\n              \"1148\": 206,\n              \"1149\": 61,\n              \"1150\": 189,\n              \"1151\": 226,\n              \"1152\": 171,\n              \"1153\": 100,\n              \"1154\": 140,\n              \"1155\": 8,\n              \"1156\": 247,\n              \"1157\": 128,\n              \"1158\": 178,\n              \"1159\": 8,\n              \"1160\": 35,\n              \"1161\": 189,\n              \"1162\": 243,\n              \"1163\": 18,\n              \"1164\": 150,\n              \"1165\": 131,\n              \"1166\": 73,\n              \"1167\": 91,\n              \"1168\": 29,\n              \"1169\": 226,\n              \"1170\": 7,\n              \"1171\": 167,\n              \"1172\": 136,\n              \"1173\": 137,\n              \"1174\": 132,\n              \"1175\": 92,\n              \"1176\": 17,\n              \"1177\": 17,\n              \"1178\": 3,\n              \"1179\": 135,\n              \"1180\": 205,\n              \"1181\": 116,\n              \"1182\": 249,\n              \"1183\": 222,\n              \"1184\": 41,\n              \"1185\": 36,\n              \"1186\": 234,\n              \"1187\": 232,\n              \"1188\": 65,\n              \"1189\": 89,\n              \"1190\": 105,\n              \"1191\": 14,\n              \"1192\": 255,\n              \"1193\": 0,\n              \"1194\": 19,\n              \"1195\": 39,\n              \"1196\": 77,\n              \"1197\": 174,\n              \"1198\": 125,\n              \"1199\": 109,\n              \"1200\": 53,\n              \"1201\": 243,\n              \"1202\": 81,\n              \"1203\": 87,\n              \"1204\": 157,\n              \"1205\": 227,\n              \"1206\": 84,\n              \"1207\": 5,\n              \"1208\": 134,\n              \"1209\": 128,\n              \"1210\": 74,\n              \"1211\": 193,\n              \"1212\": 210,\n              \"1213\": 63,\n              \"1214\": 220,\n              \"1215\": 198,\n              \"1216\": 137,\n              \"1217\": 9,\n              \"1218\": 27,\n              \"1219\": 226,\n              \"1220\": 108,\n              \"1221\": 176,\n              \"1222\": 248,\n              \"1223\": 244,\n              \"1224\": 117,\n              \"1225\": 30,\n              \"1226\": 42,\n              \"1227\": 238,\n              \"1228\": 239,\n              \"1229\": 32,\n              \"1230\": 210,\n              \"1231\": 139,\n              \"1232\": 109,\n              \"1233\": 116,\n              \"1234\": 133,\n              \"1235\": 146,\n              \"1236\": 198,\n              \"1237\": 123,\n              \"1238\": 89,\n              \"1239\": 197,\n              \"1240\": 189,\n              \"1241\": 229,\n              \"1242\": 2,\n              \"1243\": 165,\n              \"1244\": 81,\n              \"1245\": 1,\n              \"1246\": 129,\n              \"1247\": 146,\n              \"1248\": 177,\n              \"1249\": 121,\n              \"1250\": 17,\n              \"1251\": 206,\n              \"1252\": 210,\n              \"1253\": 75,\n              \"1254\": 154,\n              \"1255\": 244,\n              \"1256\": 146,\n              \"1257\": 89,\n              \"1258\": 42,\n              \"1259\": 234,\n              \"1260\": 223,\n              \"1261\": 18,\n              \"1262\": 64,\n              \"1263\": 166,\n              \"1264\": 161,\n              \"1265\": 210,\n              \"1266\": 1,\n              \"1267\": 99,\n              \"1268\": 54,\n              \"1269\": 237,\n              \"1270\": 8,\n              \"1271\": 254,\n              \"1272\": 171,\n              \"1273\": 172,\n              \"1274\": 64,\n              \"1275\": 165,\n              \"1276\": 52,\n              \"1277\": 9,\n              \"1278\": 86,\n              \"1279\": 118,\n              \"1280\": 249,\n              \"1281\": 146,\n              \"1282\": 203,\n              \"1283\": 214,\n              \"1284\": 42,\n              \"1285\": 166,\n              \"1286\": 162,\n              \"1287\": 116,\n              \"1288\": 144,\n              \"1289\": 65,\n              \"1290\": 56,\n              \"1291\": 183,\n              \"1292\": 113,\n              \"1293\": 104,\n              \"1294\": 71,\n              \"1295\": 59,\n              \"1296\": 64,\n              \"1297\": 164,\n              \"1298\": 82,\n              \"1299\": 129,\n              \"1300\": 4,\n              \"1301\": 178,\n              \"1302\": 47,\n              \"1303\": 108,\n              \"1304\": 31,\n              \"1305\": 238,\n              \"1306\": 202,\n              \"1307\": 32,\n              \"1308\": 138,\n              \"1309\": 128,\n              \"1310\": 164,\n              \"1311\": 213,\n              \"1312\": 74,\n              \"1313\": 4,\n              \"1314\": 48,\n              \"1315\": 82,\n              \"1316\": 97,\n              \"1317\": 196,\n              \"1318\": 15,\n              \"1319\": 79,\n              \"1320\": 17,\n              \"1321\": 19,\n              \"1322\": 8,\n              \"1323\": 184,\n              \"1324\": 34,\n              \"1325\": 34,\n              \"1326\": 7,\n              \"1327\": 11,\n              \"1328\": 155,\n              \"1329\": 47,\n              \"1330\": 63,\n              \"1331\": 196,\n              \"1332\": 182,\n              \"1333\": 212,\n              \"1334\": 126,\n              \"1335\": 34,\n              \"1336\": 100,\n              \"1337\": 54,\n              \"1338\": 19,\n              \"1339\": 95,\n              \"1340\": 53,\n              \"1341\": 253,\n              \"1342\": 255,\n              \"1343\": 0,\n              \"1344\": 23,\n              \"1345\": 233,\n              \"1346\": 79,\n              \"1347\": 226,\n              \"1348\": 38,\n              \"1349\": 73,\n              \"1350\": 178,\n              \"1351\": 195,\n              \"1352\": 227,\n              \"1353\": 209,\n              \"1354\": 212,\n              \"1355\": 120,\n              \"1356\": 170,\n              \"1357\": 187,\n              \"1358\": 188,\n              \"1359\": 145,\n              \"1360\": 237,\n              \"1361\": 17,\n              \"1362\": 36,\n              \"1363\": 188,\n              \"1364\": 37,\n              \"1365\": 144,\n              \"1366\": 180,\n              \"1367\": 111,\n              \"1368\": 137,\n              \"1369\": 98,\n              \"1370\": 4,\n              \"1371\": 32,\n              \"1372\": 35,\n              \"1373\": 102,\n              \"1374\": 35,\n              \"1375\": 124,\n              \"1376\": 75,\n              \"1377\": 16,\n              \"1378\": 32,\n              \"1379\": 91,\n              \"1380\": 15,\n              \"1381\": 180,\n              \"1382\": 75,\n              \"1383\": 16,\n              \"1384\": 63,\n              \"1385\": 255,\n              \"1386\": 217\n            },\n            \"contextInfo\": {\n              \"mentionedJid\": [],\n              \"groupMentions\": [],\n              \"statusAttributions\": [],\n              \"ephemeralSettingTimestamp\": {\n                \"low\": 1774101619,\n                \"high\": 0,\n                \"unsigned\": false\n              },\n              \"disappearingMode\": {\n                \"initiator\": 0\n              }\n            },\n            \"viewOnce\": false\n          },\n          \"messageContextInfo\": {\n            \"threadId\": [],\n            \"deviceListMetadata\": {\n              \"senderKeyIndexes\": [],\n              \"recipientKeyIndexes\": [],\n              \"senderKeyHash\": {\n                \"0\": 13,\n                \"1\": 49,\n                \"2\": 25,\n                \"3\": 113,\n                \"4\": 96,\n                \"5\": 117,\n                \"6\": 85,\n                \"7\": 248,\n                \"8\": 170,\n                \"9\": 52\n              },\n              \"senderTimestamp\": {\n                \"low\": 1774030359,\n                \"high\": 0,\n                \"unsigned\": true\n              },\n              \"senderAccountType\": 0,\n              \"receiverAccountType\": 0,\n              \"recipientKeyHash\": {\n                \"0\": 129,\n                \"1\": 238,\n                \"2\": 145,\n                \"3\": 219,\n                \"4\": 217,\n                \"5\": 42,\n                \"6\": 1,\n                \"7\": 156,\n                \"8\": 77,\n                \"9\": 83\n              },\n              \"recipientTimestamp\": {\n                \"low\": 1774025957,\n                \"high\": 0,\n                \"unsigned\": true\n              }\n            },\n            \"deviceListMetadataVersion\": 2,\n            \"messageSecret\": {\n              \"0\": 45,\n              \"1\": 192,\n              \"2\": 16,\n              \"3\": 197,\n              \"4\": 109,\n              \"5\": 66,\n              \"6\": 111,\n              \"7\": 11,\n              \"8\": 66,\n              \"9\": 172,\n              \"10\": 252,\n              \"11\": 109,\n              \"12\": 222,\n              \"13\": 17,\n              \"14\": 184,\n              \"15\": 164,\n              \"16\": 160,\n              \"17\": 99,\n              \"18\": 232,\n              \"19\": 29,\n              \"20\": 101,\n              \"21\": 100,\n              \"22\": 174,\n              \"23\": 237,\n              \"24\": 236,\n              \"25\": 22,\n              \"26\": 112,\n              \"27\": 209,\n              \"28\": 156,\n              \"29\": 230,\n              \"30\": 108,\n              \"31\": 81\n            }\n          },\n          \"base64\": \"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\"\n        },\n        \"contextInfo\": {\n          \"mentionedJid\": [],\n          \"groupMentions\": [],\n          \"statusAttributions\": [],\n          \"ephemeralSettingTimestamp\": {\n            \"low\": 1774101619,\n            \"high\": 0,\n            \"unsigned\": false\n          },\n          \"disappearingMode\": {\n            \"initiator\": 0\n          }\n        },\n        \"messageType\": \"imageMessage\",\n        \"messageTimestamp\": 1774277943,\n        \"instanceId\": \"8fa92dee-b9cf-48f9-a1f2-97deeb36467e\",\n        \"source\": \"web\"\n      },\n      \"destination\": \"https://editor.devnoflow.com.br/webhook-test/flow-hook\",\n      \"date_time\": \"2026-03-23T11:59:03.731Z\",\n      \"sender\": \"5551920062331@s.whatsapp.net\",\n      \"server_url\": \"https://evo.devnoflow.com.br/\",\n      \"apikey\": \"888B970D-F0EB-4090-8144-3BCDB1A58DC5\"\n    },\n    \"webhookUrl\": \"https://webhook.devnoflow.com.br/webhook-test/flow-hook\",\n    \"executionMode\": \"test\"\n  }\n]"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3152,
+        2112
+      ],
+      "typeVersion": 1,
+      "id": "641876ed-79c4-4362-8d6a-ee7f3f8be993",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "# Texto\n[\n  {\n    \"headers\": {\n      \"host\": \"webhook.devnoflow.com.br\",\n      \"user-agent\": \"axios/1.12.2\",\n      \"content-length\": \"1196\",\n      \"accept\": \"application/json, text/plain, */*\",\n      \"accept-encoding\": \"gzip, compress, deflate, br\",\n      \"content-type\": \"application/json\",\n      \"x-forwarded-for\": \"172.18.0.1\",\n      \"x-forwarded-host\": \"webhook.devnoflow.com.br\",\n      \"x-forwarded-port\": \"443\",\n      \"x-forwarded-proto\": \"https\",\n      \"x-forwarded-server\": \"1013e783ca47\",\n      \"x-real-ip\": \"172.18.0.1\"\n    },\n    \"params\": {},\n    \"query\": {},\n    \"body\": {\n      \"event\": \"messages.upsert\",\n      \"instance\": \"AgendaM\",\n      \"data\": {\n        \"key\": {\n          \"remoteJid\": \"555194408307@s.whatsapp.net\",\n          \"remoteJidAlt\": \"278425835204747:91@lid\",\n          \"fromMe\": false,\n          \"id\": \"3F448C0442014BBDE0FA\"\n        },\n        \"pushName\": \"Alisson Rosa\",\n        \"status\": \"DELIVERY_ACK\",\n        \"message\": {\n          \"messageContextInfo\": {\n            \"deviceListMetadata\": {\n              \"senderKeyIndexes\": [],\n              \"recipientKeyIndexes\": [],\n              \"senderKeyHash\": {\n                \"0\": 50,\n                \"1\": 100,\n                \"2\": 53,\n                \"3\": 61,\n                \"4\": 184,\n                \"5\": 26,\n                \"6\": 108,\n                \"7\": 152,\n                \"8\": 63,\n                \"9\": 74\n              },\n              \"senderTimestamp\": 1759662699,\n              \"recipientKeyHash\": {\n                \"0\": 89,\n                \"1\": 148,\n                \"2\": 122,\n                \"3\": 241,\n                \"4\": 223,\n                \"5\": 185,\n                \"6\": 125,\n                \"7\": 210,\n                \"8\": 15,\n                \"9\": 50\n              },\n              \"recipientTimestamp\": 1759437657\n            },\n            \"deviceListMetadataVersion\": 2\n          },\n          \"conversation\": \"opa, blz? marca um horário com neuro pra mim\"\n        },\n        \"contextInfo\": {\n          \"mentionedJid\": [],\n          \"groupMentions\": [],\n          \"expiration\": 0,\n          \"ephemeralSettingTimestamp\": 0,\n          \"disappearingMode\": {\n            \"initiator\": 0\n          }\n        },\n        \"messageType\": \"conversation\",\n        \"messageTimestamp\": 1760313515,\n        \"instanceId\": \"5e1db353-2e0c-4e1b-a878-9ce4072e09bd\",\n        \"source\": \"desktop\"\n      },\n      \"destination\": \"https://webhook.devnoflow.com.br/webhook/sync-magnetic\",\n      \"date_time\": \"2025-10-12T20:58:35.567Z\",\n      \"sender\": \"5551920062331@s.whatsapp.net\",\n      \"server_url\": \"https://evo.devnoflow.com.br/\",\n      \"apikey\": \"A22E52D4C041-42E7-8C96-B46A0EDEDE93\"\n    },\n    \"webhookUrl\": \"https://webhook.devnoflow.com.br/webhook/sync-magnetic\",\n    \"executionMode\": \"production\"\n  }\n]"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -2880,
+        2160
+      ],
+      "typeVersion": 1,
+      "id": "760fba60-79d6-4835-91af-dfc45be15a51",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/whatsapp_instances?instance_name=eq.{{ $json.http.instance }}&select=id,user_id,instance_name&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "29bae9cf-9f3a-495f-b22d-fdebefdba184",
+      "name": "2. Buscar Instância",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1584,
+        2032
+      ],
       "credentials": {
         "supabaseApi": {
           "id": "Pv48djwcm2OcpOqt",
@@ -158,25 +296,31 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/conversations?id=eq.{{ $('5. Preparar').item.json.conversation_id }}",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/conversations?id=eq.{{ $('formatar msg').item.json.id.conversa }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Prefer", "value": "return=representation" }
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"last_message\": \"{{ $('5. Preparar').item.json.message_type === 'text' ? $('5. Preparar').item.json.content.substring(0,100) : '[' + $('5. Preparar').item.json.message_type + ']' }}\",\n  \"last_message_at\": \"{{ new Date().toISOString() }}\",\n  \"unread_count\": {{ $('5. Preparar').item.json.from_me ? 0 : 1 }}\n}",
+        "jsonBody": "={\n  \"last_message\": \"Nova mensagem\",\n  \"last_message_at\": \"{{ new Date().toISOString() }}\",\n  \"unread_count\": 1\n}",
         "options": {}
       },
-      "id": "update-conv-001",
+      "id": "2da2e2c8-e2bf-455d-ae50-348f86d34fe6",
       "name": "6b. Atualizar Conversa",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2020, 320],
+      "position": [
+        16,
+        2016
+      ],
       "credentials": {
         "supabaseApi": {
           "id": "Pv48djwcm2OcpOqt",
@@ -186,13 +330,46 @@
     },
     {
       "parameters": {
-        "jsCode": "const prepared = $('5. Preparar').first().json;\nlet convId = prepared.conversation_id;\n\n// Se criou nova conversa, pegar o ID retornado\nif (!convId) {\n  try {\n    const created = $('6a. Criar Conversa').first().json;\n    const arr = Array.isArray(created) ? created[0] : created;\n    convId = arr?.id || null;\n  } catch(e) {}\n}\n\nif (!convId) {\n  throw new Error('Sem conversation_id para salvar mensagem');\n}\n\nreturn [{\n  json: {\n    conversation_id: convId,\n    remote_jid: prepared.remote_jid,\n    from_me: prepared.from_me,\n    message_type: prepared.message_type,\n    content: prepared.content || '',\n    media_url: prepared.media_url || null,\n    status: prepared.from_me ? 'sent' : 'delivered'\n  }\n}];"
+        "method": "POST",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/storage/v1/object/public_bucket/conversations/{{$binary.imagem.fileName}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            },
+            {
+              "name": "Content-Type",
+              "value": "={{$binary.imagem.mimeType}}"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "=imagem",
+        "options": {}
       },
-      "id": "get-convid-001",
-      "name": "7. Obter Conv ID",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2260, 220]
+      "id": "5fcbef9c-1270-4fda-acf4-e1b9b6780cb3",
+      "name": "6b. Salva imagem no bucket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -432,
+        1664
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
     },
     {
       "parameters": {
@@ -202,14 +379,17 @@
         "nodeCredentialType": "supabaseApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"conversation_id\": \"{{ $json.conversation_id }}\",\n  \"remote_jid\": \"{{ $json.remote_jid }}\",\n  \"from_me\": {{ $json.from_me }},\n  \"message_type\": \"{{ $json.message_type }}\",\n  \"content\": {{ JSON.stringify($json.content || '') }},\n  \"media_url\": {{ $json.media_url ? '\"' + $json.media_url + '\"' : 'null' }},\n  \"status\": \"{{ $json.status }}\"\n}",
+        "jsonBody": "={\n  \"conversation_id\": \"{{ $json.id }}\",\n  \"remote_jid\": \"{{ $json.remote_jid }}\",\n  \"from_me\": false,\n  \"message_type\": \"{{ $('normalizacao').item.json.msg.dbType }}\",\n  \"content\": {{ JSON.stringify($('normalizacao').item.json.msg.conteudo) }},\n  \"media_url\": {{ (() => { try { const k = $('6b. Salva imagem no bucket').first().json.Key; return k ? '\"https://ivlwadsixcetunnhkkam.supabase.co/storage/v1/object/public/' + k + '\"' : 'null'; } catch(e) { return 'null'; } })() }},\n  \"status\": \"delivered\"\n}",
         "options": {}
       },
-      "id": "insert-msg-001",
+      "id": "bcc6db14-0cd5-4644-968d-8a3dc966c7d7",
       "name": "8. Salvar Mensagem",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2480, 220],
+      "position": [
+        224,
+        2016
+      ],
       "credentials": {
         "supabaseApi": {
           "id": "Pv48djwcm2OcpOqt",
@@ -219,61 +399,412 @@
     },
     {
       "parameters": {
-        "content": "# Receber Mensagens WhatsApp\n\n**Configuração:**\n1. Configure o webhook da Evolution API para apontar para a URL deste webhook\n2. A credencial 'FlowLux' deve ter o Supabase URL e API Key configurados\n3. O workflow parseia MESSAGES_UPSERT, busca/cria conversa, e salva a mensagem\n\n**Fluxo:**\nWebhook → Parse → Buscar Instância → Buscar/Criar Conversa → Salvar Mensagem",
-        "height": 480,
-        "width": 2500,
-        "color": 5
+        "content": "# Audio\n\n[\n  {\n    \"headers\": {\n      \"host\": \"editor.devnoflow.com.br\",\n      \"user-agent\": \"axios/1.13.2\",\n      \"content-length\": \"16680\",\n      \"accept\": \"application/json, text/plain, */*\",\n      \"accept-encoding\": \"gzip, compress, deflate, br\",\n      \"content-type\": \"application/json\",\n      \"x-forwarded-for\": \"172.18.0.1\",\n      \"x-forwarded-host\": \"editor.devnoflow.com.br\",\n      \"x-forwarded-port\": \"443\",\n      \"x-forwarded-proto\": \"https\",\n      \"x-forwarded-server\": \"2c2c11a7a4ce\",\n      \"x-real-ip\": \"172.18.0.1\"\n    },\n    \"params\": {},\n    \"query\": {},\n    \"body\": {\n      \"event\": \"messages.upsert\",\n      \"instance\": \"vendas\",\n      \"data\": {\n        \"key\": {\n          \"remoteJid\": \"555194408307@s.whatsapp.net\",\n          \"remoteJidAlt\": \"555194408307@s.whatsapp.net\",\n          \"fromMe\": false,\n          \"id\": \"2A32DF1069E5889DAF60\",\n          \"participant\": \"\",\n          \"addressingMode\": \"lid\"\n        },\n        \"pushName\": \"Alisson Rosa\",\n        \"status\": \"DELIVERY_ACK\",\n        \"message\": {\n          \"audioMessage\": {\n            \"url\": \"https://mmg.whatsapp.net/v/t62.7117-24/609945466_1586435445948191_191603115889168916_n.enc?ccb=11-4&oh=01_Q5Aa4AEhn3wjo2aiGIBmd7cnhWYJaLO-GhgieX9_S7yA0cJlkw&oe=69E8B923&_nc_sid=5e03e0&mms3=true\",\n            \"mimetype\": \"audio/ogg; codecs=opus\",\n            \"fileSha256\": {\n              \"0\": 169,\n              \"1\": 199,\n              \"2\": 172,\n              \"3\": 27,\n              \"4\": 18,\n              \"5\": 157,\n              \"6\": 55,\n              \"7\": 240,\n              \"8\": 110,\n              \"9\": 172,\n              \"10\": 114,\n              \"11\": 71,\n              \"12\": 240,\n              \"13\": 8,\n              \"14\": 39,\n              \"15\": 110,\n              \"16\": 122,\n              \"17\": 212,\n              \"18\": 185,\n              \"19\": 17,\n              \"20\": 163,\n              \"21\": 57,\n              \"22\": 2,\n              \"23\": 227,\n              \"24\": 225,\n              \"25\": 244,\n              \"26\": 69,\n              \"27\": 145,\n              \"28\": 86,\n              \"29\": 125,\n              \"30\": 23,\n              \"31\": 70\n            },\n            \"fileLength\": {\n              \"low\": 9935,\n              \"high\": 0,\n              \"unsigned\": true\n            },\n            \"seconds\": 4,\n            \"ptt\": true,\n            \"mediaKey\": {\n              \"0\": 118,\n              \"1\": 255,\n              \"2\": 172,\n              \"3\": 3,\n              \"4\": 209,\n              \"5\": 117,\n              \"6\": 248,\n              \"7\": 211,\n              \"8\": 6,\n              \"9\": 36,\n              \"10\": 55,\n              \"11\": 217,\n              \"12\": 0,\n              \"13\": 58,\n              \"14\": 117,\n              \"15\": 194,\n              \"16\": 56,\n              \"17\": 96,\n              \"18\": 169,\n              \"19\": 83,\n              \"20\": 117,\n              \"21\": 117,\n              \"22\": 151,\n              \"23\": 74,\n              \"24\": 48,\n              \"25\": 33,\n              \"26\": 177,\n              \"27\": 8,\n              \"28\": 69,\n              \"29\": 105,\n              \"30\": 213,\n              \"31\": 38\n            },\n            \"fileEncSha256\": {\n              \"0\": 160,\n              \"1\": 69,\n              \"2\": 131,\n              \"3\": 164,\n              \"4\": 156,\n              \"5\": 233,\n              \"6\": 250,\n              \"7\": 139,\n              \"8\": 185,\n              \"9\": 194,\n              \"10\": 70,\n              \"11\": 175,\n              \"12\": 37,\n              \"13\": 52,\n              \"14\": 210,\n              \"15\": 30,\n              \"16\": 185,\n              \"17\": 61,\n              \"18\": 72,\n              \"19\": 99,\n              \"20\": 136,\n              \"21\": 152,\n              \"22\": 128,\n              \"23\": 214,\n              \"24\": 102,\n              \"25\": 178,\n              \"26\": 53,\n              \"27\": 161,\n              \"28\": 21,\n              \"29\": 212,\n              \"30\": 130,\n              \"31\": 84\n            },\n            \"directPath\": \"/v/t62.7117-24/609945466_1586435445948191_191603115889168916_n.enc?ccb=11-4&oh=01_Q5Aa4AEhn3wjo2aiGIBmd7cnhWYJaLO-GhgieX9_S7yA0cJlkw&oe=69E8B923&_nc_sid=5e03e0\",\n            \"mediaKeyTimestamp\": {\n              \"low\": 1774277628,\n              \"high\": 0,\n              \"unsigned\": false\n            },\n            \"streamingSidecar\": {\n              \"0\": 99,\n              \"1\": 172,\n              \"2\": 114,\n              \"3\": 154,\n              \"4\": 93,\n              \"5\": 151,\n              \"6\": 154,\n              \"7\": 253,\n              \"8\": 224,\n              \"9\": 18\n            },\n            \"waveform\": {\n              \"0\": 0,\n              \"1\": 0,\n              \"2\": 0,\n              \"3\": 0,\n              \"4\": 0,\n              \"5\": 0,\n              \"6\": 0,\n              \"7\": 0,\n              \"8\": 0,\n              \"9\": 1,\n              \"10\": 1,\n              \"11\": 1,\n              \"12\": 1,\n              \"13\": 2,\n              \"14\": 5,\n              \"15\": 11,\n              \"16\": 25,\n              \"17\": 42,\n              \"18\": 72,\n              \"19\": 98,\n              \"20\": 79,\n              \"21\": 60,\n              \"22\": 45,\n              \"23\": 30,\n              \"24\": 33,\n              \"25\": 38,\n              \"26\": 44,\n              \"27\": 51,\n              \"28\": 59,\n              \"29\": 66,\n              \"30\": 57,\n              \"31\": 40,\n              \"32\": 34,\n              \"33\": 42,\n              \"34\": 42,\n              \"35\": 31,\n              \"36\": 27,\n              \"37\": 38,\n              \"38\": 48,\n              \"39\": 52,\n              \"40\": 54,\n              \"41\": 43,\n              \"42\": 32,\n              \"43\": 25,\n              \"44\": 18,\n              \"45\": 15,\n              \"46\": 11,\n              \"47\": 8,\n              \"48\": 5,\n              \"49\": 7,\n              \"50\": 12,\n              \"51\": 21,\n              \"52\": 33,\n              \"53\": 42,\n              \"54\": 46,\n              \"55\": 45,\n              \"56\": 35,\n              \"57\": 25,\n              \"58\": 18,\n              \"59\": 12,\n              \"60\": 8,\n              \"61\": 4,\n              \"62\": 3,\n              \"63\": 2\n            }\n          },\n          \"messageContextInfo\": {\n            \"threadId\": [],\n            \"deviceListMetadata\": {\n              \"senderKeyIndexes\": [],\n              \"recipientKeyIndexes\": [],\n              \"senderKeyHash\": {\n                \"0\": 0,\n                \"1\": 240,\n                \"2\": 110,\n                \"3\": 229,\n                \"4\": 198,\n                \"5\": 41,\n                \"6\": 251,\n                \"7\": 150,\n                \"8\": 242,\n                \"9\": 32\n              },\n              \"senderTimestamp\": {\n                \"low\": 1774030359,\n                \"high\": 0,\n                \"unsigned\": true\n              },\n              \"recipientKeyHash\": {\n                \"0\": 129,\n                \"1\": 238,\n                \"2\": 145,\n                \"3\": 219,\n                \"4\": 217,\n                \"5\": 42,\n                \"6\": 1,\n                \"7\": 156,\n                \"8\": 77,\n                \"9\": 83\n              },\n              \"recipientTimestamp\": {\n                \"low\": 1774026304,\n                \"high\": 0,\n                \"unsigned\": true\n              }\n            },\n            \"deviceListMetadataVersion\": 2,\n            \"messageSecret\": {\n              \"0\": 225,\n              \"1\": 231,\n              \"2\": 121,\n              \"3\": 116,\n              \"4\": 252,\n              \"5\": 166,\n              \"6\": 3,\n              \"7\": 108,\n              \"8\": 201,\n              \"9\": 15,\n              \"10\": 228,\n              \"11\": 69,\n              \"12\": 93,\n              \"13\": 12,\n              \"14\": 145,\n              \"15\": 33,\n              \"16\": 223,\n              \"17\": 192,\n              \"18\": 162,\n              \"19\": 70,\n              \"20\": 163,\n              \"21\": 248,\n              \"22\": 26,\n              \"23\": 251,\n              \"24\": 65,\n              \"25\": 229,\n              \"26\": 117,\n              \"27\": 33,\n              \"28\": 27,\n              \"29\": 134,\n              \"30\": 43,\n              \"31\": 228\n            }\n          },\n          \"base64\": \"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\"\n        },\n        \"contextInfo\": null,\n        \"messageType\": \"audioMessage\",\n        \"messageTimestamp\": 1774277634,\n        \"instanceId\": \"8fa92dee-b9cf-48f9-a1f2-97deeb36467e\",\n        \"source\": \"unknown\"\n      },\n      \"destination\": \"https://editor.devnoflow.com.br/webhook-test/flow-hook\",\n      \"date_time\": \"2026-03-23T11:53:55.094Z\",\n      \"sender\": \"5551920062331@s.whatsapp.net\",\n      \"server_url\": \"https://evo.devnoflow.com.br/\",\n      \"apikey\": \"888B970D-F0EB-4090-8144-3BCDB1A58DC5\"\n    },\n    \"webhookUrl\": \"https://webhook.devnoflow.com.br/webhook-test/flow-hook\",\n    \"executionMode\": \"test\"\n  }\n]"
       },
       "type": "n8n-nodes-base.stickyNote",
-      "position": [180, 60],
+      "position": [
+        -3024,
+        1648
+      ],
       "typeVersion": 1,
-      "id": "note-001",
-      "name": "Instruções"
+      "id": "4b533a1a-dd51-4b1b-8cab-fd58c331c4e4",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "da9f94d5-060b-405c-8a0c-9854c7d2858e",
+              "name": "msg.base64",
+              "value": "={{ $('normalizacao').item.json.msg.base64 }}",
+              "type": "string"
+            },
+            {
+              "id": "4876de47-a638-4507-9610-6aa458400aa1",
+              "name": "id.conversa",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -672,
+        2032
+      ],
+      "id": "571c33a9-6540-44c7-b37a-0cb9cf85cab3",
+      "name": "formatar msg"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8203e14c-6ff9-44d8-ac16-722f922db090",
+              "leftValue": "={{ $('normalizacao').item.json.msg.dbType }}",
+              "rightValue": "text",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -432,
+        2032
+      ],
+      "id": "bc946711-6982-4af5-b88b-df4a9ea46df0",
+      "name": "If"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -880,
+        2032
+      ],
+      "id": "58dfbddb-ba45-4319-a0f3-ad83d7c3e22f",
+      "name": "Merge"
     }
   ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "webhook.devnoflow.com.br",
+            "user-agent": "axios/1.13.2",
+            "content-length": "1818",
+            "accept": "application/json, text/plain, */*",
+            "accept-encoding": "gzip, compress, deflate, br",
+            "content-type": "application/json",
+            "x-forwarded-for": "172.18.0.1",
+            "x-forwarded-host": "webhook.devnoflow.com.br",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "2c2c11a7a4ce",
+            "x-real-ip": "172.18.0.1"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "event": "messages.upsert",
+            "instance": "vendas",
+            "data": {
+              "key": {
+                "remoteJid": "555194408307@s.whatsapp.net",
+                "remoteJidAlt": "278425835204747@lid",
+                "fromMe": false,
+                "id": "3EB037C4BBB4331FED4DC5",
+                "participant": "",
+                "addressingMode": "pn"
+              },
+              "pushName": "Alisson Rosa",
+              "status": "DELIVERY_ACK",
+              "message": {
+                "messageContextInfo": {
+                  "threadId": [],
+                  "deviceListMetadata": {
+                    "senderKeyIndexes": [],
+                    "recipientKeyIndexes": [],
+                    "senderKeyHash": {
+                      "0": 13,
+                      "1": 49,
+                      "2": 25,
+                      "3": 113,
+                      "4": 96,
+                      "5": 117,
+                      "6": 85,
+                      "7": 248,
+                      "8": 170,
+                      "9": 52
+                    },
+                    "senderTimestamp": {
+                      "low": 1774030359,
+                      "high": 0,
+                      "unsigned": true
+                    },
+                    "senderAccountType": 0,
+                    "receiverAccountType": 0,
+                    "recipientKeyHash": {
+                      "0": 129,
+                      "1": 238,
+                      "2": 145,
+                      "3": 219,
+                      "4": 217,
+                      "5": 42,
+                      "6": 1,
+                      "7": 156,
+                      "8": 77,
+                      "9": 83
+                    },
+                    "recipientTimestamp": {
+                      "low": 1774025957,
+                      "high": 0,
+                      "unsigned": true
+                    }
+                  },
+                  "deviceListMetadataVersion": 2,
+                  "messageSecret": {
+                    "0": 128,
+                    "1": 168,
+                    "2": 186,
+                    "3": 123,
+                    "4": 129,
+                    "5": 140,
+                    "6": 158,
+                    "7": 154,
+                    "8": 115,
+                    "9": 119,
+                    "10": 170,
+                    "11": 32,
+                    "12": 16,
+                    "13": 145,
+                    "14": 210,
+                    "15": 110,
+                    "16": 11,
+                    "17": 9,
+                    "18": 235,
+                    "19": 152,
+                    "20": 37,
+                    "21": 237,
+                    "22": 197,
+                    "23": 49,
+                    "24": 94,
+                    "25": 81,
+                    "26": 99,
+                    "27": 129,
+                    "28": 39,
+                    "29": 192,
+                    "30": 96,
+                    "31": 240
+                  },
+                  "limitSharingV2": {
+                    "sharingLimited": false,
+                    "trigger": 0,
+                    "limitSharingSettingTimestamp": {
+                      "low": 0,
+                      "high": 0,
+                      "unsigned": false
+                    },
+                    "initiatedByMe": false
+                  }
+                },
+                "conversation": "oi"
+              },
+              "contextInfo": {
+                "mentionedJid": [],
+                "groupMentions": [],
+                "statusAttributions": [],
+                "ephemeralSettingTimestamp": {
+                  "low": 1774101619,
+                  "high": 0,
+                  "unsigned": false
+                },
+                "disappearingMode": {
+                  "initiator": 0,
+                  "trigger": 1,
+                  "initiatedByMe": false
+                }
+              },
+              "messageType": "conversation",
+              "messageTimestamp": 1774282902,
+              "instanceId": "8fa92dee-b9cf-48f9-a1f2-97deeb36467e",
+              "source": "web"
+            },
+            "destination": "https://webhook.devnoflow.com.br/webhook/flow-hook",
+            "date_time": "2026-03-23T13:21:42.907Z",
+            "sender": "5551920062331@s.whatsapp.net",
+            "server_url": "https://evo.devnoflow.com.br/",
+            "apikey": "888B970D-F0EB-4090-8144-3BCDB1A58DC5"
+          },
+          "webhookUrl": "https://webhook.devnoflow.com.br/webhook/flow-hook",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
   "connections": {
-    "Webhook Evolution": {
-      "main": [[{ "node": "1. Parse Mensagem", "type": "main", "index": 0 }]]
-    },
-    "1. Parse Mensagem": {
-      "main": [[{ "node": "2. Buscar Instância", "type": "main", "index": 0 }]]
-    },
-    "2. Buscar Instância": {
-      "main": [[{ "node": "Instância existe?", "type": "main", "index": 0 }]]
-    },
-    "Instância existe?": {
-      "main": [
-        [{ "node": "3. Juntar Dados", "type": "main", "index": 0 }],
-        []
-      ]
-    },
-    "3. Juntar Dados": {
-      "main": [[{ "node": "4. Buscar Conversa", "type": "main", "index": 0 }]]
-    },
     "4. Buscar Conversa": {
-      "main": [[{ "node": "5. Preparar", "type": "main", "index": 0 }]]
-    },
-    "5. Preparar": {
-      "main": [[{ "node": "Nova conversa?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Nova conversa?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Nova conversa?": {
       "main": [
-        [{ "node": "6a. Criar Conversa", "type": "main", "index": 0 }],
-        [{ "node": "6b. Atualizar Conversa", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "6a. Criar Conversa",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
       ]
     },
     "6a. Criar Conversa": {
-      "main": [[{ "node": "7. Obter Conv ID", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "normalizacao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalizacao": {
+      "main": [
+        [
+          {
+            "node": "2. Buscar Instância",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "6b. Salva imagem no bucket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Buscar Instância": {
+      "main": [
+        [
+          {
+            "node": "4. Buscar Conversa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6b. Salva imagem no bucket": {
+      "main": [
+        [
+          {
+            "node": "6b. Atualizar Conversa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "formatar msg": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "6b. Atualizar Conversa",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "formatar msg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "6b. Atualizar Conversa": {
-      "main": [[{ "node": "7. Obter Conv ID", "type": "main", "index": 0 }]]
-    },
-    "7. Obter Conv ID": {
-      "main": [[{ "node": "8. Salvar Mensagem", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "8. Salvar Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "settings": { "executionOrder": "v1" },
-  "staticData": null,
-  "tags": [],
-  "triggerCount": 1
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "be357898-f8db-43c8-b1e4-91e602fb7ea2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a5bffdfbf51b3ac360223c2749699e9b7c407ef65e1900c9d34d27572fbc319c"
+  },
+  "id": "rHAM3h9BWj7c366M",
+  "tags": []
 }

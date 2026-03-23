@@ -29,7 +29,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const [instRes, failedRes, subRes] = await Promise.all([
         supabase.from("whatsapp_instances").select("instance_name, status").eq("user_id", userData.user.id).eq("status", "disconnected").is("deleted_at", null),
         supabase.from("mass_messages").select("id", { count: "exact", head: true }).eq("user_id", userData.user.id).eq("status", "failed"),
-        supabase.from("subscriptions").select("status, trial_end").eq("user_id", userData.user.id).in("status", ["active", "authorized", "trial"]).order("created_at", { ascending: false }).limit(1).single(),
+        supabase.from("subscriptions").select("status, trial_end, current_period_end").eq("user_id", userData.user.id).in("status", ["active", "authorized", "trial"]).order("created_at", { ascending: false }).limit(1).single(),
       ]);
       if (instRes.data) setDisconnectedInstances(instRes.data.map((i: any) => i.instance_name));
       if (failedRes.count) setFailedCount(failedRes.count);
@@ -48,11 +48,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (sub.status === "trial" && sub.trial_end) {
           const trialEnd = new Date(sub.trial_end);
           if (trialEnd < new Date()) {
-            setHasActivePlan(false);
-            if (!isAllowedPage) {
-              router.push("/assinatura");
-              return;
+            // Trial ended — check if current_period_end still grants access
+            const hasPeriodAccess = sub.current_period_end && new Date(sub.current_period_end) > new Date();
+            if (!hasPeriodAccess) {
+              setHasActivePlan(false);
+              if (!isAllowedPage) {
+                router.push("/assinatura");
+                return;
+              }
             }
+            // If period is still valid, keep access (trial label no longer shown)
           } else {
             const diff = trialEnd.getTime() - Date.now();
             const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));

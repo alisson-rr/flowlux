@@ -8,6 +8,7 @@ interface SubscriptionData {
   plan_id: PlanId;
   status: string;
   trial_end: string | null;
+  current_period_end: string | null;
 }
 
 interface UseSubscriptionReturn {
@@ -32,7 +33,7 @@ export function useSubscription(): UseSubscriptionReturn {
 
         const { data: sub } = await supabase
           .from("subscriptions")
-          .select("plan_id, status, trial_end")
+          .select("plan_id, status, trial_end, current_period_end")
           .eq("user_id", userData.user.id)
           .in("status", ACTIVE_STATUSES)
           .order("created_at", { ascending: false })
@@ -44,10 +45,14 @@ export function useSubscription(): UseSubscriptionReturn {
           if (sub.status === "trial" && sub.trial_end) {
             const trialEnd = new Date(sub.trial_end);
             if (trialEnd < new Date()) {
-              // Trial expired, don't consider it active
-              setData(null);
-              setLoading(false);
-              return;
+              // Trial ended — check if current_period_end still grants access
+              const hasPeriodAccess = sub.current_period_end && new Date(sub.current_period_end) > new Date();
+              if (!hasPeriodAccess) {
+                // Both trial and period expired, not active
+                setData(null);
+                setLoading(false);
+                return;
+              }
             }
           }
           setData(sub as SubscriptionData);
