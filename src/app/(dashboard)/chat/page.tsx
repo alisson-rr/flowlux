@@ -492,7 +492,7 @@ export default function ChatPage() {
 
       const fileName = `audio_${Date.now()}.webm`;
       const filePath = `media/${userData.user.id}/${fileName}`;
-      const { error: upErr } = await supabase.storage.from("public_bucket").upload(filePath, recordedAudioBlob, { contentType: "audio/webm", upsert: true });
+      const { error: upErr } = await supabase.storage.from("public_bucket").upload(filePath, recordedAudioBlob, { cacheControl: "3600", contentType: "audio/webm", upsert: true });
       if (upErr) { toast("Erro ao fazer upload do áudio.", "error"); setSendingMessage(false); return; }
 
       const { data: urlData } = supabase.storage.from("public_bucket").getPublicUrl(filePath);
