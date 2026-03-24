@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Search, GripVertical, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Globe, StickyNote, Mail, UserPlus, Tag, X, Phone, Pencil, Archive, ArchiveRestore,
 } from "lucide-react";
-import { cn, formatPhone, formatPhoneInput, normalizePhone, getInitials } from "@/lib/utils";
+import { cn, formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
 interface Lead { id: string; name: string; phone: string; email?: string; stage_id: string; source?: string; archived: boolean; created_at: string; tags: { id: string; name: string; color: string }[]; notes: { id: string; content: string; created_at: string }[]; }
@@ -119,7 +119,7 @@ export default function FunilPage() {
     if (!userData.user) return;
     const stageId = newLeadStage || funnelStages[0]?.id;
     const { data, error } = await supabase.from("leads").insert({
-      user_id: userData.user.id, name: newLead.name, phone: normalizePhone(newLead.phone),
+      user_id: userData.user.id, name: newLead.name, phone: newLead.phone,
       email: newLead.email || null, stage_id: stageId, source: newLead.source || null,
       funnel_id: selectedFunnelId,
     }).select("*, lead_tags(tags(*)), notes(*)").single();
@@ -432,18 +432,44 @@ export default function FunilPage() {
                 )}
               </div>
 
-              {/* Stage */}
+              {/* Funnel */}
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Etapa do Funil</Label>
-                <Select value={selectedLead.stage_id} onValueChange={async (val) => {
-                  await supabase.from("leads").update({ stage_id: val }).eq("id", selectedLead.id);
-                  setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, stage_id: val } : l));
-                  setSelectedLead({ ...selectedLead, stage_id: val });
+                <Label className="text-xs text-muted-foreground">Funil</Label>
+                <Select value={(selectedLead as any).funnel_id || selectedFunnelId || "none"} onValueChange={async (val) => {
+                  const fid = val === "none" ? null : val;
+                  const newStages = stages.filter((s: any) => s.funnel_id === fid);
+                  const firstStageId = newStages[0]?.id || null;
+                  await supabase.from("leads").update({ funnel_id: fid, stage_id: firstStageId }).eq("id", selectedLead.id);
+                  setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, stage_id: firstStageId || "", funnel_id: fid } as any : l));
+                  setSelectedLead({ ...selectedLead, stage_id: firstStageId || "" });
+                  if (fid) setSelectedFunnelId(fid);
                 }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{funnelStages.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                  <SelectTrigger><SelectValue placeholder="Selecione um funil" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum</SelectItem>
+                    {funnels.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
+
+              {/* Stage */}
+              {(() => {
+                const leadFunnelId = (selectedLead as any).funnel_id || selectedFunnelId;
+                const detailStages = stages.filter((s: any) => s.funnel_id === leadFunnelId);
+                return detailStages.length > 0 ? (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Etapa</Label>
+                    <Select value={selectedLead.stage_id || detailStages[0]?.id} onValueChange={async (val) => {
+                      await supabase.from("leads").update({ stage_id: val }).eq("id", selectedLead.id);
+                      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, stage_id: val } : l));
+                      setSelectedLead({ ...selectedLead, stage_id: val });
+                    }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{detailStages.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                ) : null;
+              })()}
 
               {/* Tags */}
               <div className="space-y-2">

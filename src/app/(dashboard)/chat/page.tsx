@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { evolutionApi } from "@/lib/evolution-api";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import {
 import {
   Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download, Zap, Timer, Play,
 } from "lucide-react";
-import { cn, formatPhone, normalizePhone, getInitials } from "@/lib/utils";
+import { cn, formatPhone, getInitials } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
 interface Conversation { id: string; instance_id: string; remote_jid: string; contact_name: string; contact_phone: string; last_message: string; last_message_at: string; unread_count: number; }
@@ -27,20 +27,6 @@ interface FlowOption { id: string; name: string; description: string; trigger_ty
 interface FlowStepOption { id: string; step_order: number; step_type: string; content: string; media_url: string; file_name: string; delay_seconds: number; }
 
 const TAG_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EF4444", "#EC4899", "#06B6D4", "#EAB308"];
-
-const detectMediaType = (url: string, declaredType: string): string => {
-  if (!url) return declaredType;
-  const ext = url.split("?")[0].split(".").pop()?.toLowerCase() || "";
-  const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic"];
-  const videoExts = ["mp4", "mov", "avi", "mkv", "webm", "3gp"];
-  const audioExts = ["ogg", "mp3", "wav", "m4a", "aac", "opus", "amr"];
-  const docExts = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "zip", "rar"];
-  if (imageExts.includes(ext)) return "image";
-  if (videoExts.includes(ext)) return "video";
-  if (audioExts.includes(ext)) return "audio";
-  if (docExts.includes(ext)) return "document";
-  return declaredType;
-};
 
 interface InstanceOption { id: string; instance_name: string; }
 
@@ -71,6 +57,8 @@ export default function ChatPage() {
   const [filterTag, setFilterTag] = useState("");
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const [convLeadTags, setConvLeadTags] = useState<Record<string, string[]>>({});
+  const [chatFunnels, setChatFunnels] = useState<{ id: string; name: string }[]>([]);
+  const [chatStages, setChatStages] = useState<{ id: string; name: string; color: string; order: number; funnel_id: string }[]>([]);
 
   // Media attachment to send with message
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
@@ -84,7 +72,6 @@ export default function ChatPage() {
 
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const selectedConvRef = useRef<Conversation | null>(null);
 
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
 
@@ -95,7 +82,7 @@ export default function ChatPage() {
       const userId = userData?.user?.id;
       if (!userId) { setLoading(false); return; }
 
-      const [convsRes, leadsRes, templatesRes, mediaRes, tagsRes, leadTagsRes, instRes, flowsRes] = await Promise.all([
+      const [convsRes, leadsRes, templatesRes, mediaRes, tagsRes, leadTagsRes, instRes, flowsRes, funnelsRes, stagesRes] = await Promise.all([
         supabase.from("conversations").select("*").eq("user_id", userId).order("last_message_at", { ascending: false }),
         supabase.from("leads").select("id, name, phone").eq("user_id", userId),
         supabase.from("message_templates").select("id, name, content").eq("user_id", userId),
@@ -104,6 +91,8 @@ export default function ChatPage() {
         supabase.from("leads").select("phone, lead_tags(tag_id)").eq("user_id", userId),
         supabase.from("whatsapp_instances").select("id, instance_name").eq("user_id", userId).is("deleted_at", null),
         supabase.from("flows").select("*, flow_steps(*)").eq("user_id", userId).eq("is_active", true).order("name"),
+        supabase.from("funnels").select("id, name").eq("user_id", userId).order("created_at"),
+        supabase.from("funnel_stages").select("id, name, color, order, funnel_id").eq("user_id", userId).order("order"),
       ]);
       if (convsRes.data) setConversations(convsRes.data);
       if (leadsRes.data) setLeads(leadsRes.data);
@@ -116,6 +105,8 @@ export default function ChatPage() {
           setSelectedInstanceId(instRes.data[0].id);
         }
       }
+      if (funnelsRes.data) setChatFunnels(funnelsRes.data);
+      if (stagesRes.data) setChatStages(stagesRes.data);
       if (flowsRes.data) {
         setFlows(flowsRes.data.map((f: any) => ({
           ...f,
@@ -139,98 +130,56 @@ export default function ChatPage() {
   }, []);
 
   const normalizePhoneVariants = (phone: string): string[] => {
-    const normalized = normalizePhone(phone);
     const digits = phone.replace(/\D/g, "");
-    const result = new Set<string>([normalized, digits]);
-    // Add variant without country code
-    if (normalized.startsWith("55") && normalized.length >= 12) {
-      result.add(normalized.slice(2));
+    const result = [digits];
+    if (digits.startsWith("55") && digits.length > 11) {
+      result.push(digits.slice(2)); // without country code
     }
-    // Add variant with country code
-    if (!normalized.startsWith("55") && normalized.length <= 11) {
-      result.add("55" + normalized);
+    if (!digits.startsWith("55") && digits.length <= 11) {
+      result.push("55" + digits); // with country code
     }
-    // Also add the original digits without 9 (in case stored with 9)
-    if (digits.startsWith("55") && digits.length === 13 && digits[4] === "9") {
-      result.add(digits.slice(0, 4) + digits.slice(5));
-      result.add(digits.slice(2, 4) + digits.slice(5));
-    }
-    if (!digits.startsWith("55") && digits.length === 11 && digits[2] === "9") {
-      result.add(digits.slice(0, 2) + digits.slice(3));
-      result.add("55" + digits.slice(0, 2) + digits.slice(3));
-    }
-    return Array.from(result);
+    return result;
   };
 
-  const phonesMatch = (a: string, b: string): boolean => {
-    const da = a.replace(/\D/g, "");
-    const db = b.replace(/\D/g, "");
-    if (!da || !db) return false;
-    if (da === db) return true;
-    const stripCountry = (d: string) => d.startsWith("55") && d.length >= 12 ? d.slice(2) : d;
-    const strip9 = (d: string) => (d.length === 11 && d[2] === "9") ? d.slice(0, 2) + d.slice(3) : d;
-    const add9 = (d: string) => (d.length === 10) ? d.slice(0, 2) + "9" + d.slice(2) : d;
-    const sa = stripCountry(da);
-    const sb = stripCountry(db);
-    if (sa === sb) return true;
-    const va = new Set([sa, strip9(sa), add9(sa)]);
-    const vb = [sb, strip9(sb), add9(sb)];
-    return vb.some((v) => va.has(v));
-  };
+  const loadLeadInfo = async (phone: string) => {
+    const convVariants = normalizePhoneVariants(phone);
 
-  const fetchLeadByPhone = async (phone: string) => {
+    // Fetch all leads for this user and match by normalized phone digits
     const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return null;
+    if (!userData.user) { setLeadInfo(null); setRightPanel("lead"); return; }
 
-    // Fetch lightweight list (id + phone) and match by normalized digits
     const { data: allLeads } = await supabase
       .from("leads")
-      .select("id, phone")
+      .select("*, lead_tags(tags(*)), notes(*)")
       .eq("user_id", userData.user.id)
       .is("deleted_at", null);
 
-    if (!allLeads || allLeads.length === 0) return null;
-
-    let matchedId: string | null = null;
-    for (const lead of allLeads) {
-      if (phonesMatch(phone, lead.phone || "")) { matchedId = lead.id; break; }
+    let foundLead = null;
+    if (allLeads) {
+      for (const lead of allLeads) {
+        const leadVariants = normalizePhoneVariants(lead.phone || "");
+        // Check if any variant from the conversation phone matches any variant from the lead phone
+        const match = convVariants.some((cv) => leadVariants.includes(cv));
+        if (match) { foundLead = lead; break; }
+      }
     }
-    if (!matchedId) return null;
 
-    // Fetch full data only for the matched lead
-    const { data: fullLead } = await supabase
-      .from("leads")
-      .select("*, lead_tags(tags(*)), notes(*)")
-      .eq("id", matchedId)
-      .single();
-
-    if (!fullLead) return null;
-    return {
-      ...fullLead,
-      tags: fullLead.lead_tags?.map((lt: any) => lt.tags).filter(Boolean) || [],
-      notes: fullLead.notes || [],
-    };
-  };
-
-  // Opens the lead panel (used by header click)
-  const loadLeadInfo = async (phone: string) => {
-    const found = await fetchLeadByPhone(phone);
-    setLeadInfo(found);
+    if (foundLead) {
+      setLeadInfo({
+        ...foundLead,
+        tags: foundLead.lead_tags?.map((lt: any) => lt.tags).filter(Boolean) || [],
+        notes: foundLead.notes || [],
+      });
+    } else {
+      setLeadInfo(null);
+    }
     setRightPanel("lead");
   };
 
-  // Pre-loads lead info silently without opening the panel
-  const preloadLeadInfo = async (phone: string) => {
-    const found = await fetchLeadByPhone(phone);
-    setLeadInfo(found);
-  };
-
   const refreshTags = async () => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
     const [tagsRes, leadTagsRes] = await Promise.all([
-      supabase.from("tags").select("id, name, color").eq("user_id", userData.user.id),
-      supabase.from("leads").select("phone, lead_tags(tag_id)").eq("user_id", userData.user.id),
+      supabase.from("tags").select("id, name, color"),
+      supabase.from("leads").select("phone, lead_tags(tag_id)"),
     ]);
     if (tagsRes.data) setAllTags(tagsRes.data);
     if (leadTagsRes.data) {
@@ -240,15 +189,19 @@ export default function ChatPage() {
     }
   };
 
-  // Initial data load
   useEffect(() => {
     loadInitialData();
-  }, [loadInitialData]);
 
-  // Realtime: conversations (always active)
-  useEffect(() => {
     const channel = supabase
-      .channel("flowlux-conversations")
+      .channel("flowlux-realtime")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+        const msg = payload.new as ChatMessage;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        setTimeout(scrollToBottom, 100);
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, (payload) => {
         if (payload.eventType === "INSERT") {
           const conv = payload.new as Conversation;
@@ -258,53 +211,20 @@ export default function ChatPage() {
           });
         } else if (payload.eventType === "UPDATE") {
           const conv = payload.new as Conversation;
-          setConversations((prev) =>
-            prev.map((c) => c.id === conv.id ? { ...c, ...conv } : c)
-              .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
-          );
+          setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, ...conv } : c));
         }
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
-
-  // Realtime: messages (re-subscribe when conversation changes)
-  useEffect(() => {
-    if (!selectedConv) return;
-    const convId = selectedConv.id;
-
-    const channel = supabase
-      .channel(`flowlux-messages-${convId}`)
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "messages",
-        filter: `conversation_id=eq.${convId}`,
-      }, (payload) => {
-        const msg = payload.new as ChatMessage;
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          // Remove optimistic temp messages when the real DB message arrives
-          if (msg.from_me) {
-            const withoutTemp = prev.filter((m) => !m.id.startsWith("temp-"));
-            return [...withoutTemp, msg];
-          }
-          return [...prev, msg];
-        });
-        setTimeout(scrollToBottom, 100);
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [selectedConv?.id]);
+  }, [loadInitialData]);
 
   // === ACTIONS ===
   const handleStartConversation = async (lead: LeadOption) => {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
 
-    const phone = normalizePhone(lead.phone);
+    const phone = lead.phone.replace(/\D/g, "");
     const remoteJid = phone.startsWith("55") ? `${phone}@s.whatsapp.net` : `55${phone}@s.whatsapp.net`;
 
     if (!selectedInstanceId) { toast("Selecione um WhatsApp primeiro.", "warning"); return; }
@@ -324,71 +244,49 @@ export default function ChatPage() {
 
   const handleSelectConversation = async (conv: Conversation) => {
     setSelectedConv(conv);
-    selectedConvRef.current = conv;
     setRightPanel(null);
     setLeadInfo(null);
     await loadMessages(conv.id);
     if (conv.unread_count > 0) {
-      supabase.from("conversations").update({ unread_count: 0 }).eq("id", conv.id).then();
+      await supabase.from("conversations").update({ unread_count: 0 }).eq("id", conv.id);
       setConversations((prev) => prev.map((c) => (c.id === conv.id ? { ...c, unread_count: 0 } : c)));
     }
-    // Pre-load lead info silently (panel stays closed until header click)
-    preloadLeadInfo(conv.contact_phone);
+    // Auto-load lead info for this conversation
+    loadLeadInfo(conv.contact_phone);
   };
 
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && !selectedMedia) || !selectedConv || !selectedInstanceId) return;
-    const inst = instances.find((i) => i.id === selectedInstanceId);
-    if (!inst) { toast("Selecione um WhatsApp primeiro.", "warning"); return; }
-
-    // Capture values and clear input instantly
-    const msgText = newMessage;
-    const media = selectedMedia;
-    const conv = selectedConv;
-    setNewMessage("");
-    setSelectedMedia(null);
     setSendingMessage(true);
-
-    // Optimistically add message to UI
-    const optimisticMsg: ChatMessage = {
-      id: `temp-${Date.now()}`,
-      from_me: true,
-      content: media ? (media.file_type === "audio" ? "" : (msgText || media.file_name)) : msgText,
-      message_type: media ? media.file_type : "text",
-      media_url: media?.file_url,
-      status: "sending",
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, optimisticMsg]);
-    setTimeout(scrollToBottom, 50);
-
     try {
-      // Send via Evolution API (no delay, direct)
-      if (media) {
-        const isAudio = media.file_type === "audio";
+      const inst = instances.find((i) => i.id === selectedInstanceId);
+      if (!inst) { toast("Selecione um WhatsApp primeiro.", "warning"); setSendingMessage(false); return; }
+
+      // Send media if selected
+      if (selectedMedia) {
+        const isAudio = selectedMedia.file_type === "audio";
         if (isAudio) {
-          await evolutionApi.sendAudio(inst.instance_name, conv.remote_jid, media.file_url);
+          await evolutionApi.sendAudio(inst.instance_name, selectedConv.remote_jid, selectedMedia.file_url);
         } else {
-          await evolutionApi.sendMedia(inst.instance_name, conv.remote_jid, media.file_url, media.file_type, msgText || "", media.file_name);
+          await evolutionApi.sendMedia(inst.instance_name, selectedConv.remote_jid, selectedMedia.file_url, selectedMedia.file_type, newMessage || "", selectedMedia.file_name);
         }
+        await supabase.from("messages").insert({
+          conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
+          message_type: selectedMedia.file_type, content: isAudio ? "" : (newMessage || selectedMedia.file_name), media_url: selectedMedia.file_url, status: "sent",
+        });
+        setSelectedMedia(null);
       } else {
-        await evolutionApi.sendText(inst.instance_name, conv.remote_jid, msgText);
+        // Text only
+        await evolutionApi.sendText(inst.instance_name, selectedConv.remote_jid, newMessage);
+        await supabase.from("messages").insert({
+          conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
+          message_type: "text", content: newMessage, status: "sent",
+        });
       }
 
-      // DB operations fire-and-forget (realtime will sync)
-      const msgInsert = media
-        ? { conversation_id: conv.id, remote_jid: conv.remote_jid, from_me: true, message_type: media.file_type, content: media.file_type === "audio" ? "" : (msgText || media.file_name), media_url: media.file_url, status: "sent" }
-        : { conversation_id: conv.id, remote_jid: conv.remote_jid, from_me: true, message_type: "text" as const, content: msgText, status: "sent" };
-      supabase.from("messages").insert(msgInsert).then();
-      supabase.from("conversations").update({ last_message: msgText || "[Mídia]", last_message_at: new Date().toISOString() }).eq("id", conv.id).then();
-    } catch (err: any) {
-      console.error("Error sending message:", err);
-      toast("Erro ao enviar mensagem: " + (err?.message || ""), "error");
-      // Remove optimistic message on failure
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
-    } finally {
-      setSendingMessage(false);
-    }
+      await supabase.from("conversations").update({ last_message: newMessage || "[Mídia]", last_message_at: new Date().toISOString() }).eq("id", selectedConv.id);
+      setNewMessage("");
+    } catch (err: any) { console.error("Error sending message:", err); toast("Erro ao enviar mensagem: " + (err?.message || ""), "error"); } finally { setSendingMessage(false); }
   };
 
   const handleAddNote = async () => {
@@ -487,23 +385,17 @@ export default function ChatPage() {
     return labels[type] || type;
   };
 
-  // === FILTERS (memoized) ===
-  const filteredLeads = useMemo(() => {
-    const term = leadSearch.toLowerCase();
-    return leads.filter((l) => l.name.toLowerCase().includes(term) || l.phone.includes(leadSearch));
-  }, [leads, leadSearch]);
+  // === FILTERS ===
+  const filteredLeads = leads.filter((l) => l.name.toLowerCase().includes(leadSearch.toLowerCase()) || l.phone.includes(leadSearch));
 
-  const filteredConversations = useMemo(() => {
-    const term = searchTerm.toLowerCase();
-    return conversations.filter((c) => {
-      const matchesSearch = c.contact_name?.toLowerCase().includes(term) || c.contact_phone?.includes(searchTerm);
-      if (!matchesSearch) return false;
-      if (selectedInstanceId && c.instance_id !== selectedInstanceId) return false;
-      if (!filterTag) return true;
-      const phone = c.contact_phone?.replace(/\D/g, "") || "";
-      return convLeadTags[phone]?.includes(filterTag);
-    });
-  }, [conversations, searchTerm, selectedInstanceId, filterTag, convLeadTags]);
+  const filteredConversations = conversations.filter((c) => {
+    const matchesSearch = c.contact_name?.toLowerCase().includes(searchTerm.toLowerCase()) || c.contact_phone?.includes(searchTerm);
+    if (!matchesSearch) return false;
+    if (selectedInstanceId && c.instance_id !== selectedInstanceId) return false;
+    if (!filterTag) return true;
+    const phone = c.contact_phone?.replace(/\D/g, "") || "";
+    return convLeadTags[phone]?.includes(filterTag);
+  });
 
   const formatTime = (date: string) => {
     if (!date) return "";
@@ -622,26 +514,24 @@ export default function ChatPage() {
                 {/* Messages Column */}
                 <div className="flex-1 flex flex-col">
                   <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-background/50">
-                    {messages.map((msg) => {
-                      const effectiveType = msg.media_url ? detectMediaType(msg.media_url, msg.message_type) : msg.message_type;
-                      return (
+                    {messages.map((msg) => (
                       <div key={msg.id} className={cn("flex", msg.from_me ? "justify-end" : "justify-start")}>
                         <div className={cn("max-w-[70%] rounded-2xl px-4 py-2.5 text-sm", msg.from_me ? "bg-primary text-primary-foreground rounded-br-md" : "bg-card border border-border rounded-bl-md")}>
-                          {msg.media_url && effectiveType === "image" && (
+                          {msg.media_url && msg.message_type === "image" && (
                             <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block mb-2">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img src={msg.media_url} alt="" className="rounded-lg max-h-48 w-auto object-cover" loading="lazy" />
                             </a>
                           )}
-                          {msg.media_url && effectiveType === "video" && (
+                          {msg.media_url && msg.message_type === "video" && (
                             <video src={msg.media_url} controls className="rounded-lg max-h-48 w-full mb-2" preload="metadata" />
                           )}
-                          {msg.media_url && effectiveType === "audio" && (
+                          {msg.media_url && msg.message_type === "audio" && (
                             <div className="mb-2 min-w-[240px]">
                               <audio src={msg.media_url} controls className="w-full h-10" preload="metadata" />
                             </div>
                           )}
-                          {msg.media_url && effectiveType === "document" && (
+                          {msg.media_url && msg.message_type === "document" && (
                             <a href={msg.media_url} target="_blank" rel="noopener noreferrer"
                               className={cn("flex items-center gap-2 p-2 rounded-lg mb-2", msg.from_me ? "bg-primary-foreground/10" : "bg-muted")}>
                               <FileText className="h-5 w-5 shrink-0" />
@@ -649,22 +539,13 @@ export default function ChatPage() {
                               <Download className="h-4 w-4 shrink-0 ml-auto" />
                             </a>
                           )}
-                          {msg.media_url && effectiveType !== "image" && effectiveType !== "video" && effectiveType !== "audio" && effectiveType !== "document" && effectiveType !== "text" && (
-                            <a href={msg.media_url} target="_blank" rel="noopener noreferrer"
-                              className={cn("flex items-center gap-2 p-2 rounded-lg mb-2", msg.from_me ? "bg-primary-foreground/10" : "bg-muted")}>
-                              <FileText className="h-5 w-5 shrink-0" />
-                              <span className="text-xs truncate">{msg.content || "Arquivo"}</span>
-                              <Download className="h-4 w-4 shrink-0 ml-auto" />
-                            </a>
-                          )}
-                          {msg.content && !(effectiveType === "document" && msg.media_url) && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
+                          {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
                           <p className={cn("text-[10px] mt-1", msg.from_me ? "text-primary-foreground/60" : "text-muted-foreground")}>
                             {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                           </p>
                         </div>
                       </div>
-                      );
-                    })}
+                    ))}
                     <div ref={messagesEndRef} />
                   </div>
 
@@ -739,14 +620,42 @@ export default function ChatPage() {
                               <Globe className="h-4 w-4 shrink-0" /> {leadInfo.source}
                             </div>
                           )}
-                          {leadInfo.stage_id && (
                             <div className="flex items-center gap-2 text-muted-foreground p-2 rounded-md bg-muted/50">
-                              <ChevronRight className="h-4 w-4 shrink-0" /> Etapa: {leadInfo.stage_id}
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 text-muted-foreground p-2 rounded-md bg-muted/50">
                             <StickyNote className="h-4 w-4 shrink-0" /> Criado: {new Date(leadInfo.created_at).toLocaleDateString("pt-BR")}
                           </div>
+                        </div>
+
+                        {/* Funnel & Stage */}
+                        <div className="space-y-3">
+                          <div className="space-y-1.5">
+                            <p className="text-xs text-muted-foreground">Funil</p>
+                            <Select value={leadInfo.funnel_id || "none"} onValueChange={async (val) => {
+                              const fid = val === "none" ? null : val;
+                              await supabase.from("leads").update({ funnel_id: fid, stage_id: null }).eq("id", leadInfo.id);
+                              setLeadInfo((prev: any) => prev ? { ...prev, funnel_id: fid, stage_id: null } : prev);
+                            }}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione um funil" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Nenhum</SelectItem>
+                                {chatFunnels.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {leadInfo.funnel_id && (() => {
+                            const fStages = chatStages.filter((s) => s.funnel_id === leadInfo.funnel_id);
+                            return fStages.length > 0 ? (
+                              <div className="space-y-1.5">
+                                <p className="text-xs text-muted-foreground">Etapa</p>
+                                <Select value={leadInfo.stage_id || fStages[0]?.id} onValueChange={async (val) => {
+                                  await supabase.from("leads").update({ stage_id: val }).eq("id", leadInfo.id);
+                                  setLeadInfo((prev: any) => prev ? { ...prev, stage_id: val } : prev);
+                                }}>
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>{fStages.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                                </Select>
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
 
                         {/* Tags with add/remove */}
@@ -799,7 +708,7 @@ export default function ChatPage() {
                             defaultStageId = defaultStage?.id || null;
                           }
                           const { data, error } = await supabase.from("leads").insert({
-                            user_id: userData.user.id, name, phone: normalizePhone(phone), source: "WhatsApp",
+                            user_id: userData.user.id, name, phone, source: "WhatsApp",
                             funnel_id: defaultFunnel?.id || null,
                             stage_id: defaultStageId,
                           }).select().single();

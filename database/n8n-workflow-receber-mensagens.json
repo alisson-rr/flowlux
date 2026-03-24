@@ -3,18 +3,18 @@
   "nodes": [
     {
       "parameters": {
-        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/conversations?instance_id=eq.{{ $json.id }}&remote_jid=eq.{{ $('normalizacao').item.json.http.remoteJid }}&select=id&limit=1",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/conversations?instance_id=eq.{{ $('2. Buscar Instância').item.json.id }}&remote_jid=eq.{{ $('normalizacao').item.json.http.remoteJid }}&select=id&limit=1",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "options": {}
       },
-      "id": "cc03117e-3cc1-446d-a2f0-e6031b4718b3",
+      "id": "c6401aed-c9ae-4dae-95e2-41c6685b1a5d",
       "name": "4. Buscar Conversa",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         -1360,
-        2032
+        32
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -50,13 +50,13 @@
         },
         "options": {}
       },
-      "id": "2babf565-b6b7-4ca3-93ca-55d424097346",
+      "id": "9466a220-23bd-466a-8287-2de2d291b999",
       "name": "Nova conversa?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
         -1136,
-        2032
+        32
       ]
     },
     {
@@ -79,13 +79,13 @@
         "jsonBody": "={\n  \"user_id\": \"{{ $('2. Buscar Instância').item.json.user_id }}\",\n  \"instance_id\": \"{{ $('2. Buscar Instância').item.json.id }}\",\n  \"remote_jid\": \"{{ $('normalizacao').item.json.http.remoteJid }}\",\n  \"contact_name\": \"{{ $('normalizacao').item.json.msg.name }}\",\n  \"contact_phone\": \"{{ $('normalizacao').item.json.http.remoteJid.replace('@s.whatsapp.net', '') }}\",\n  \"last_message\": \"Nova mensagem\",\n  \"last_message_at\": \"{{ new Date().toISOString() }}\",\n  \"unread_count\": 1\n}",
         "options": {}
       },
-      "id": "46a5ce3e-5158-4314-bf0a-c5e2b5f4140b",
+      "id": "7594e555-2a35-4d4f-91e3-c0901bc71e37",
       "name": "6a. Criar Conversa",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         -1136,
-        1824
+        -176
       ],
       "credentials": {
         "supabaseApi": {
@@ -104,9 +104,9 @@
       "typeVersion": 2.1,
       "position": [
         -2000,
-        2032
+        32
       ],
-      "id": "b44abd9c-7ac8-4a1c-848b-ed365a4504aa",
+      "id": "df61d9fd-f670-40e0-86bb-d082c3132c4b",
       "name": "Webhook",
       "webhookId": "a49d9eaa-8e51-4e70-bcdf-67b15aed7926"
     },
@@ -206,9 +206,9 @@
       "typeVersion": 3.4,
       "position": [
         -1792,
-        2032
+        32
       ],
-      "id": "7e294d2d-6a39-4e5c-b678-7572f09d8df9",
+      "id": "bf4087d1-a368-451f-a324-24afabf86b24",
       "name": "normalizacao"
     },
     {
@@ -225,9 +225,9 @@
       "typeVersion": 1.1,
       "position": [
         -432,
-        1840
+        -160
       ],
-      "id": "a2d4377f-cc41-4362-9a44-e9b70b94734c",
+      "id": "6b02fe9e-736c-4928-8dd6-a19d15a69cee",
       "name": "Convert to File1"
     },
     {
@@ -239,10 +239,10 @@
       "type": "n8n-nodes-base.stickyNote",
       "position": [
         -688,
-        1600
+        -400
       ],
       "typeVersion": 1,
-      "id": "bb05627a-fe75-4707-97b3-1775e942bd60",
+      "id": "daff9346-ac4e-45a9-9cb7-d8ef67bf54ad",
       "name": "Sticky Note"
     },
     {
@@ -252,10 +252,10 @@
       "type": "n8n-nodes-base.stickyNote",
       "position": [
         -3152,
-        2112
+        112
       ],
       "typeVersion": 1,
-      "id": "641876ed-79c4-4362-8d6a-ee7f3f8be993",
+      "id": "30cb47be-6ab9-4e05-85fc-953aae8f62f0",
       "name": "Sticky Note3"
     },
     {
@@ -265,10 +265,10 @@
       "type": "n8n-nodes-base.stickyNote",
       "position": [
         -2880,
-        2160
+        160
       ],
       "typeVersion": 1,
-      "id": "760fba60-79d6-4835-91af-dfc45be15a51",
+      "id": "8c9230db-d855-48dd-a1af-d22a784147ec",
       "name": "Sticky Note5"
     },
     {
@@ -278,13 +278,13 @@
         "nodeCredentialType": "supabaseApi",
         "options": {}
       },
-      "id": "29bae9cf-9f3a-495f-b22d-fdebefdba184",
+      "id": "fc7eff76-06b6-4907-a9e4-c348a5047806",
       "name": "2. Buscar Instância",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         -1584,
-        2032
+        32
       ],
       "credentials": {
         "supabaseApi": {
@@ -313,13 +313,13 @@
         "jsonBody": "={\n  \"last_message\": \"Nova mensagem\",\n  \"last_message_at\": \"{{ new Date().toISOString() }}\",\n  \"unread_count\": 1\n}",
         "options": {}
       },
-      "id": "2da2e2c8-e2bf-455d-ae50-348f86d34fe6",
+      "id": "8252468b-eadd-4f1e-978a-ed38f939d38c",
       "name": "6b. Atualizar Conversa",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         16,
-        2016
+        16
       ],
       "credentials": {
         "supabaseApi": {
@@ -356,13 +356,13 @@
         "inputDataFieldName": "=imagem",
         "options": {}
       },
-      "id": "5fcbef9c-1270-4fda-acf4-e1b9b6780cb3",
+      "id": "1e57ecab-fa19-459c-b982-9c1f305b9b44",
       "name": "6b. Salva imagem no bucket",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         -432,
-        1664
+        -336
       ],
       "credentials": {
         "supabaseApi": {
@@ -382,13 +382,13 @@
         "jsonBody": "={\n  \"conversation_id\": \"{{ $json.id }}\",\n  \"remote_jid\": \"{{ $json.remote_jid }}\",\n  \"from_me\": false,\n  \"message_type\": \"{{ $('normalizacao').item.json.msg.dbType }}\",\n  \"content\": {{ JSON.stringify($('normalizacao').item.json.msg.conteudo) }},\n  \"media_url\": {{ (() => { try { const k = $('6b. Salva imagem no bucket').first().json.Key; return k ? '\"https://ivlwadsixcetunnhkkam.supabase.co/storage/v1/object/public/' + k + '\"' : 'null'; } catch(e) { return 'null'; } })() }},\n  \"status\": \"delivered\"\n}",
         "options": {}
       },
-      "id": "bcc6db14-0cd5-4644-968d-8a3dc966c7d7",
+      "id": "bf058ae3-e65e-497a-a7a5-fbae5bfd4b1f",
       "name": "8. Salvar Mensagem",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         224,
-        2016
+        16
       ],
       "credentials": {
         "supabaseApi": {
@@ -404,10 +404,10 @@
       "type": "n8n-nodes-base.stickyNote",
       "position": [
         -3024,
-        1648
+        -352
       ],
       "typeVersion": 1,
-      "id": "4b533a1a-dd51-4b1b-8cab-fd58c331c4e4",
+      "id": "d4c23beb-9a81-4389-ada3-4baae1f4ea48",
       "name": "Sticky Note1"
     },
     {
@@ -434,9 +434,9 @@
       "typeVersion": 3.4,
       "position": [
         -672,
-        2032
+        32
       ],
-      "id": "571c33a9-6540-44c7-b37a-0cb9cf85cab3",
+      "id": "4b7aaae1-5e20-4eaa-ab83-5030cbe8008e",
       "name": "formatar msg"
     },
     {
@@ -467,9 +467,9 @@
       "typeVersion": 2.3,
       "position": [
         -432,
-        2032
+        32
       ],
-      "id": "bc946711-6982-4af5-b88b-df4a9ea46df0",
+      "id": "0aad765b-b553-4db4-921c-da92e4b0d01a",
       "name": "If"
     },
     {
@@ -478,10 +478,103 @@
       "typeVersion": 3.2,
       "position": [
         -880,
-        2032
+        32
       ],
-      "id": "58dfbddb-ba45-4319-a0f3-ad83d7c3e22f",
+      "id": "654171ab-724c-4c2b-9a97-7a7131100a28",
       "name": "Merge"
+    },
+    {
+      "parameters": {
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/leads?user_id=eq.{{ $json.user_id }}&phone=ilike.%25{{ $('normalizacao').item.json.http.remoteJid.replace('@s.whatsapp.net', '').slice(-8) }}&deleted_at=is.null&select=id&limit=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "lead-check-001",
+      "name": "3b. Buscar Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1472,
+        240
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-lead",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": true,
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-lead-001",
+      "name": "Lead existe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1264,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/leads",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": \"{{ $('2. Buscar Inst\u00e2ncia').item.json.user_id }}\",\n  \"name\": \"{{ $('normalizacao').item.json.msg.name }}\",\n  \"phone\": \"{{ (() => { const raw = $('normalizacao').item.json.http.remoteJid.replace('@s.whatsapp.net', ''); const local = raw.startsWith('55') ? raw.substring(2) : raw; const ddd = local.substring(0, 2); let num = local.substring(2); if (num.length === 8) num = '9' + num; return '(' + ddd + ') ' + num.substring(0, 5) + '-' + num.substring(5); })() }}\",\n  \"source\": \"WhatsApp\"\n}",
+        "options": {}
+      },
+      "id": "create-lead-001",
+      "name": "3c. Criar Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1264,
+        440
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
     }
   ],
   "pinData": {
@@ -722,6 +815,46 @@
       "main": [
         [
           {
+            "node": "3b. Buscar Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3b. Buscar Lead": {
+      "main": [
+        [
+          {
+            "node": "Lead existe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead existe?": {
+      "main": [
+        [
+          {
+            "node": "4. Buscar Conversa",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "3c. Criar Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3c. Criar Lead": {
+      "main": [
+        [
+          {
             "node": "4. Buscar Conversa",
             "type": "main",
             "index": 0
@@ -800,7 +933,7 @@
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": false
   },
-  "versionId": "be357898-f8db-43c8-b1e4-91e602fb7ea2",
+  "versionId": "ea5ef816-160a-4772-9ca0-e48aed7be6e4",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "a5bffdfbf51b3ac360223c2749699e9b7c407ef65e1900c9d34d27572fbc319c"

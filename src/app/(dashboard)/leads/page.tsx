@@ -15,9 +15,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Plus, Search, Phone, Mail, StickyNote, Tag, X, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Pencil, Globe, Archive, ArchiveRestore, Filter, SortAsc,
+  Plus, Search, Phone, Mail, StickyNote, Tag, X, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Pencil, Globe, Archive, ArchiveRestore, Filter, SortAsc, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download,
 } from "lucide-react";
-import { cn, formatPhone, formatPhoneInput, normalizePhone, getInitials } from "@/lib/utils";
+import { cn, formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useSubscription } from "@/lib/use-subscription";
 import Link from "next/link";
@@ -28,6 +28,7 @@ interface Lead {
   phone: string;
   email?: string;
   stage_id: string;
+  funnel_id?: string;
   source?: string;
   archived: boolean;
   created_at: string;
@@ -59,7 +60,7 @@ export default function LeadsPage() {
   const [newNote, setNewNote] = useState("");
   const [newTag, setNewTag] = useState("");
   const [newLead, setNewLead] = useState({ name: "", phone: "", email: "", source: "" });
-  const [editLead, setEditLead] = useState({ name: "", phone: "", email: "", source: "" });
+  const [editLead, setEditLead] = useState({ name: "", phone: "", email: "", source: "", funnel_id: "", stage_id: "" });
   const [editStages, setEditStages] = useState<Stage[]>([]);
   const [newStageName, setNewStageName] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -70,6 +71,15 @@ export default function LeadsPage() {
   const [newLeadFunnel, setNewLeadFunnel] = useState("");
   const { toast } = useToast();
   const { limits } = useSubscription();
+
+  // Import CSV state
+  const [showImport, setShowImport] = useState(false);
+  const [importFunnel, setImportFunnel] = useState("");
+  const [importStage, setImportStage] = useState("");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importData, setImportData] = useState<{ name: string; phone: string; email: string; source: string }[]>([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: number; errors: number } | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -124,7 +134,7 @@ export default function LeadsPage() {
     const { data, error } = await supabase.from("leads").insert({
       user_id: userData.user.id,
       name: newLead.name,
-      phone: normalizePhone(newLead.phone),
+      phone: newLead.phone,
       email: newLead.email || null,
       stage_id: selectedStage,
       funnel_id: selectedFunnel,
@@ -146,14 +156,16 @@ export default function LeadsPage() {
 
     const { error } = await supabase.from("leads").update({
       name: editLead.name,
-      phone: normalizePhone(editLead.phone),
+      phone: editLead.phone,
       email: editLead.email || null,
       source: editLead.source || null,
+      funnel_id: editLead.funnel_id || null,
+      stage_id: editLead.stage_id || null,
     }).eq("id", selectedLead.id);
 
     if (!error) {
-      const updated = { ...selectedLead, ...editLead };
-      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, ...editLead } : l));
+      const updated = { ...selectedLead, name: editLead.name, phone: editLead.phone, email: editLead.email, source: editLead.source, funnel_id: editLead.funnel_id, stage_id: editLead.stage_id };
+      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, name: editLead.name, phone: editLead.phone, email: editLead.email, source: editLead.source, funnel_id: editLead.funnel_id, stage_id: editLead.stage_id } : l));
       setSelectedLead(updated);
       setShowEditLead(false);
     }
@@ -166,6 +178,8 @@ export default function LeadsPage() {
       phone: selectedLead.phone,
       email: selectedLead.email || "",
       source: selectedLead.source || "",
+      funnel_id: (selectedLead as any).funnel_id || "",
+      stage_id: selectedLead.stage_id || "",
     });
     setShowEditLead(true);
   };
@@ -280,6 +294,119 @@ export default function LeadsPage() {
     setEditStages(editStages.filter((_, i) => i !== index));
   };
 
+  // === IMPORT CSV ===
+  const parseCSV = (text: string) => {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) return [];
+    const headerLine = lines[0].toLowerCase();
+    const separator = headerLine.includes(";") ? ";" : ",";
+    const headers = headerLine.split(separator).map((h) => h.trim().replace(/^"|"$/g, ""));
+
+    const nameIdx = headers.findIndex((h) => ["nome", "name"].includes(h));
+    const phoneIdx = headers.findIndex((h) => ["telefone", "phone", "celular", "whatsapp", "fone"].includes(h));
+    const emailIdx = headers.findIndex((h) => ["email", "e-mail"].includes(h));
+    const sourceIdx = headers.findIndex((h) => ["origem", "source", "fonte"].includes(h));
+
+    if (nameIdx === -1 || phoneIdx === -1) return [];
+
+    const rows: { name: string; phone: string; email: string; source: string }[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(separator).map((c) => c.trim().replace(/^"|"$/g, ""));
+      const name = cols[nameIdx]?.trim() || "";
+      const phone = cols[phoneIdx]?.trim().replace(/\D/g, "") || "";
+      if (name && phone) {
+        rows.push({
+          name,
+          phone,
+          email: emailIdx >= 0 ? cols[emailIdx]?.trim() || "" : "",
+          source: sourceIdx >= 0 ? cols[sourceIdx]?.trim() || "" : "",
+        });
+      }
+    }
+    return rows;
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFile(file);
+    setImportResult(null);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const parsed = parseCSV(text);
+      setImportData(parsed);
+      if (parsed.length === 0) {
+        toast("CSV inválido. Certifique-se de ter colunas 'nome' e 'telefone'.", "warning");
+      }
+    };
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const handleImportLeads = async () => {
+    if (!importData.length || !importFunnel || !importStage) return;
+    setImportLoading(true);
+    setImportResult(null);
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) { setImportLoading(false); return; }
+
+    const currentActive = leads.filter((l) => !l.archived).length;
+    const available = limits.max_leads === Infinity ? Infinity : limits.max_leads - currentActive;
+    const toImport = available === Infinity ? importData : importData.slice(0, available);
+
+    let success = 0;
+    let errors = 0;
+    const BATCH_SIZE = 50;
+
+    for (let i = 0; i < toImport.length; i += BATCH_SIZE) {
+      const batch = toImport.slice(i, i + BATCH_SIZE).map((row) => ({
+        user_id: userData.user!.id,
+        name: row.name,
+        phone: row.phone,
+        email: row.email || null,
+        source: row.source || "Importação CSV",
+        funnel_id: importFunnel,
+        stage_id: importStage,
+      }));
+
+      const { data, error } = await supabase.from("leads").insert(batch).select();
+      if (error) {
+        errors += batch.length;
+      } else {
+        success += data?.length || 0;
+      }
+    }
+
+    if (toImport.length < importData.length) {
+      toast(`Limite de leads atingido. ${importData.length - toImport.length} leads não foram importados.`, "warning");
+    }
+
+    setImportResult({ success, errors });
+    setImportLoading(false);
+    if (success > 0) loadData();
+  };
+
+  const downloadCSVTemplate = () => {
+    const bom = "\uFEFF";
+    const csv = bom + "nome;telefone;email;origem\nJoão Silva;11999998888;joao@email.com;Hotmart\nMaria Santos;21988887777;maria@email.com;WhatsApp\n";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "modelo-leads.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const resetImport = () => {
+    setImportFile(null);
+    setImportData([]);
+    setImportResult(null);
+    setImportFunnel(funnels[0]?.id || "");
+    setImportStage("");
+  };
+
   // === HELPERS ===
   const filteredLeads = leads
     .filter((l) => showArchived ? l.archived : !l.archived)
@@ -312,14 +439,17 @@ export default function LeadsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={openFunnelConfig}>
-            <Settings2 className="h-4 w-4 mr-2" /> Configurar Funil
-          </Button>
           {leads.filter(l => !l.archived).length >= limits.max_leads && limits.max_leads !== Infinity && (
             <Link href="/assinatura">
               <Button variant="outline" size="sm" className="text-xs">Fazer upgrade</Button>
             </Link>
           )}
+          <Button variant="outline" onClick={() => {
+            resetImport();
+            setShowImport(true);
+          }}>
+            <Upload className="h-4 w-4 mr-2" /> Importar CSV
+          </Button>
           <Button onClick={() => {
             if (leads.filter(l => !l.archived).length >= limits.max_leads && limits.max_leads !== Infinity) {
               toast(`Limite de ${limits.max_leads.toLocaleString("pt-BR")} leads atingido. Fa\u00e7a upgrade do plano.`, "warning");
@@ -546,18 +676,40 @@ export default function LeadsPage() {
                 )}
               </div>
 
-              {/* Stage */}
+              {/* Funnel */}
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Etapa do Funil</Label>
-                <Select value={selectedLead.stage_id} onValueChange={async (val) => {
-                  await supabase.from("leads").update({ stage_id: val }).eq("id", selectedLead.id);
-                  setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, stage_id: val } : l));
-                  setSelectedLead({ ...selectedLead, stage_id: val });
+                <Label className="text-xs text-muted-foreground">Funil</Label>
+                <Select value={selectedLead.funnel_id || "none"} onValueChange={async (val) => {
+                  const fid = val === "none" ? null : val;
+                  await supabase.from("leads").update({ funnel_id: fid, stage_id: null }).eq("id", selectedLead.id);
+                  setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, funnel_id: fid || undefined, stage_id: "" } : l));
+                  setSelectedLead({ ...selectedLead, funnel_id: fid || undefined, stage_id: "" });
                 }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{stages.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                  <SelectTrigger><SelectValue placeholder="Selecione um funil" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum</SelectItem>
+                    {funnels.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
+
+              {/* Stage */}
+              {selectedLead.funnel_id && (() => {
+                const detailStages = stages.filter((s: any) => s.funnel_id === selectedLead.funnel_id);
+                return detailStages.length > 0 ? (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Etapa</Label>
+                    <Select value={selectedLead.stage_id || detailStages[0]?.id} onValueChange={async (val) => {
+                      await supabase.from("leads").update({ stage_id: val }).eq("id", selectedLead.id);
+                      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, stage_id: val } : l));
+                      setSelectedLead({ ...selectedLead, stage_id: val });
+                    }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{detailStages.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                ) : null;
+              })()}
 
               {/* Tags */}
               <div className="space-y-2">
@@ -665,6 +817,33 @@ export default function LeadsPage() {
               <Label>Origem</Label>
               <Input value={editLead.source} onChange={(e) => setEditLead({ ...editLead, source: e.target.value })} />
             </div>
+            <div className="space-y-2">
+              <Label>Funil</Label>
+              <Select value={editLead.funnel_id || "none"} onValueChange={(v) => {
+                const fid = v === "none" ? "" : v;
+                setEditLead({ ...editLead, funnel_id: fid, stage_id: "" });
+              }}>
+                <SelectTrigger><SelectValue placeholder="Selecione um funil" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum</SelectItem>
+                  {funnels.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {editLead.funnel_id && (() => {
+              const fStages = stages.filter((s: any) => s.funnel_id === editLead.funnel_id);
+              return fStages.length > 0 ? (
+                <div className="space-y-2">
+                  <Label>Etapa</Label>
+                  <Select value={editLead.stage_id || fStages[0]?.id} onValueChange={(v) => setEditLead({ ...editLead, stage_id: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {fStages.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null;
+            })()}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditLead(false)}>Cancelar</Button>
@@ -711,6 +890,161 @@ export default function LeadsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowFunnelConfig(false)}>Cancelar</Button>
             <Button onClick={handleSaveFunnel}>Salvar Funil</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import CSV Dialog */}
+      <Dialog open={showImport} onOpenChange={(open) => { if (!open && !importLoading) { setShowImport(false); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" /> Importar Leads via CSV
+            </DialogTitle>
+            <DialogDescription>
+              Envie um arquivo CSV com colunas <strong>nome</strong> e <strong>telefone</strong> (obrigatórias). Colunas opcionais: email, origem.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Step 1: Select Funnel */}
+            {funnels.length > 0 && (
+              <div className="space-y-2">
+                <Label>Funil *</Label>
+                <Select value={importFunnel} onValueChange={(v) => { setImportFunnel(v); setImportStage(""); }}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o funil" /></SelectTrigger>
+                  <SelectContent>
+                    {funnels.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Step 2: Select Stage */}
+            {importFunnel && (
+              <div className="space-y-2">
+                <Label>Etapa do Funil *</Label>
+                <Select value={importStage} onValueChange={setImportStage}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a etapa" /></SelectTrigger>
+                  <SelectContent>
+                    {stages.filter((s: any) => s.funnel_id === importFunnel).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: s.color }} />
+                          {s.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Step 3: Upload CSV */}
+            {importFunnel && importStage && (
+              <div className="space-y-2">
+                <Label>Arquivo CSV</Label>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handleFileSelect}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  <div className="flex items-center justify-center gap-3 p-6 border-2 border-dashed border-border rounded-lg hover:border-primary/50 hover:bg-muted/30 transition-colors">
+                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    <div className="text-sm">
+                      {importFile ? (
+                        <p className="font-medium">{importFile.name}</p>
+                      ) : (
+                        <p className="text-muted-foreground">Clique ou arraste um arquivo CSV</p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-0.5">Separador: vírgula (,) ou ponto-e-vírgula (;)</p>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" onClick={downloadCSVTemplate} className="text-xs text-primary hover:underline mt-2 flex items-center gap-1">
+                  <Download className="h-3 w-3" /> Baixar modelo CSV
+                </button>
+              </div>
+            )}
+
+            {/* Preview */}
+            {importData.length > 0 && !importResult && (
+              <div className="space-y-2">
+                <Label className="flex items-center justify-between">
+                  <span>Pré-visualização</span>
+                  <Badge variant="outline">{importData.length} lead{importData.length !== 1 ? "s" : ""} encontrado{importData.length !== 1 ? "s" : ""}</Badge>
+                </Label>
+                <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/50 sticky top-0">
+                        <th className="text-left p-2 font-medium text-muted-foreground">#</th>
+                        <th className="text-left p-2 font-medium text-muted-foreground">Nome</th>
+                        <th className="text-left p-2 font-medium text-muted-foreground">Telefone</th>
+                        <th className="text-left p-2 font-medium text-muted-foreground">Email</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importData.slice(0, 10).map((row, i) => (
+                        <tr key={i} className="border-b border-border/50">
+                          <td className="p-2 text-muted-foreground">{i + 1}</td>
+                          <td className="p-2">{row.name}</td>
+                          <td className="p-2 text-muted-foreground">{formatPhone(row.phone)}</td>
+                          <td className="p-2 text-muted-foreground">{row.email || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {importData.length > 10 && (
+                    <p className="p-2 text-xs text-center text-muted-foreground border-t border-border">...e mais {importData.length - 10} leads</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Result */}
+            {importResult && (
+              <div className="space-y-3">
+                {importResult.success > 0 && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                    <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-medium text-green-600">{importResult.success} lead{importResult.success !== 1 ? "s" : ""} importado{importResult.success !== 1 ? "s" : ""} com sucesso!</p>
+                    </div>
+                  </div>
+                )}
+                {importResult.errors > 0 && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                    <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-medium text-destructive">{importResult.errors} lead{importResult.errors !== 1 ? "s" : ""} com erro.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            {importResult ? (
+              <Button onClick={() => { setShowImport(false); resetImport(); }}>Fechar</Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setShowImport(false)} disabled={importLoading}>Cancelar</Button>
+                <Button
+                  onClick={handleImportLeads}
+                  disabled={!importData.length || !importFunnel || !importStage || importLoading}
+                >
+                  {importLoading ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Importando...</>
+                  ) : (
+                    <><Upload className="h-4 w-4 mr-2" /> Importar {importData.length > 0 ? `${importData.length} leads` : ""}</>
+                  )}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
