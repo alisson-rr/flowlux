@@ -308,10 +308,22 @@ export default function ChatPage() {
       // Send media if selected
       if (selectedMedia) {
         const isAudio = selectedMedia.file_type === "audio";
-        if (isAudio) {
-          await evolutionApi.sendAudio(inst.instance_name, selectedConv.remote_jid, selectedMedia.file_url);
-        } else {
-          await evolutionApi.sendMedia(inst.instance_name, selectedConv.remote_jid, selectedMedia.file_url, selectedMedia.file_type, newMessage || "", selectedMedia.file_name);
+        const proxyRes = await fetch("/api/send-media", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: isAudio ? "audio" : "media",
+            instance_name: inst.instance_name,
+            number: selectedConv.remote_jid,
+            media_url: selectedMedia.file_url,
+            media_type: selectedMedia.file_type,
+            caption: isAudio ? "" : (newMessage || ""),
+            file_name: selectedMedia.file_name,
+          }),
+        });
+        if (!proxyRes.ok) {
+          const err = await proxyRes.json().catch(() => ({}));
+          throw new Error(err.error || "Erro ao enviar mídia");
         }
         await supabase.from("messages").insert({
           conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
@@ -499,12 +511,22 @@ export default function ChatPage() {
       const publicUrl = urlData?.publicUrl;
       if (!publicUrl) { toast("Erro ao obter URL do áudio.", "error"); setSendingMessage(false); return; }
 
-      await evolutionApi.sendAudio(inst.instance_name, selectedConv.remote_jid, publicUrl);
-      await supabase.from("messages").insert({
-        conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
-        message_type: "audio", content: "", media_url: publicUrl, status: "sent",
+      const proxyRes = await fetch("/api/send-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "audio", instance_name: inst.instance_name, number: selectedConv.remote_jid, media_url: publicUrl }),
       });
-      await supabase.from("conversations").update({ last_message: "[Áudio]", last_message_at: new Date().toISOString() }).eq("id", selectedConv.id);
+      if (!proxyRes.ok) {
+        const err = await proxyRes.json().catch(() => ({}));
+        throw new Error(err.error || "Erro ao enviar áudio");
+      }
+      await Promise.all([
+        supabase.from("messages").insert({
+          conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
+          message_type: "audio", content: "", media_url: publicUrl, status: "sent",
+        }),
+        supabase.from("conversations").update({ last_message: "[Áudio]", last_message_at: new Date().toISOString() }).eq("id", selectedConv.id),
+      ]);
       discardRecording();
     } catch (err: any) {
       console.error("Error sending recorded audio:", err);
