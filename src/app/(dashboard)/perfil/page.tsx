@@ -6,9 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, CheckCircle, UserCircle, Camera } from "lucide-react";
+import { Loader2, CheckCircle, UserCircle, Camera, FileText, Shield } from "lucide-react";
 import { cn, getInitials, formatPhoneInput } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
+import { TERMOS_DE_USO, POLITICA_DE_PRIVACIDADE } from "@/lib/legal-texts";
 
 export default function PerfilPage() {
   const [loading, setLoading] = useState(true);
@@ -19,6 +23,8 @@ export default function PerfilPage() {
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -232,6 +238,47 @@ export default function PerfilPage() {
           <Button onClick={handleChangePassword} variant="outline">Alterar Senha</Button>
         </CardContent>
       </Card>
+      {/* Termos e Privacidade */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Termos e Privacidade</CardTitle>
+          <CardDescription>Consulte os documentos legais da plataforma</CardDescription>
+        </CardHeader>
+        <CardContent className="flex gap-3">
+          <Button variant="outline" onClick={() => setShowTerms(true)} className="gap-2">
+            <FileText className="h-4 w-4" /> Termos de Uso
+          </Button>
+          <Button variant="outline" onClick={() => setShowPrivacy(true)} className="gap-2">
+            <Shield className="h-4 w-4" /> Política de Privacidade
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Termos de Uso Dialog */}
+      <Dialog open={showTerms} onOpenChange={setShowTerms}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Termos de Uso</DialogTitle>
+            <DialogDescription>Última atualização: 24/03/2026</DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto pr-2 text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+{TERMOS_DE_USO}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Política de Privacidade Dialog */}
+      <Dialog open={showPrivacy} onOpenChange={setShowPrivacy}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> Política de Privacidade</DialogTitle>
+            <DialogDescription>Última atualização: 24/03/2026</DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto pr-2 text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+{POLITICA_DE_PRIVACIDADE}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

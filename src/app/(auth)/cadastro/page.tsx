@@ -8,7 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, FileText, Shield } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
+import { TERMOS_DE_USO, POLITICA_DE_PRIVACIDADE } from "@/lib/legal-texts";
 
 export default function CadastroPage() {
   const router = useRouter();
@@ -16,6 +21,9 @@ export default function CadastroPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
 
   const formatPhoneInput = (value: string) => {
     const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -43,6 +51,11 @@ export default function CadastroPage() {
 
     if (form.password.length < 6) {
       setError("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    if (!acceptedTerms) {
+      setError("Você precisa aceitar os Termos de Uso e a Política de Privacidade.");
       return;
     }
 
@@ -102,7 +115,7 @@ export default function CadastroPage() {
     router.push("/assinatura");
   };
 
-  return (
+  return (<>
     <Card className="border-border/50">
       <CardHeader className="text-center">
         <div className="mx-auto mb-4 w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
@@ -141,9 +154,26 @@ export default function CadastroPage() {
             <Label htmlFor="confirmPassword">Confirmar senha</Label>
             <Input id="confirmPassword" type={showPassword ? "text" : "password"} placeholder="••••••••" value={form.confirmPassword} onChange={(e) => handleChange("confirmPassword", e.target.value)} required />
           </div>
+          <div className="flex items-start gap-3">
+            <Checkbox
+              checked={acceptedTerms}
+              onCheckedChange={(checked) => setAcceptedTerms(checked)}
+              className="mt-0.5"
+            />
+            <span className="text-sm text-muted-foreground leading-tight">
+              Li e aceito os{" "}
+              <button type="button" onClick={() => setShowTerms(true)} className="text-primary hover:underline font-medium">
+                Termos de Uso
+              </button>{" "}
+              e a{" "}
+              <button type="button" onClick={() => setShowPrivacy(true)} className="text-primary hover:underline font-medium">
+                Política de Privacidade
+              </button>
+            </span>
+          </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || !acceptedTerms}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Cadastrar
           </Button>
@@ -154,5 +184,31 @@ export default function CadastroPage() {
         </CardFooter>
       </form>
     </Card>
-  );
+
+    {/* Termos de Uso Dialog */}
+    <Dialog open={showTerms} onOpenChange={setShowTerms}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Termos de Uso</DialogTitle>
+          <DialogDescription>Última atualização: 24/03/2026</DialogDescription>
+        </DialogHeader>
+        <div className="overflow-y-auto pr-2 text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+{TERMOS_DE_USO}
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* Política de Privacidade Dialog */}
+    <Dialog open={showPrivacy} onOpenChange={setShowPrivacy}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> Política de Privacidade</DialogTitle>
+          <DialogDescription>Última atualização: 24/03/2026</DialogDescription>
+        </DialogHeader>
+        <div className="overflow-y-auto pr-2 text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+{POLITICA_DE_PRIVACIDADE}
+        </div>
+      </DialogContent>
+    </Dialog>
+  </>);
 }
