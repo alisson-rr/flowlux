@@ -8,13 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download, Zap, Timer, Play,
+  Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download, Zap, Timer, Play, Mic, Square, Trash2, CalendarClock, Clock,
 } from "lucide-react";
 import { cn, formatPhone, getInitials } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -69,6 +69,22 @@ export default function ChatPage() {
   const [selectedFlow, setSelectedFlow] = useState<FlowOption | null>(null);
   const [showFlowPreview, setShowFlowPreview] = useState(false);
   const [executingFlow, setExecutingFlow] = useState(false);
+
+  // Audio recording
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [isPlayingRecording, setIsPlayingRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordedAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Schedule message from chat
+  const [showScheduleMsg, setShowScheduleMsg] = useState(false);
+  const [scheduleMessage, setScheduleMessage] = useState("");
+  const [scheduleDateTime, setScheduleDateTime] = useState("");
 
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -131,14 +147,30 @@ export default function ChatPage() {
 
   const normalizePhoneVariants = (phone: string): string[] => {
     const digits = phone.replace(/\D/g, "");
-    const result = [digits];
+    const result = new Set<string>([digits]);
+    // Add/remove country code variants
     if (digits.startsWith("55") && digits.length > 11) {
-      result.push(digits.slice(2)); // without country code
+      result.add(digits.slice(2)); // without country code
     }
     if (!digits.startsWith("55") && digits.length <= 11) {
-      result.push("55" + digits); // with country code
+      result.add("55" + digits); // with country code
     }
-    return result;
+    // Brazilian 9th digit variants
+    const withCC = digits.startsWith("55") ? digits : "55" + digits;
+    const ddd = withCC.substring(2, 4);
+    const subscriber = withCC.substring(4);
+    if (subscriber.length === 9 && subscriber.startsWith("9")) {
+      // Has 9th digit → generate variant without it
+      const without9 = "55" + ddd + subscriber.substring(1);
+      result.add(without9);
+      result.add(without9.slice(2));
+    } else if (subscriber.length === 8) {
+      // Missing 9th digit → generate variant with it
+      const with9 = "55" + ddd + "9" + subscriber;
+      result.add(with9);
+      result.add(with9.slice(2));
+    }
+    return Array.from(result);
   };
 
   const loadLeadInfo = async (phone: string) => {
@@ -224,12 +256,23 @@ export default function ChatPage() {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
 
-    const phone = lead.phone.replace(/\D/g, "");
-    const remoteJid = phone.startsWith("55") ? `${phone}@s.whatsapp.net` : `55${phone}@s.whatsapp.net`;
+    let phone = lead.phone.replace(/\D/g, "");
+    // Ensure country code
+    if (!phone.startsWith("55")) phone = "55" + phone;
+    // Strip 9th digit for Brazilian mobile numbers to match WhatsApp JID format
+    // Brazilian mobile with 9th digit: 55 + DD(2) + 9XXXXXXXX(9) = 13 digits
+    // WhatsApp JID format: 55 + DD(2) + XXXXXXXX(8) = 12 digits
+    if (phone.length === 13 && phone[4] === "9") {
+      phone = phone.substring(0, 4) + phone.substring(5);
+    }
+    const remoteJid = `${phone}@s.whatsapp.net`;
 
     if (!selectedInstanceId) { toast("Selecione um WhatsApp primeiro.", "warning"); return; }
 
-    const existing = conversations.find((c) => c.remote_jid === remoteJid && c.instance_id === selectedInstanceId);
+    // Check existing conversation considering both phone formats (with/without 9th digit)
+    const phoneVariants = normalizePhoneVariants(phone);
+    const jidVariants = phoneVariants.filter(v => v.startsWith("55")).map(v => `${v}@s.whatsapp.net`);
+    const existing = conversations.find((c) => jidVariants.includes(c.remote_jid) && c.instance_id === selectedInstanceId);
     if (existing) { handleSelectConversation(existing); setShowNewConv(false); setLeadSearch(""); return; }
 
     const { data: conv } = await supabase.from("conversations").insert({
@@ -367,6 +410,130 @@ export default function ChatPage() {
       toast("Erro ao executar fluxo.", "error");
     } finally {
       setExecutingFlow(false);
+    }
+  };
+
+  // === AUDIO RECORDING ===
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      setRecordingTime(0);
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm;codecs=opus" });
+        setRecordedAudioBlob(blob);
+        setRecordedAudioUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach((t) => t.stop());
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      };
+
+      mediaRecorder.start(250);
+      setIsRecording(true);
+      recordingTimerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
+    } catch {
+      toast("Não foi possível acessar o microfone.", "error");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+  };
+
+  const discardRecording = () => {
+    if (recordedAudioUrl) URL.revokeObjectURL(recordedAudioUrl);
+    setRecordedAudioBlob(null);
+    setRecordedAudioUrl(null);
+    setRecordingTime(0);
+    setIsPlayingRecording(false);
+    if (recordedAudioRef.current) { recordedAudioRef.current.pause(); recordedAudioRef.current = null; }
+  };
+
+  const togglePlayRecording = () => {
+    if (!recordedAudioUrl) return;
+    if (isPlayingRecording && recordedAudioRef.current) {
+      recordedAudioRef.current.pause();
+      setIsPlayingRecording(false);
+    } else {
+      const audio = new Audio(recordedAudioUrl);
+      recordedAudioRef.current = audio;
+      audio.onended = () => setIsPlayingRecording(false);
+      audio.play();
+      setIsPlayingRecording(true);
+    }
+  };
+
+  const sendRecordedAudio = async () => {
+    if (!recordedAudioBlob || !selectedConv || !selectedInstanceId) return;
+    setSendingMessage(true);
+    try {
+      const inst = instances.find((i) => i.id === selectedInstanceId);
+      if (!inst) { toast("Selecione um WhatsApp.", "warning"); setSendingMessage(false); return; }
+
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) { setSendingMessage(false); return; }
+
+      const fileName = `audio_${Date.now()}.webm`;
+      const filePath = `${userData.user.id}/${fileName}`;
+      const { error: upErr } = await supabase.storage.from("media").upload(filePath, recordedAudioBlob, { contentType: "audio/webm", upsert: true });
+      if (upErr) { toast("Erro ao fazer upload do áudio.", "error"); setSendingMessage(false); return; }
+
+      const { data: urlData } = supabase.storage.from("media").getPublicUrl(filePath);
+      const publicUrl = urlData?.publicUrl;
+      if (!publicUrl) { toast("Erro ao obter URL do áudio.", "error"); setSendingMessage(false); return; }
+
+      await evolutionApi.sendAudio(inst.instance_name, selectedConv.remote_jid, publicUrl);
+      await supabase.from("messages").insert({
+        conversation_id: selectedConv.id, remote_jid: selectedConv.remote_jid, from_me: true,
+        message_type: "audio", content: "", media_url: publicUrl, status: "sent",
+      });
+      await supabase.from("conversations").update({ last_message: "[Áudio]", last_message_at: new Date().toISOString() }).eq("id", selectedConv.id);
+      discardRecording();
+    } catch (err: any) {
+      console.error("Error sending recorded audio:", err);
+      toast("Erro ao enviar áudio: " + (err?.message || ""), "error");
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const formatRecordingTime = (secs: number) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, "0");
+    const s = (secs % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
+  // === SCHEDULE MESSAGE FROM CHAT ===
+  const handleScheduleFromChat = async () => {
+    if (!scheduleMessage.trim() || !scheduleDateTime || !selectedConv || !leadInfo) return;
+    if (!selectedInstanceId) { toast("Selecione um WhatsApp.", "warning"); return; }
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+    const { error } = await supabase.from("scheduled_messages").insert({
+      user_id: userData.user.id,
+      lead_id: leadInfo.id,
+      instance_id: selectedInstanceId,
+      message: scheduleMessage,
+      scheduled_at: scheduleDateTime,
+      status: "pending",
+    });
+    if (!error) {
+      toast("Mensagem agendada com sucesso!", "success");
+      setShowScheduleMsg(false);
+      setScheduleMessage("");
+      setScheduleDateTime("");
+    } else {
+      toast("Erro ao agendar mensagem.", "error");
     }
   };
 
@@ -552,7 +719,7 @@ export default function ChatPage() {
                   {/* Input */}
                   <div className="border-t border-border bg-card">
                     {/* Selected media thumbnail */}
-                    {selectedMedia && (
+                    {selectedMedia && !isRecording && !recordedAudioBlob && (
                       <div className="px-3 pt-2 flex items-center gap-2">
                         <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted text-xs">
                           {selectedMedia.file_type === "image" ? (
@@ -568,25 +735,80 @@ export default function ChatPage() {
                         </div>
                       </div>
                     )}
-                    <div className="p-3 flex items-center gap-2">
-                      <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => { setRightPanel(rightPanel === "media" ? null : "media"); setMediaTab("templates"); }}>
-                        <Paperclip className="h-5 w-5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setShowFlowPicker(true)} title="Gatilhos / Fluxos" disabled={flows.length === 0}>
-                        <Zap className={cn("h-5 w-5", flows.length > 0 ? "text-yellow-500" : "text-muted-foreground")} />
-                      </Button>
-                      <Input
-                        placeholder={selectedMedia?.file_type === "audio" ? "Áudio não suporta texto" : "Digite uma mensagem..."}
-                        value={selectedMedia?.file_type === "audio" ? "" : newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
-                        className="flex-1 h-10"
-                        disabled={selectedMedia?.file_type === "audio"}
-                      />
-                      <Button className="h-10 w-10" size="icon" onClick={handleSendMessage} disabled={sendingMessage || (!newMessage.trim() && !selectedMedia)}>
-                        {sendingMessage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                      </Button>
-                    </div>
+
+                    {/* Recording in progress */}
+                    {isRecording && (
+                      <div className="p-3 flex items-center gap-3">
+                        <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={() => { stopRecording(); discardRecording(); }} title="Descartar">
+                          <Trash2 className="h-5 w-5" />
+                        </Button>
+                        <div className="flex-1 flex items-center gap-3 px-3 py-2 rounded-full bg-muted">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                          <div className="flex-1 h-1 rounded-full bg-primary/30 overflow-hidden">
+                            <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: `${Math.min(100, (recordingTime / 120) * 100)}%` }} />
+                          </div>
+                          <span className="text-sm font-mono text-muted-foreground min-w-[40px]">{formatRecordingTime(recordingTime)}</span>
+                        </div>
+                        <Button className="h-10 w-10 rounded-full bg-primary" size="icon" onClick={stopRecording} title="Parar gravação">
+                          <Square className="h-4 w-4 fill-current" />
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Recorded audio ready to send */}
+                    {!isRecording && recordedAudioBlob && (
+                      <div className="p-3 flex items-center gap-3">
+                        <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={discardRecording} title="Descartar">
+                          <Trash2 className="h-5 w-5" />
+                        </Button>
+                        <div className="flex-1 flex items-center gap-3 px-3 py-2 rounded-full bg-muted">
+                          <button onClick={togglePlayRecording} className="text-primary hover:text-primary/80 transition-colors">
+                            {isPlayingRecording ? <Square className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current" />}
+                          </button>
+                          <div className="flex-1 h-1 rounded-full bg-primary/30" />
+                          <span className="text-sm font-mono text-muted-foreground min-w-[40px]">{formatRecordingTime(recordingTime)}</span>
+                          <Mic className="h-4 w-4 text-pink-500" />
+                        </div>
+                        <Button className="h-10 w-10 rounded-full bg-primary" size="icon" onClick={sendRecordedAudio} disabled={sendingMessage} title="Enviar áudio">
+                          {sendingMessage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Normal input */}
+                    {!isRecording && !recordedAudioBlob && (
+                      <div className="p-3 flex items-center gap-2">
+                        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => { setRightPanel(rightPanel === "media" ? null : "media"); setMediaTab("templates"); }}>
+                          <Paperclip className="h-5 w-5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setShowFlowPicker(true)} title="Gatilhos / Fluxos" disabled={flows.length === 0}>
+                          <Zap className={cn("h-5 w-5", flows.length > 0 ? "text-yellow-500" : "text-muted-foreground")} />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => {
+                          if (!leadInfo) { toast("Abra as informações do lead primeiro.", "warning"); return; }
+                          setShowScheduleMsg(true);
+                        }} title="Agendar mensagem">
+                          <CalendarClock className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+                        </Button>
+                        <Input
+                          placeholder={selectedMedia?.file_type === "audio" ? "Áudio não suporta texto" : "Digite uma mensagem..."}
+                          value={selectedMedia?.file_type === "audio" ? "" : newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+                          className="flex-1 h-10"
+                          disabled={selectedMedia?.file_type === "audio"}
+                        />
+                        {newMessage.trim() || selectedMedia ? (
+                          <Button className="h-10 w-10" size="icon" onClick={handleSendMessage} disabled={sendingMessage || (!newMessage.trim() && !selectedMedia)}>
+                            {sendingMessage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="icon" className="h-10 w-10" onClick={startRecording} title="Gravar áudio">
+                            <Mic className="h-5 w-5" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -661,7 +883,7 @@ export default function ChatPage() {
                         {/* Tags with add/remove */}
                         <div className="space-y-2">
                           <p className="text-xs text-muted-foreground flex items-center gap-1"><Tag className="h-3 w-3" /> Tags</p>
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1.5">
                             {leadInfo.tags?.map((t: any) => (
                               <span key={t.id} className="text-[10px] px-2 py-0.5 rounded-full text-white flex items-center gap-1" style={{ backgroundColor: t.color }}>
                                 {t.name}
@@ -669,8 +891,31 @@ export default function ChatPage() {
                               </span>
                             ))}
                           </div>
+                          {allTags.filter((t) => !leadInfo.tags?.some((lt: any) => lt.id === t.id)).length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-[10px] text-muted-foreground">Clique para adicionar:</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {allTags.filter((t) => !leadInfo.tags?.some((lt: any) => lt.id === t.id)).map((tag) => (
+                                  <button
+                                    key={tag.id}
+                                    onClick={async () => {
+                                      if (!leadInfo) return;
+                                      await supabase.from("lead_tags").insert({ lead_id: leadInfo.id, tag_id: tag.id });
+                                      setLeadInfo((prev: any) => prev ? { ...prev, tags: [...prev.tags, { id: tag.id, name: tag.name, color: tag.color }] } : prev);
+                                      refreshTags();
+                                    }}
+                                    className="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:text-white hover:border-transparent transition-colors"
+                                    onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = tag.color; }}
+                                    onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = "transparent"; }}
+                                  >
+                                    + {tag.name}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           <div className="flex gap-1.5">
-                            <Input placeholder="Nova tag..." value={newTag} onChange={(e) => setNewTag(e.target.value)}
+                            <Input placeholder="Criar nova tag..." value={newTag} onChange={(e) => setNewTag(e.target.value)}
                               onKeyDown={(e) => e.key === "Enter" && handleAddTag()} className="h-8 text-xs" />
                             <Button size="sm" variant="outline" className="h-8 px-2" onClick={handleAddTag}><Plus className="h-3 w-3" /></Button>
                           </div>
@@ -930,6 +1175,34 @@ export default function ChatPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule Message from Chat Dialog */}
+      <Dialog open={showScheduleMsg} onOpenChange={(open) => { setShowScheduleMsg(open); if (!open) { setScheduleMessage(""); setScheduleDateTime(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><CalendarClock className="h-5 w-5 text-primary" /> Agendar Mensagem</DialogTitle>
+            <DialogDescription>
+              Agende uma mensagem para <strong>{leadInfo?.name || selectedConv?.contact_name || "este contato"}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Mensagem *</p>
+              <Textarea placeholder="Conteúdo da mensagem..." value={scheduleMessage} onChange={(e) => setScheduleMessage(e.target.value)} className="min-h-[80px]" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Data e hora *</p>
+              <Input type="datetime-local" value={scheduleDateTime} onChange={(e) => setScheduleDateTime(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowScheduleMsg(false)}>Cancelar</Button>
+            <Button onClick={handleScheduleFromChat} disabled={!scheduleMessage.trim() || !scheduleDateTime}>
+              <Clock className="h-4 w-4 mr-1.5" /> Agendar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

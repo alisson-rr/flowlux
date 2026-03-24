@@ -141,10 +141,6 @@ export async function POST(req: NextRequest) {
           last_message: step.step_type === "text" ? step.content : `[${step.step_type}]`,
           last_message_at: new Date().toISOString(),
         }).eq("id", conversation_id);
-
-        if (i < steps.length - 1 && step.step_type !== "delay") {
-          await delay(500);
-        }
       } catch (stepError: any) {
         if (executionId) {
           await supabase.from("flow_executions").update({ status: "failed", error_message: String(stepError), completed_at: new Date().toISOString() }).eq("id", executionId);

@@ -485,7 +485,7 @@
     },
     {
       "parameters": {
-        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/leads?user_id=eq.{{ $json.user_id }}&phone=ilike.%25{{ $('normalizacao').item.json.http.remoteJid.replace('@s.whatsapp.net', '').slice(-8) }}&deleted_at=is.null&select=id&limit=1",
+        "url": "=https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/leads?user_id=eq.{{ $json.user_id }}&phone=ilike.%25{{ $('normalizacao').item.json.http.remoteJid.replace('@s.whatsapp.net', '').slice(-8, -4) }}%25{{ $('normalizacao').item.json.http.remoteJid.replace('@s.whatsapp.net', '').slice(-4) }}&deleted_at=is.null&select=id&limit=1",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "options": {}
