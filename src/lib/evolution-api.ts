@@ -1,6 +1,20 @@
 const EVOLUTION_API_URL = process.env.NEXT_PUBLIC_EVOLUTION_API_URL || "";
 const EVOLUTION_API_KEY = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || "";
 
+async function urlToBase64(url: string): Promise<string> {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  const dataUri = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+  // Strip data URI prefix — Evolution API wants raw base64
+  const idx = dataUri.indexOf(",");
+  return idx >= 0 ? dataUri.substring(idx + 1) : dataUri;
+}
+
 async function evolutionFetch(endpoint: string, options: RequestInit = {}) {
   const res = await fetch(`${EVOLUTION_API_URL}${endpoint}`, {
     ...options,
@@ -64,17 +78,39 @@ export const evolutionApi = {
       }),
     }),
 
-  sendMedia: (instanceName: string, number: string, mediaUrl: string, mediaType: string, caption?: string, fileName?: string) =>
-    evolutionFetch(`/message/sendMedia/${instanceName}`, {
+  sendMedia: async (instanceName: string, number: string, mediaUrl: string, mediaType: string, caption?: string, fileName?: string) => {
+    const mtype = mediaType === "image" ? "image" : mediaType === "video" ? "video" : "document";
+    const ext = (mediaUrl.split("?")[0].split(".").pop() || "").toLowerCase();
+    const mimeMap: Record<string, string> = {
+      jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
+      mp4: "video/mp4", avi: "video/avi", mov: "video/quicktime", mkv: "video/x-matroska",
+      pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      zip: "application/zip", csv: "text/csv", txt: "text/plain",
+    };
+    const fallbackMime = mtype === "image" ? "image/jpeg" : mtype === "video" ? "video/mp4" : "application/octet-stream";
+    const mimetype = mimeMap[ext] || fallbackMime;
+
+    // Convert URL to base64 so Evolution API doesn't need to fetch the URL
+    let mediaData = mediaUrl;
+    try {
+      mediaData = await urlToBase64(mediaUrl);
+    } catch (e) {
+      console.warn("Failed to convert media to base64, sending URL:", e);
+    }
+
+    return evolutionFetch(`/message/sendMedia/${instanceName}`, {
       method: "POST",
       body: JSON.stringify({
         number,
-        mediatype: mediaType === "image" ? "image" : mediaType === "video" ? "video" : "document",
-        media: mediaUrl,
+        mediatype: mtype,
+        mimetype,
+        media: mediaData,
         caption: caption || "",
-        fileName: fileName || "",
+        fileName: fileName || (ext ? `file.${ext}` : ""),
       }),
-    }),
+    });
+  },
 
   sendAudio: (instanceName: string, number: string, audioUrl: string) =>
     evolutionFetch(`/message/sendWhatsAppAudio/${instanceName}`, {

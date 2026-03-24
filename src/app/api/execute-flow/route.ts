@@ -33,11 +33,38 @@ async function sendText(instanceName: string, number: string, text: string) {
   });
 }
 
+async function urlToBase64Server(url: string): Promise<{ base64: string; detectedMime: string }> {
+  const res = await fetch(url);
+  const contentType = res.headers.get("content-type") || "application/octet-stream";
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return { base64: buffer.toString("base64"), detectedMime: contentType };
+}
+
 async function sendMedia(instanceName: string, number: string, mediaUrl: string, mediaType: string, caption?: string, fileName?: string) {
   const mtype = mediaType === "image" ? "image" : mediaType === "video" ? "video" : "document";
+  const ext = (mediaUrl.split("?")[0].split(".").pop() || "").toLowerCase();
+  const mimeMap: Record<string, string> = {
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
+    mp4: "video/mp4", avi: "video/avi", mov: "video/quicktime",
+    pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
+  const fallbackMime = mtype === "image" ? "image/jpeg" : mtype === "video" ? "video/mp4" : "application/octet-stream";
+
+  // Convert URL to base64 so Evolution API doesn't need to fetch the URL
+  let mediaData = mediaUrl;
+  let mimetype = mimeMap[ext] || fallbackMime;
+  try {
+    const { base64, detectedMime } = await urlToBase64Server(mediaUrl);
+    mediaData = base64;
+    if (detectedMime && detectedMime !== "application/octet-stream") mimetype = detectedMime;
+  } catch (e) {
+    console.warn("Failed to convert media to base64, sending URL:", e);
+  }
+
   return evolutionFetch(`/message/sendMedia/${instanceName}`, {
     method: "POST",
-    body: JSON.stringify({ number, mediatype: mtype, media: mediaUrl, caption: caption || "", fileName: fileName || "" }),
+    body: JSON.stringify({ number, mediatype: mtype, mimetype, media: mediaData, caption: caption || "", fileName: fileName || (ext ? `file.${ext}` : "") }),
   });
 }
 
@@ -107,40 +134,42 @@ export async function POST(req: NextRequest) {
     } catch { /* flow_executions table may not exist */ }
     const number = remote_jid.replace("@s.whatsapp.net", "").replace("@g.us", "");
 
-    // Execute steps sequentially
+    // Execute steps sequentially — send message first, then DB writes in parallel
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
       try {
-        if (executionId) {
-          await supabase.from("flow_executions").update({ current_step: i + 1 }).eq("id", executionId);
-        }
-
         if (step.step_type === "delay") {
           await delay((step.delay_seconds || 5) * 1000);
           continue;
         }
 
+        // 1) Send via Evolution API (must complete before DB writes)
+        let msgType = step.step_type;
+        let msgContent = step.content || "";
+        let msgMediaUrl: string | null = null;
+
         if (step.step_type === "text" && step.content) {
           await sendText(instance_name, number, step.content);
-          await supabase.from("messages").insert({
-            conversation_id, remote_jid, from_me: true, message_type: "text", content: step.content, status: "sent",
-          });
         } else if (step.step_type === "audio" && step.media_url) {
           await sendAudio(instance_name, number, step.media_url);
-          await supabase.from("messages").insert({
-            conversation_id, remote_jid, from_me: true, message_type: "audio", content: "", media_url: step.media_url, status: "sent",
-          });
+          msgContent = "";
+          msgMediaUrl = step.media_url;
         } else if (["image", "video", "document"].includes(step.step_type) && step.media_url) {
           await sendMedia(instance_name, number, step.media_url, step.step_type, step.content || "", step.file_name || "");
-          await supabase.from("messages").insert({
-            conversation_id, remote_jid, from_me: true, message_type: step.step_type, content: step.content || "", media_url: step.media_url, status: "sent",
-          });
+          msgMediaUrl = step.media_url;
         }
 
-        await supabase.from("conversations").update({
-          last_message: step.step_type === "text" ? step.content : `[${step.step_type}]`,
-          last_message_at: new Date().toISOString(),
-        }).eq("id", conversation_id);
+        // 2) DB writes in parallel (messages insert + conversation update)
+        await Promise.all([
+          supabase.from("messages").insert({
+            conversation_id, remote_jid, from_me: true, message_type: msgType,
+            content: msgContent, media_url: msgMediaUrl, status: "sent",
+          }).then(),
+          supabase.from("conversations").update({
+            last_message: step.step_type === "text" ? step.content : `[${step.step_type}]`,
+            last_message_at: new Date().toISOString(),
+          }).eq("id", conversation_id).then(),
+        ]);
       } catch (stepError: any) {
         if (executionId) {
           await supabase.from("flow_executions").update({ status: "failed", error_message: String(stepError), completed_at: new Date().toISOString() }).eq("id", executionId);

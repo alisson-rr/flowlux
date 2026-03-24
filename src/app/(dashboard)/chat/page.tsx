@@ -381,7 +381,13 @@ export default function ChatPage() {
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData?.session?.access_token || "";
 
-      const res = await fetch("/api/execute-flow", {
+      // Fire-and-forget: don't block UI waiting for all steps to complete
+      setShowFlowPreview(false);
+      setSelectedFlow(null);
+      setExecutingFlow(false);
+      toast("Fluxo em execução! As mensagens serão enviadas em sequência.", "success");
+
+      fetch("/api/execute-flow", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -395,16 +401,17 @@ export default function ChatPage() {
           remote_jid: selectedConv.remote_jid,
           conversation_id: selectedConv.id,
         }),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const result = await res.json().catch(() => ({}));
+          console.error("Flow execution error:", result);
+          toast("Erro no fluxo: " + (result.error || "erro desconhecido"), "error");
+        }
+      }).catch((err) => {
+        console.error("Flow execution error:", err);
+        toast("Erro ao executar fluxo.", "error");
       });
-      const result = await res.json();
-
-      if (!res.ok) {
-        console.error("Flow execution error:", result);
-        toast("Erro ao executar fluxo: " + (result.error || "erro desconhecido"), "error");
-      } else {
-        setShowFlowPreview(false);
-        setSelectedFlow(null);
-      }
+      return;
     } catch (err) {
       console.error("Flow execution error:", err);
       toast("Erro ao executar fluxo.", "error");
@@ -484,11 +491,11 @@ export default function ChatPage() {
       if (!userData.user) { setSendingMessage(false); return; }
 
       const fileName = `audio_${Date.now()}.webm`;
-      const filePath = `${userData.user.id}/${fileName}`;
-      const { error: upErr } = await supabase.storage.from("media").upload(filePath, recordedAudioBlob, { contentType: "audio/webm", upsert: true });
+      const filePath = `media/${userData.user.id}/${fileName}`;
+      const { error: upErr } = await supabase.storage.from("public_bucket").upload(filePath, recordedAudioBlob, { contentType: "audio/webm", upsert: true });
       if (upErr) { toast("Erro ao fazer upload do áudio.", "error"); setSendingMessage(false); return; }
 
-      const { data: urlData } = supabase.storage.from("media").getPublicUrl(filePath);
+      const { data: urlData } = supabase.storage.from("public_bucket").getPublicUrl(filePath);
       const publicUrl = urlData?.publicUrl;
       if (!publicUrl) { toast("Erro ao obter URL do áudio.", "error"); setSendingMessage(false); return; }
 
