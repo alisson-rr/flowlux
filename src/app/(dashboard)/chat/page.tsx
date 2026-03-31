@@ -86,10 +86,75 @@ export default function ChatPage() {
   const [scheduleMessage, setScheduleMessage] = useState("");
   const [scheduleDateTime, setScheduleDateTime] = useState("");
 
+  // Avisos de campos faltantes
+  const [missingFields, setMissingFields] = useState<string[]>([]);
+
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
+
+  // Ajustar altura do textarea quando a mensagem mudar
+  useEffect(() => {
+    const textarea = document.querySelector('textarea[style*="height"]') as HTMLTextAreaElement;
+    if (textarea && newMessage) {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 220) + 'px';
+    }
+  }, [newMessage]);
+
+  // Atualizar campos faltantes quando a mensagem mudar
+  useEffect(() => {
+    const currentMissingFields = checkMissingFields(newMessage);
+    setMissingFields(currentMissingFields);
+  }, [newMessage]);
+
+  // Função para verificar parâmetros ainda presentes na mensagem
+  const checkMissingFields = (message: string): string[] => {
+    const missingFields: string[] = [];
+    
+    // Verificar se ainda há parâmetros na mensagem atual
+    if (message.includes('{nome}')) missingFields.push('nome');
+    if (message.includes('{email}')) missingFields.push('email');
+    if (message.includes('{telefone}')) missingFields.push('telefone');
+    
+    return missingFields;
+  };
+
+  // Função para substituir parâmetros nos templates
+  const replaceTemplateParameters = (template: string): { content: string; missingFields: string[] } => {
+    if (!template) return { content: template, missingFields: [] };
+    
+    const missingFields: string[] = [];
+    let processedContent = template;
+    
+    // Extrair primeiro nome
+    const getFirstName = (fullName: string) => {
+      if (!fullName) return '';
+      const names = fullName.trim().split(' ');
+      return names[0];
+    };
+    
+    // Dados do contato/lead para substituição
+    const contactName = getFirstName(selectedConv?.contact_name || leadInfo?.name || '');
+    const contactEmail = leadInfo?.email || '';
+    const contactPhone = selectedConv?.contact_phone || leadInfo?.phone || '';
+    
+    // Verificar campos faltantes apenas se o parâmetro ainda existe no texto
+    if (template.includes('{nome}') && !contactName) missingFields.push('nome');
+    if (template.includes('{email}') && !contactEmail) missingFields.push('email');
+    if (template.includes('{telefone}') && !contactPhone) missingFields.push('telefone');
+    
+    // Substituir apenas se tiver informação
+    if (contactName) processedContent = processedContent.replace(/{nome}/g, contactName);
+    if (contactEmail) processedContent = processedContent.replace(/{email}/g, contactEmail);
+    if (contactPhone) processedContent = processedContent.replace(/{telefone}/g, formatPhone(contactPhone));
+    
+    // Verificar quais parâmetros ainda permanecem sem substituição
+    const remainingMissingFields = checkMissingFields(processedContent);
+    
+    return { content: processedContent, missingFields: remainingMissingFields };
+  };
 
   // === DATA LOADING (all parallel) ===
   const loadInitialData = useCallback(async () => {
@@ -819,14 +884,47 @@ export default function ChatPage() {
                         }} title="Agendar mensagem">
                           <CalendarClock className="h-5 w-5 text-muted-foreground hover:text-foreground" />
                         </Button>
-                        <Input
+                        <div className="flex-1">
+                          {/* Aviso de campos faltantes */}
+                          {missingFields.length > 0 && (
+                            <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded-md">
+                              <p className="text-xs text-red-600">
+                                ⚠️ Informações ausentes: {missingFields.map(field => {
+                                  const fieldNames: Record<string, string> = {
+                                    nome: 'nome',
+                                    email: 'email', 
+                                    telefone: 'telefone'
+                                  };
+                                  return fieldNames[field] || field;
+                                }).join(', ')}
+                              </p>
+                            </div>
+                          )}
+                          <Textarea
                           placeholder={selectedMedia?.file_type === "audio" ? "Áudio não suporta texto" : "Digite uma mensagem..."}
                           value={selectedMedia?.file_type === "audio" ? "" : newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
+                          onChange={(e) => {
+                            setNewMessage(e.target.value);
+                            const target = e.target as HTMLTextAreaElement;
+                            target.style.height = 'auto';
+                            target.style.height = Math.min(target.scrollHeight, 220) + 'px';
+                          }}
+                          onInput={(e) => {
+                            const target = e.target as HTMLTextAreaElement;
+                            target.style.height = 'auto';
+                            target.style.height = Math.min(target.scrollHeight, 220) + 'px';
+                          }}
                           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
-                          className="flex-1 h-10"
+                          className="flex-1 min-h-[44px] resize-none overflow-hidden"
                           disabled={selectedMedia?.file_type === "audio"}
+                          rows={1}
+                          style={{
+                            height: 'auto',
+                            minHeight: '44px',
+                            maxHeight: 220
+                          }}
                         />
+                        </div>
                         {newMessage.trim() || selectedMedia ? (
                           <Button className="h-10 w-10" size="icon" onClick={handleSendMessage} disabled={sendingMessage || (!newMessage.trim() && !selectedMedia)}>
                             {sendingMessage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
@@ -1033,7 +1131,12 @@ export default function ChatPage() {
                             <p className="text-xs text-muted-foreground text-center py-4">Nenhuma mensagem pronta. Crie em Mídia.</p>
                           ) : (
                             templates.map((tpl) => (
-                              <button key={tpl.id} onClick={() => { setNewMessage(tpl.content); setRightPanel(null); }}
+                              <button key={tpl.id} onClick={() => { 
+                                const result = replaceTemplateParameters(tpl.content); 
+                                setNewMessage(result.content); 
+                                setMissingFields(result.missingFields);
+                                setRightPanel(null); 
+                              }}
                                 className="w-full p-2.5 rounded-lg border border-border hover:border-primary/40 transition-colors text-left">
                                 <p className="font-medium text-xs">{tpl.name}</p>
                                 <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">{tpl.content}</p>

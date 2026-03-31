@@ -16,7 +16,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  FileText, Image, Video, Music, FileUp, Plus, Trash2, Loader2, Pencil, Download, Search, FolderOpen, Check, Mic, Square, Upload,
+  FileText, Image, Video, Music, FileUp, Plus, Trash2, Loader2, Pencil, Download, Search, FolderOpen, Check, Mic, Square, Upload, User, Mail, Phone,
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { useSubscription } from "@/lib/use-subscription";
@@ -25,6 +25,13 @@ import Link from "next/link";
 
 interface Template { id: string; name: string; content: string; category: string; }
 interface MediaItem { id: string; file_name: string; file_type: string; file_url: string; file_size: number; created_at: string; }
+
+// Parâmetros disponíveis para templates
+const TEMPLATE_PARAMETERS = [
+  { key: 'nome', label: 'Nome do Contato', icon: User, color: 'bg-blue-100 text-blue-600' },
+  { key: 'email', label: 'Email do Contato', icon: Mail, color: 'bg-green-100 text-green-600' },
+  { key: 'telefone', label: 'Telefone do Contato', icon: Phone, color: 'bg-purple-100 text-purple-600' },
+];
 
 const ALLOWED_EXTENSIONS = [
   "jpg", "jpeg", "png", "gif", "webp", "bmp",
@@ -77,6 +84,10 @@ export default function MidiaPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { limits } = useSubscription();
+
+  // Drag and drop states
+  const [draggedParameter, setDraggedParameter] = useState<string | null>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // Audio recording
   const [isRecording, setIsRecording] = useState(false);
@@ -175,6 +186,45 @@ export default function MidiaPage() {
   };
 
   const formatRecTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, parameter: string) => {
+    setDraggedParameter(parameter);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    
+    if (draggedParameter) {
+      const textarea = e.target as HTMLTextAreaElement;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = newTemplate.content;
+      
+      const newText = text.substring(0, start) + `{${draggedParameter}}` + text.substring(end);
+      setNewTemplate({ ...newTemplate, content: newText });
+      
+      // Posicionar cursor após o parâmetro inserido
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + draggedParameter.length + 2, start + draggedParameter.length + 2);
+      }, 0);
+    }
+    
+    setDraggedParameter(null);
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -595,7 +645,36 @@ export default function MidiaPage() {
             </div>
             <div className="space-y-2">
               <Label>Conteúdo</Label>
-              <Textarea placeholder="Texto da mensagem..." className="min-h-[120px]" value={newTemplate.content} onChange={(e) => setNewTemplate({ ...newTemplate, content: e.target.value })} />
+              <div className="space-y-2">
+                <Textarea 
+                  placeholder="Texto da mensagem... Arraste parâmetros aqui" 
+                  className={`min-h-[200px] resize-none ${isDraggingOver ? 'ring-2 ring-primary bg-primary/5' : ''}`}
+                  value={newTemplate.content} 
+                  onChange={(e) => setNewTemplate({ ...newTemplate, content: e.target.value })}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  rows={Math.max(6, Math.ceil(newTemplate.content.length / 80))}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-xs text-muted-foreground">Parâmetros disponíveis:</span>
+                  {TEMPLATE_PARAMETERS.map((param) => {
+                    const IconComponent = param.icon;
+                    return (
+                      <div
+                        key={param.key}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, param.key)}
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md cursor-move transition-colors hover:scale-105 ${param.color}`}
+                        title={`Arraste {${param.key}} para o campo acima`}
+                      >
+                        <IconComponent className="h-3 w-3" />
+                        <span className="text-xs font-medium">{`{${param.key}}`}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
