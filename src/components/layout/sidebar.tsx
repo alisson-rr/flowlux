@@ -21,6 +21,7 @@ import {
   Crown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/auth-context";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -38,17 +39,14 @@ export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
   const [user, setUser] = useState<{ name: string; avatar_url: string } | null>(null);
+  const { user: authUser } = useAuth();
 
   useEffect(() => {
-    const loadUser = async () => {
-      const { data: authData } = await supabase.auth.getUser();
-      if (authData.user) {
-        const { data } = await supabase.from("profiles").select("name, avatar_url").eq("id", authData.user.id).single();
-        if (data) setUser({ name: data.name || authData.user.email || "", avatar_url: data.avatar_url || "" });
-      }
-    };
-    loadUser();
-  }, []);
+    if (!authUser) return;
+    supabase.from("profiles").select("name, avatar_url").eq("id", authUser.id).single().then(({ data }) => {
+      if (data) setUser({ name: data.name || authUser.email || "", avatar_url: data.avatar_url || "" });
+    });
+  }, [authUser]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

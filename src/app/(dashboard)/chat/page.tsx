@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn, formatPhone, getInitials } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { useAuth } from "@/contexts/auth-context";
 
 interface Conversation { id: string; instance_id: string; remote_jid: string; contact_name: string; contact_phone: string; last_message: string; last_message_at: string; unread_count: number; }
 interface ChatMessage { id: string; from_me: boolean; content: string; message_type: string; media_url?: string; status: string; created_at: string; }
@@ -90,6 +91,7 @@ export default function ChatPage() {
   const [missingFields, setMissingFields] = useState<string[]>([]);
 
   const { toast } = useToast();
+  const { user: authUser } = useAuth();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
@@ -159,8 +161,7 @@ export default function ChatPage() {
   // === DATA LOADING (all parallel) ===
   const loadInitialData = useCallback(async () => {
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
+      const userId = authUser?.id;
       if (!userId) { setLoading(false); return; }
 
       const [convsRes, leadsRes, templatesRes, mediaRes, tagsRes, leadTagsRes, instRes, flowsRes, funnelsRes, stagesRes] = await Promise.all([
@@ -203,7 +204,7 @@ export default function ChatPage() {
         setConvLeadTags(map);
       }
     } catch { /* */ } finally { setLoading(false); }
-  }, []);
+  }, [authUser]);
 
   const loadMessages = useCallback(async (conversationId: string) => {
     const { data } = await supabase.from("messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: true });
@@ -241,14 +242,12 @@ export default function ChatPage() {
   const loadLeadInfo = async (phone: string) => {
     const convVariants = normalizePhoneVariants(phone);
 
-    // Fetch all leads for this user and match by normalized phone digits
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) { setLeadInfo(null); setRightPanel("lead"); return; }
+    if (!authUser) { setLeadInfo(null); setRightPanel("lead"); return; }
 
     const { data: allLeads } = await supabase
       .from("leads")
       .select("*, lead_tags(tags(*)), notes(*)")
-      .eq("user_id", userData.user.id)
+      .eq("user_id", authUser.id)
       .is("deleted_at", null);
 
     let foundLead = null;
@@ -318,8 +317,7 @@ export default function ChatPage() {
 
   // === ACTIONS ===
   const handleStartConversation = async (lead: LeadOption) => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!authUser) return;
 
     let phone = lead.phone.replace(/\D/g, "");
     // Ensure country code
@@ -341,7 +339,7 @@ export default function ChatPage() {
     if (existing) { handleSelectConversation(existing); setShowNewConv(false); setLeadSearch(""); return; }
 
     const { data: conv } = await supabase.from("conversations").insert({
-      user_id: userData.user.id, instance_id: selectedInstanceId, remote_jid: remoteJid,
+      user_id: authUser.id, instance_id: selectedInstanceId, remote_jid: remoteJid,
       contact_name: lead.name, contact_phone: phone, unread_count: 0,
     }).select().single();
 
@@ -410,10 +408,8 @@ export default function ChatPage() {
   };
 
   const handleAddNote = async () => {
-    if (!leadInfo || !newNote.trim()) return;
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
-    const { data, error } = await supabase.from("notes").insert({ lead_id: leadInfo.id, user_id: userData.user.id, content: newNote }).select().single();
+    if (!leadInfo || !newNote.trim() || !authUser) return;
+    const { data, error } = await supabase.from("notes").insert({ lead_id: leadInfo.id, user_id: authUser.id, content: newNote }).select().single();
     if (!error && data) {
       setLeadInfo((prev: any) => prev ? { ...prev, notes: [...prev.notes, data] } : prev);
       setNewNote("");
@@ -421,13 +417,11 @@ export default function ChatPage() {
   };
 
   const handleAddTag = async () => {
-    if (!leadInfo || !newTag.trim()) return;
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!leadInfo || !newTag.trim() || !authUser) return;
     const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
-    let { data: existingTag } = await supabase.from("tags").select().eq("name", newTag).eq("user_id", userData.user.id).single();
+    let { data: existingTag } = await supabase.from("tags").select().eq("name", newTag).eq("user_id", authUser.id).single();
     if (!existingTag) {
-      const { data: created } = await supabase.from("tags").insert({ name: newTag, color, user_id: userData.user.id }).select().single();
+      const { data: created } = await supabase.from("tags").insert({ name: newTag, color, user_id: authUser.id }).select().single();
       existingTag = created;
     }
     if (existingTag) {

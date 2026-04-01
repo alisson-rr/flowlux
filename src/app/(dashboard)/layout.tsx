@@ -1,16 +1,29 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { ToastProvider } from "@/components/ui/toast";
 import { supabase } from "@/lib/supabase";
 import { AlertTriangle, X, Crown, Clock, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { AuthProvider, useAuth } from "@/contexts/auth-context";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthProvider>
+      <DashboardLayoutInner>{children}</DashboardLayoutInner>
+    </AuthProvider>
+  );
+}
+
+function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+  const { user, loading: authLoading } = useAuth();
+
   const [disconnectedInstances, setDisconnectedInstances] = useState<string[]>([]);
   const [failedCount, setFailedCount] = useState(0);
   const [dismissBanner, setDismissBanner] = useState(false);
@@ -20,22 +33,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [hasActivePlan, setHasActivePlan] = useState(true);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) { router.push("/login"); return; }
+
     const check = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        router.push("/login");
-        return;
-      }
       const [instRes, failedRes, subRes] = await Promise.all([
-        supabase.from("whatsapp_instances").select("instance_name, status").eq("user_id", userData.user.id).eq("status", "disconnected").is("deleted_at", null),
-        supabase.from("mass_messages").select("id", { count: "exact", head: true }).eq("user_id", userData.user.id).eq("status", "failed"),
-        supabase.from("subscriptions").select("status, trial_end, current_period_end").eq("user_id", userData.user.id).in("status", ["active", "authorized", "trial"]).order("created_at", { ascending: false }).limit(1).single(),
+        supabase.from("whatsapp_instances").select("instance_name, status").eq("user_id", user.id).eq("status", "disconnected").is("deleted_at", null),
+        supabase.from("mass_messages").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "failed"),
+        supabase.from("subscriptions").select("status, trial_end, current_period_end").eq("user_id", user.id).in("status", ["active", "authorized", "trial"]).order("created_at", { ascending: false }).limit(1).single(),
       ]);
       if (instRes.data) setDisconnectedInstances(instRes.data.map((i: any) => i.instance_name));
       if (failedRes.count) setFailedCount(failedRes.count);
 
-      // Check if user has active subscription
-      const isAllowedPage = pathname === "/assinatura" || pathname?.startsWith("/assinatura/");
+      // Check if user has active subscription (use ref to read current pathname without re-triggering effect)
+      const currentPath = pathnameRef.current;
+      const isAllowedPage = currentPath === "/assinatura" || currentPath?.startsWith("/assinatura/");
       if (!subRes.data) {
         setHasActivePlan(false);
         if (!isAllowedPage) {
@@ -70,7 +82,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setAuthChecked(true);
     };
     check();
-  }, [pathname, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading, router]);
 
   if (!authChecked) {
     return (

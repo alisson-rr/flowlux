@@ -4,8 +4,6 @@ import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
-export const dynamic = "force-dynamic";
-
 export const metadata: Metadata = {
   title: "FlowLux - CRM & WhatsApp",
   description: "Plataforma de gestão de leads e atendimento via WhatsApp",

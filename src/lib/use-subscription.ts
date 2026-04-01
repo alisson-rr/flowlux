@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { PLAN_LIMITS, type PlanId } from "@/lib/plan-limits";
+import { useAuth } from "@/contexts/auth-context";
 
 interface SubscriptionData {
   plan_id: PlanId;
@@ -22,49 +23,43 @@ interface UseSubscriptionReturn {
 const ACTIVE_STATUSES = ["active", "authorized", "trial"];
 
 export function useSubscription(): UseSubscriptionReturn {
+  const { userId, loading: authLoading } = useAuth();
   const [data, setData] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!userId) { setLoading(false); return; }
+
     const load = async () => {
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) { setLoading(false); return; }
-
         const { data: sub } = await supabase
           .from("subscriptions")
           .select("plan_id, status, trial_end, current_period_end")
-          .eq("user_id", userData.user.id)
+          .eq("user_id", userId)
           .in("status", ACTIVE_STATUSES)
           .order("created_at", { ascending: false })
           .limit(1)
           .single();
 
         if (sub) {
-          // Check if trial has expired
           if (sub.status === "trial" && sub.trial_end) {
             const trialEnd = new Date(sub.trial_end);
             if (trialEnd < new Date()) {
-              // Trial ended — check if current_period_end still grants access
               const hasPeriodAccess = sub.current_period_end && new Date(sub.current_period_end) > new Date();
               if (!hasPeriodAccess) {
-                // Both trial and period expired, not active
                 setData(null);
-                setLoading(false);
                 return;
               }
             }
           }
           setData(sub as SubscriptionData);
         }
-      } catch {
-        // No subscription
-      } finally {
-        setLoading(false);
-      }
+      } catch { /* no subscription */ }
+      finally { setLoading(false); }
     };
     load();
-  }, []);
+  }, [userId, authLoading]);
 
   const plan: PlanId = data?.plan_id || "starter";
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.starter;
