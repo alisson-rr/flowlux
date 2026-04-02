@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUserId } from "@/lib/api-auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -256,8 +257,17 @@ export async function POST(req: NextRequest) {
 
     console.log("[create-subscription] Request:", { plan_id, user_id, user_email: user_email ? "***" : "MISSING", back_url });
 
-    if (!plan_id || !user_id || !user_email) {
-      return NextResponse.json({ error: "Missing required fields: plan_id, user_id, user_email" }, { status: 400 });
+    const authenticatedUserId = await getAuthenticatedUserId(req);
+    if (!authenticatedUserId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!plan_id || !user_email) {
+      return NextResponse.json({ error: "Missing required fields: plan_id, user_email" }, { status: 400 });
+    }
+
+    if (user_id && user_id !== authenticatedUserId) {
+      return NextResponse.json({ error: "User mismatch" }, { status: 403 });
     }
 
     const planConfig = PLAN_CONFIG[plan_id];
@@ -271,7 +281,7 @@ export async function POST(req: NextRequest) {
     const { data: activeSub } = await supabase
       .from("subscriptions")
       .select("id, plan_id, status, mp_preapproval_id")
-      .eq("user_id", user_id)
+      .eq("user_id", authenticatedUserId)
       .in("status", ["active", "authorized", "trial"])
       .limit(1)
       .single();
@@ -288,7 +298,7 @@ export async function POST(req: NextRequest) {
     const { data: trialHistory } = await supabase
       .from("subscriptions")
       .select("id")
-      .eq("user_id", user_id)
+      .eq("user_id", authenticatedUserId)
       .not("trial_start", "is", null)
       .limit(1);
 
@@ -299,7 +309,7 @@ export async function POST(req: NextRequest) {
     await supabase
       .from("subscriptions")
       .delete()
-      .eq("user_id", user_id)
+      .eq("user_id", authenticatedUserId)
       .in("status", ["pending", "pending_payment"])
       .is("mp_preapproval_id", null);
 
@@ -308,7 +318,7 @@ export async function POST(req: NextRequest) {
       console.error("[create-subscription] MERCADOPAGO_ACCESS_TOKEN not configured");
 
       const { error: dbError } = await supabase.from("subscriptions").insert({
-        user_id,
+        user_id: authenticatedUserId,
         plan_id,
         status: "pending_payment",
         mp_payer_email: user_email,
@@ -326,10 +336,10 @@ export async function POST(req: NextRequest) {
     // Route to the correct flow based on plan type
     if (planConfig.type === "checkout") {
       // Black plan: one-time payment with installments via Checkout Pro
-      return createCheckoutFlow(planConfig, user_id, user_email, resolvedBackUrl, supabase, plan_id);
+      return createCheckoutFlow(planConfig, authenticatedUserId, user_email, resolvedBackUrl, supabase, plan_id);
     } else {
       // Starter/Pro: monthly subscription via Preapproval API
-      return createSubscriptionFlow(planConfig, user_id, user_email, resolvedBackUrl, hadTrial, supabase, plan_id);
+      return createSubscriptionFlow(planConfig, authenticatedUserId, user_email, resolvedBackUrl, hadTrial, supabase, plan_id);
     }
   } catch (err: any) {
     console.error("[create-subscription] Unexpected error:", err);

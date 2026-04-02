@@ -37,12 +37,19 @@ export function useSubscription(): UseSubscriptionReturn {
           .from("subscriptions")
           .select("plan_id, status, trial_end, current_period_end")
           .eq("user_id", userId)
-          .in("status", ACTIVE_STATUSES)
           .order("created_at", { ascending: false })
           .limit(1)
           .single();
 
         if (sub) {
+          if (sub.status === "cancelled" && sub.current_period_end) {
+            const periodEnd = new Date(sub.current_period_end);
+            if (periodEnd > new Date()) {
+              setData(sub as SubscriptionData);
+              return;
+            }
+          }
+
           if (sub.status === "trial" && sub.trial_end) {
             const trialEnd = new Date(sub.trial_end);
             if (trialEnd < new Date()) {
@@ -63,7 +70,10 @@ export function useSubscription(): UseSubscriptionReturn {
 
   const plan: PlanId = data?.plan_id || "starter";
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.starter;
-  const isActive = !!data && ACTIVE_STATUSES.includes(data.status);
+  const isCancelledWithAccess = data?.status === "cancelled"
+    && !!data.current_period_end
+    && new Date(data.current_period_end) > new Date();
+  const isActive = (!!data && ACTIVE_STATUSES.includes(data.status)) || isCancelledWithAccess;
 
   return { plan, limits, status: data?.status || "", loading, isActive };
 }
