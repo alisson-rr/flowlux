@@ -240,10 +240,15 @@ export default function AssinaturaPage() {
         .is("mp_preapproval_id", null);
 
       const backUrl = `${window.location.origin}/assinatura/sucesso`;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
 
       const res = await fetch("/api/create-subscription", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify({
           plan_id: plan.id,
           user_id: userData.user.id,
@@ -292,9 +297,15 @@ export default function AssinaturaPage() {
         return;
       }
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
       const res = await fetch("/api/update-subscription", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify({
           user_id: userData.user.id,
           new_plan_id: plan.id,
