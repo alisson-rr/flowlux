@@ -20,6 +20,10 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { useSubscription } from "@/lib/use-subscription";
+import { useAuth } from "@/contexts/auth-context";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useIncrementalDisplay } from "@/lib/use-incremental-display";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
@@ -75,15 +79,18 @@ export default function MidiaPage() {
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [newTemplate, setNewTemplate] = useState({ name: "", content: "", category: "geral" });
   const [uploading, setUploading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState("all");
-  const [templateSearch, setTemplateSearch] = useState("");
-  const [templateCategory, setTemplateCategory] = useState("all");
+  const [searchTerm, setSearchTerm] = usePersistedState("media-search-term", "");
+  const [filterType, setFilterType] = usePersistedState("media-filter-type", "all");
+  const [templateSearch, setTemplateSearch] = usePersistedState("media-template-search", "");
+  const [templateCategory, setTemplateCategory] = usePersistedState("media-template-category", "all");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { limits } = useSubscription();
+  const { user } = useAuth();
+  const debouncedMediaSearch = useDebouncedValue(searchTerm, 220);
+  const debouncedTemplateSearch = useDebouncedValue(templateSearch, 220);
 
   // Drag and drop states
   const [draggedParameter, setDraggedParameter] = useState<string | null>(null);
@@ -162,17 +169,16 @@ export default function MidiaPage() {
     if (!audioBlob) return;
     setUploading(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
       const fileName = `gravacao-${Date.now()}.webm`;
-      const filePath = `media/${userData.user.id}/${fileName}`;
+      const filePath = `media/${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage.from("public_bucket").upload(filePath, audioBlob, { cacheControl: "3600", contentType: "audio/webm" });
       if (uploadError) { toast("Erro ao enviar áudio: " + uploadError.message, "error"); return; }
 
       const { data: urlData } = supabase.storage.from("public_bucket").getPublicUrl(filePath);
       const { data, error } = await supabase.from("media").insert({
-        user_id: userData.user.id, file_name: fileName, file_type: "audio",
+        user_id: user.id, file_name: fileName, file_type: "audio",
         file_url: urlData.publicUrl, file_size: audioBlob.size,
       }).select("id, file_name, file_type, file_url, file_size, created_at").single();
 
@@ -249,9 +255,8 @@ export default function MidiaPage() {
       if (!error) setTemplates((prev) => prev.map((t) => t.id === editingTemplateId ? { ...t, ...newTemplate } : t));
       setEditingTemplateId(null);
     } else {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
-      const { data, error } = await supabase.from("message_templates").insert({ user_id: userData.user.id, ...newTemplate }).select().single();
+      if (!user) return;
+      const { data, error } = await supabase.from("message_templates").insert({ user_id: user.id, ...newTemplate }).select().single();
       if (!error && data) setTemplates((prev) => [...prev, data]);
     }
     setNewTemplate({ name: "", content: "", category: "geral" });
@@ -276,8 +281,7 @@ export default function MidiaPage() {
     setUploading(true);
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
 
       const rejectedFiles: string[] = [];
       for (const file of Array.from(files)) {
@@ -289,7 +293,7 @@ export default function MidiaPage() {
         const baseName = file.name.substring(0, file.name.lastIndexOf(".") || file.name.length);
         const safeName = sanitizeFileName(baseName);
         const safeFullName = safeName ? `${safeName}.${ext}` : `${Date.now()}.${ext}`;
-        const filePath = `media/${userData.user.id}/${Date.now()}-${safeFullName}`;
+        const filePath = `media/${user.id}/${Date.now()}-${safeFullName}`;
 
         let fileType = "document";
         if (file.type.startsWith("image/")) fileType = "image";
@@ -308,7 +312,7 @@ export default function MidiaPage() {
 
         const { data: urlData } = supabase.storage.from("public_bucket").getPublicUrl(filePath);
         const { data, error } = await supabase.from("media").insert({
-          user_id: userData.user.id,
+          user_id: user.id,
           file_name: file.name, // keep original name for display
           file_type: fileType,
           file_url: urlData.publicUrl,
@@ -367,9 +371,37 @@ export default function MidiaPage() {
   const storagePercent = maxStorageGB > 0 ? Math.min(100, (totalStorageGB / maxStorageGB) * 100) : 0;
   const isOverStorage = totalStorageGB >= maxStorageGB;
 
+  const filteredTemplates = templates
+    .filter((template) => templateCategory === "all" || template.category === templateCategory)
+    .filter((template) =>
+      template.name.toLowerCase().includes(debouncedTemplateSearch.toLowerCase()) ||
+      template.content.toLowerCase().includes(debouncedTemplateSearch.toLowerCase())
+    );
   const filteredMedia = mediaItems
-    .filter((m) => filterType === "all" || m.file_type === filterType)
-    .filter((m) => m.file_name.toLowerCase().includes(searchTerm.toLowerCase()));
+    .filter((media) => filterType === "all" || media.file_type === filterType)
+    .filter((media) => media.file_name.toLowerCase().includes(debouncedMediaSearch.toLowerCase()));
+  const templateFilterKey = `${templateCategory}|${debouncedTemplateSearch}`;
+  const mediaFilterKey = `${filterType}|${debouncedMediaSearch}`;
+  const {
+    visibleItems: visibleTemplates,
+    totalCount: totalTemplates,
+    hasMore: hasMoreTemplates,
+    loadMore: loadMoreTemplates,
+  } = useIncrementalDisplay(filteredTemplates, {
+    initialCount: 10,
+    step: 10,
+    resetKey: templateFilterKey,
+  });
+  const {
+    visibleItems: visibleMedia,
+    totalCount: totalMedia,
+    hasMore: hasMoreMedia,
+    loadMore: loadMoreMedia,
+  } = useIncrementalDisplay(filteredMedia, {
+    initialCount: 12,
+    step: 12,
+    resetKey: mediaFilterKey,
+  });
 
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -413,19 +445,26 @@ export default function MidiaPage() {
             </Button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {templates
-              .filter((t) => templateCategory === "all" || t.category === templateCategory)
-              .filter((t) => t.name.toLowerCase().includes(templateSearch.toLowerCase()) || t.content.toLowerCase().includes(templateSearch.toLowerCase()))
-              .length === 0 ? (
+            {totalTemplates === 0 ? (
               <Card className="p-8 text-center text-muted-foreground col-span-2">
                 <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
                 <p>Nenhuma mensagem pronta cadastrada</p>
+                {(debouncedTemplateSearch || templateCategory !== "all") && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => {
+                      setTemplateSearch("");
+                      setTemplateCategory("all");
+                    }}
+                  >
+                    Limpar filtros
+                  </Button>
+                )}
               </Card>
             ) : (
-              templates
-                .filter((t) => templateCategory === "all" || t.category === templateCategory)
-                .filter((t) => t.name.toLowerCase().includes(templateSearch.toLowerCase()) || t.content.toLowerCase().includes(templateSearch.toLowerCase()))
-                .map((tpl) => (
+              visibleTemplates.map((tpl) => (
                 <Card key={tpl.id} className="hover:border-primary/30 transition-colors">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
@@ -446,6 +485,18 @@ export default function MidiaPage() {
               ))
             )}
           </div>
+          {totalTemplates > 0 && (
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>
+                Mostrando {visibleTemplates.length} de {totalTemplates} mensagem{totalTemplates !== 1 ? "ens" : ""} encontrada{totalTemplates !== 1 ? "s" : ""}
+              </span>
+              {hasMoreTemplates && (
+                <Button variant="outline" size="sm" onClick={loadMoreTemplates}>
+                  Carregar mais 10
+                </Button>
+              )}
+            </div>
+          )}
         </TabsContent>
 
         {/* Media Tab */}
@@ -549,15 +600,28 @@ export default function MidiaPage() {
             </Card>
           )}
 
-          {filteredMedia.length === 0 ? (
+          {totalMedia === 0 ? (
             <Card className="p-8 text-center text-muted-foreground">
               <FolderOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p>Nenhum arquivo encontrado</p>
+              {(debouncedMediaSearch || filterType !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setFilterType("all");
+                  }}
+                >
+                  Limpar filtros
+                </Button>
+              )}
               <p className="text-sm mt-1">Faça upload de imagens, vídeos, áudios ou documentos</p>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {filteredMedia.map((item) => (
+              {visibleMedia.map((item) => (
                 <Card key={item.id} className="hover:border-primary/30 transition-colors">
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
@@ -613,6 +677,18 @@ export default function MidiaPage() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          )}
+          {totalMedia > 0 && (
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>
+                Mostrando {visibleMedia.length} de {totalMedia} arquivo{totalMedia !== 1 ? "s" : ""} encontrado{totalMedia !== 1 ? "s" : ""}
+              </span>
+              {hasMoreMedia && (
+                <Button variant="outline" size="sm" onClick={loadMoreMedia}>
+                  Carregar mais 12
+                </Button>
+              )}
             </div>
           )}
         </TabsContent>

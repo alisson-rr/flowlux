@@ -25,6 +25,10 @@ async function urlToBase64(url: string): Promise<{ base64: string; mime: string 
   return { base64: buffer.toString("base64"), mime };
 }
 
+function isRemoteUrl(value: string) {
+  return /^https?:\/\//i.test(value);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -50,30 +54,49 @@ export async function POST(req: NextRequest) {
       };
       const fallbackMime = mtype === "image" ? "image/jpeg" : mtype === "video" ? "video/mp4" : "application/octet-stream";
 
-      // Download media and convert to base64 server-side
-      let mediaData = media_url;
       let mimetype = mimeMap[ext] || fallbackMime;
-      try {
-        const { base64, mime } = await urlToBase64(media_url);
-        mediaData = base64;
-        if (mime && mime !== "application/octet-stream") mimetype = mime;
-      } catch (e) {
-        console.warn("Failed to convert to base64, sending URL:", e);
-      }
-
-      const result = await evolutionFetch(`/message/sendMedia/${instance_name}`, {
+      const payload = {
         number,
         mediatype: mtype,
         mimetype,
-        media: mediaData,
         caption: caption || "",
         fileName: file_name || (ext ? `file.${ext}` : ""),
+      };
+
+      const directResult = await evolutionFetch(`/message/sendMedia/${instance_name}`, {
+        ...payload,
+        media: media_url,
       });
 
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error }, { status: result.status });
+      if (directResult.ok) {
+        return NextResponse.json(directResult.data);
       }
-      return NextResponse.json(result.data);
+
+      if (!isRemoteUrl(media_url)) {
+        return NextResponse.json({ error: directResult.error }, { status: directResult.status });
+      }
+
+      try {
+        const { base64, mime } = await urlToBase64(media_url);
+        if (mime && mime !== "application/octet-stream") {
+          mimetype = mime;
+        }
+
+        const fallbackResult = await evolutionFetch(`/message/sendMedia/${instance_name}`, {
+          ...payload,
+          mimetype,
+          media: base64,
+        });
+
+        if (!fallbackResult.ok) {
+          return NextResponse.json({ error: fallbackResult.error }, { status: fallbackResult.status });
+        }
+
+        return NextResponse.json(fallbackResult.data);
+      } catch (error) {
+        console.warn("Failed to convert media URL to base64 after direct send failure:", error);
+        return NextResponse.json({ error: directResult.error }, { status: directResult.status });
+      }
     }
 
     // === SEND AUDIO ===
@@ -84,26 +107,35 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Missing audio data" }, { status: 400 });
       }
 
-      // If it's a URL, convert to base64 server-side
-      let audioToSend = audioData;
-      if (audioData.startsWith("http")) {
-        try {
-          const { base64 } = await urlToBase64(audioData);
-          audioToSend = base64;
-        } catch {
-          // fallback to URL
-        }
-      }
-
-      const result = await evolutionFetch(`/message/sendWhatsAppAudio/${instance_name}`, {
+      const directResult = await evolutionFetch(`/message/sendWhatsAppAudio/${instance_name}`, {
         number,
-        audio: audioToSend,
+        audio: audioData,
       });
 
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error }, { status: result.status });
+      if (directResult.ok) {
+        return NextResponse.json(directResult.data);
       }
-      return NextResponse.json(result.data);
+
+      if (!isRemoteUrl(audioData)) {
+        return NextResponse.json({ error: directResult.error }, { status: directResult.status });
+      }
+
+      try {
+        const { base64 } = await urlToBase64(audioData);
+        const fallbackResult = await evolutionFetch(`/message/sendWhatsAppAudio/${instance_name}`, {
+          number,
+          audio: base64,
+        });
+
+        if (!fallbackResult.ok) {
+          return NextResponse.json({ error: fallbackResult.error }, { status: fallbackResult.status });
+        }
+
+        return NextResponse.json(fallbackResult.data);
+      } catch (error) {
+        console.warn("Failed to convert audio URL to base64 after direct send failure:", error);
+        return NextResponse.json({ error: directResult.error }, { status: directResult.status });
+      }
     }
 
     return NextResponse.json({ error: "Invalid action. Use 'media' or 'audio'" }, { status: 400 });

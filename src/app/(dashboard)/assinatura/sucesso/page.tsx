@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle, Crown, ArrowRight, Loader2, Sparkles, PartyPopper, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/contexts/auth-context";
 
 const ACTIVE_STATUSES = ["active", "authorized", "trial"];
 const PLAN_NAMES: Record<string, string> = { starter: "Starter", pro: "Pro", black: "FlowLux Black" };
@@ -17,10 +18,11 @@ export default function AssinaturaSucessoPage() {
   const [timedOut, setTimedOut] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const pollCountRef = useRef(0);
+  const { user } = useAuth();
 
   const checkSubscription = async (): Promise<boolean> => {
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      const userData = { user };
       if (!userData.user) return false;
 
       const { data } = await supabase
@@ -75,7 +77,7 @@ export default function AssinaturaSucessoPage() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, []);
+  }, [user]);
 
   const handleRetry = async () => {
     setTimedOut(false);

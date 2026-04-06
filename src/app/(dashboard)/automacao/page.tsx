@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useSubscription } from "@/lib/use-subscription";
+import { useAuth } from "@/contexts/auth-context";
 import Link from "next/link";
 
 interface Flow {
@@ -96,6 +97,7 @@ export default function AutomacaoPage() {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { plan, limits } = useSubscription();
+  const { user } = useAuth();
   const [monthlyDisparos, setMonthlyDisparos] = useState(0);
 
   // Flow editor
@@ -124,8 +126,7 @@ export default function AutomacaoPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
+      const userId = user?.id;
       if (!userId) { setLoading(false); return; }
 
       const [flowsRes, massRes, schedRes, instRes, leadsRes, mediaRes, tagsRes, stagesRes] = await Promise.all([
@@ -167,7 +168,7 @@ export default function AutomacaoPage() {
       if (tagsRes.data) setAllTags(tagsRes.data);
       if (stagesRes.data) setAllStages(stagesRes.data);
     } catch { /* */ } finally { setLoading(false); }
-  }, []);
+  }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -230,8 +231,7 @@ export default function AutomacaoPage() {
     }
     setSavingFlow(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
 
       const flowPayload = {
         name: flowName,
@@ -248,7 +248,7 @@ export default function AutomacaoPage() {
         await supabase.from("flow_steps").delete().eq("flow_id", flowId);
       } else {
         const { data, error } = await supabase.from("flows").insert({
-          user_id: userData.user.id, ...flowPayload,
+          user_id: user.id, ...flowPayload,
         }).select().single();
         if (error || !data) { toast("Erro ao criar fluxo.", "error"); return; }
         flowId = data.id;
@@ -324,10 +324,9 @@ export default function AutomacaoPage() {
       if (!error) { setMassMessages((prev) => prev.map((m) => m.id === editingMassId ? { ...m, ...payload, status: newStatus } : m)); toast("Disparo atualizado!", "success"); }
       setEditingMassId(null);
     } else {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
       const { data, error } = await supabase.from("mass_messages").insert({
-        user_id: userData.user.id, ...payload,
+        user_id: user.id, ...payload,
         status: newMass.scheduled_at ? "scheduled" : "draft", sent_count: 0, total_count: 0,
       }).select().single();
       if (!error && data) setMassMessages((prev) => [data, ...prev]);
@@ -359,10 +358,9 @@ export default function AutomacaoPage() {
       setEditingScheduledId(null);
     } else {
       if (!newScheduled.lead_id) return;
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
       const { data, error } = await supabase.from("scheduled_messages").insert({
-        user_id: userData.user.id, lead_id: newScheduled.lead_id, instance_id: newScheduled.instance_id,
+        user_id: user.id, lead_id: newScheduled.lead_id, instance_id: newScheduled.instance_id,
         message: newScheduled.message, scheduled_at: newScheduled.scheduled_at, status: "pending",
       }).select("*, leads(name)").single();
       if (!error && data) setScheduledMessages((prev) => [{ ...data, lead_name: (data as any).leads?.name }, ...prev]);

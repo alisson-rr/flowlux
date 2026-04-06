@@ -16,18 +16,22 @@ import {
 import {
   Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download, Zap, Timer, Play, Mic, Square, Trash2, CalendarClock, Clock,
 } from "lucide-react";
-import { cn, formatPhone, getInitials } from "@/lib/utils";
+import { cn, formatPhone, getInitials, normalizePhoneBR } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/contexts/auth-context";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useIncrementalDisplay } from "@/lib/use-incremental-display";
+import { usePersistedState } from "@/lib/use-persisted-state";
 
 interface Conversation { id: string; instance_id: string; remote_jid: string; contact_name: string; contact_phone: string; last_message: string; last_message_at: string; unread_count: number; }
-interface ChatMessage { id: string; from_me: boolean; content: string; message_type: string; media_url?: string; status: string; created_at: string; }
+interface ChatMessage { id: string; conversation_id: string; from_me: boolean; content: string; message_type: string; media_url?: string; status: string; created_at: string; isOptimistic?: boolean; }
 interface LeadOption { id: string; name: string; phone: string; }
 interface MediaItem { id: string; file_name: string; file_type: string; file_url: string; file_size: number; }
 interface FlowOption { id: string; name: string; description: string; trigger_type: string; is_active: boolean; steps: FlowStepOption[]; }
 interface FlowStepOption { id: string; step_order: number; step_type: string; content: string; media_url: string; file_name: string; delay_seconds: number; }
 
 const TAG_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EF4444", "#EC4899", "#06B6D4", "#EAB308"];
+const MESSAGES_PAGE_SIZE = 40;
 
 interface InstanceOption { id: string; instance_name: string; }
 
@@ -36,30 +40,42 @@ export default function ChatPage() {
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = usePersistedState("chat-search-term", "");
   const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showNewConv, setShowNewConv] = useState(false);
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [leadSearch, setLeadSearch] = useState("");
+  const [loadingLeadOptions, setLoadingLeadOptions] = useState(false);
+  const [hasLoadedLeadOptions, setHasLoadedLeadOptions] = useState(false);
 
   // Instance selector
   const [instances, setInstances] = useState<InstanceOption[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string>("");
+  const [selectedInstanceId, setSelectedInstanceId] = usePersistedState<string>("chat-selected-instance-id", "");
 
   // Right panel state: "lead" | "media" | null
   const [rightPanel, setRightPanel] = useState<"lead" | "media" | null>(null);
   const [leadInfo, setLeadInfo] = useState<any>(null);
+  const [loadingLeadInfo, setLoadingLeadInfo] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [newTag, setNewTag] = useState("");
   const [templates, setTemplates] = useState<{ id: string; name: string; content: string }[]>([]);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [mediaTab, setMediaTab] = useState("templates");
-  const [filterTag, setFilterTag] = useState("");
+  const [filterTag, setFilterTag] = usePersistedState("chat-filter-tag", "");
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const [convLeadTags, setConvLeadTags] = useState<Record<string, string[]>>({});
   const [chatFunnels, setChatFunnels] = useState<{ id: string; name: string }[]>([]);
   const [chatStages, setChatStages] = useState<{ id: string; name: string; color: string; order: number; funnel_id: string }[]>([]);
+  const [loadingMediaLibrary, setLoadingMediaLibrary] = useState(false);
+  const [hasLoadedMediaLibrary, setHasLoadedMediaLibrary] = useState(false);
+  const [loadingFlows, setLoadingFlows] = useState(false);
+  const [hasLoadedFlows, setHasLoadedFlows] = useState(false);
+  const [loadingLeadPanelMeta, setLoadingLeadPanelMeta] = useState(false);
+  const [hasLoadedLeadPanelMeta, setHasLoadedLeadPanelMeta] = useState(false);
 
   // Media attachment to send with message
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
@@ -92,9 +108,145 @@ export default function ChatPage() {
 
   const { toast } = useToast();
   const { user: authUser } = useAuth();
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const selectedConversationRef = useRef<string | null>(null);
+  const shouldStickToBottomRef = useRef(false);
+  const preserveScrollHeightRef = useRef<number | null>(null);
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 220);
+  const debouncedLeadSearch = useDebouncedValue(leadSearch, 220);
 
-  const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
+  const updateConversationPreview = useCallback((conversationId: string, lastMessage: string, lastMessageAt: string) => {
+    setConversations((prev) => {
+      const index = prev.findIndex((conversation) => conversation.id === conversationId);
+      if (index === -1) return prev;
+
+      const updatedConversation = {
+        ...prev[index],
+        last_message: lastMessage,
+        last_message_at: lastMessageAt,
+      };
+
+      return [
+        updatedConversation,
+        ...prev.slice(0, index),
+        ...prev.slice(index + 1),
+      ];
+    });
+
+    setSelectedConv((prev) => (
+      prev?.id === conversationId
+        ? { ...prev, last_message: lastMessage, last_message_at: lastMessageAt }
+        : prev
+    ));
+  }, []);
+
+  const createOptimisticMessage = useCallback((payload: {
+    conversationId: string;
+    content: string;
+    messageType: string;
+    mediaUrl?: string;
+    createdAt: string;
+  }): ChatMessage => ({
+    id: `optimistic-${payload.conversationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    conversation_id: payload.conversationId,
+    from_me: true,
+    content: payload.content,
+    message_type: payload.messageType,
+    media_url: payload.mediaUrl,
+    status: "sending",
+    created_at: payload.createdAt,
+    isOptimistic: true,
+  }), []);
+
+  const matchesOptimisticMessage = useCallback((optimisticMessage: ChatMessage, incomingMessage: ChatMessage) => {
+    if (!optimisticMessage.isOptimistic || !optimisticMessage.from_me || !incomingMessage.from_me) return false;
+    if (optimisticMessage.conversation_id !== incomingMessage.conversation_id) return false;
+    if (optimisticMessage.message_type !== incomingMessage.message_type) return false;
+    if ((optimisticMessage.media_url || "") !== (incomingMessage.media_url || "")) return false;
+    if (optimisticMessage.content !== incomingMessage.content) return false;
+
+    const optimisticTimestamp = new Date(optimisticMessage.created_at).getTime();
+    const incomingTimestamp = new Date(incomingMessage.created_at).getTime();
+
+    return Number.isFinite(optimisticTimestamp)
+      && Number.isFinite(incomingTimestamp)
+      && Math.abs(optimisticTimestamp - incomingTimestamp) < 60000;
+  }, []);
+
+  const reconcileLocalMessage = useCallback((conversationId: string, temporaryId: string, persistedMessage?: ChatMessage) => {
+    if (selectedConversationRef.current !== conversationId) return;
+
+    setMessages((prev) => {
+      const temporaryIndex = prev.findIndex((message) => message.id === temporaryId);
+
+      if (persistedMessage && prev.some((message) => message.id === persistedMessage.id)) {
+        return temporaryIndex === -1
+          ? prev
+          : prev.filter((message) => message.id !== temporaryId);
+      }
+
+      if (temporaryIndex === -1) {
+        return persistedMessage ? [...prev, persistedMessage] : prev;
+      }
+
+      if (!persistedMessage) {
+        return prev.filter((message) => message.id !== temporaryId);
+      }
+
+      const next = [...prev];
+      next[temporaryIndex] = persistedMessage;
+      return next;
+    });
+  }, []);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior });
+      return;
+    }
+
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  }, []);
+
+  const isNearBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+
+    return container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+  }, []);
+
+  const appendLocalMessage = useCallback((message: ChatMessage) => {
+    if (selectedConversationRef.current !== message.conversation_id) return;
+
+    const shouldAutoScroll = isNearBottom();
+    setMessages((prev) => [...prev, message]);
+    if (shouldAutoScroll) {
+      shouldStickToBottomRef.current = true;
+    }
+  }, [isNearBottom]);
+
+  useEffect(() => {
+    selectedConversationRef.current = selectedConv?.id || null;
+  }, [selectedConv]);
+
+  useEffect(() => {
+    if (preserveScrollHeightRef.current !== null) {
+      const container = messagesContainerRef.current;
+      if (container) {
+        const previousHeight = preserveScrollHeightRef.current;
+        container.scrollTop = container.scrollHeight - previousHeight;
+      }
+      preserveScrollHeightRef.current = null;
+      return;
+    }
+
+    if (shouldStickToBottomRef.current) {
+      requestAnimationFrame(() => scrollToBottom());
+      shouldStickToBottomRef.current = false;
+    }
+  }, [messages, scrollToBottom]);
 
   // Ajustar altura do textarea quando a mensagem mudar
   useEffect(() => {
@@ -158,58 +310,187 @@ export default function ChatPage() {
     return { content: processedContent, missingFields: remainingMissingFields };
   };
 
-  // === DATA LOADING (all parallel) ===
+  // === DATA LOADING ===
   const loadInitialData = useCallback(async () => {
     try {
       const userId = authUser?.id;
       if (!userId) { setLoading(false); return; }
 
-      const [convsRes, leadsRes, templatesRes, mediaRes, tagsRes, leadTagsRes, instRes, flowsRes, funnelsRes, stagesRes] = await Promise.all([
+      const [convsRes, tagsRes, leadTagsRes, instRes] = await Promise.all([
         supabase.from("conversations").select("*").eq("user_id", userId).order("last_message_at", { ascending: false }),
-        supabase.from("leads").select("id, name, phone").eq("user_id", userId),
-        supabase.from("message_templates").select("id, name, content").eq("user_id", userId),
-        supabase.from("media").select("id, file_name, file_type, file_url, file_size").eq("user_id", userId).order("created_at", { ascending: false }),
         supabase.from("tags").select("id, name, color").eq("user_id", userId),
-        supabase.from("leads").select("phone, lead_tags(tag_id)").eq("user_id", userId),
+        supabase.from("leads").select("phone, lead_tags(tag_id)").eq("user_id", userId).is("deleted_at", null),
         supabase.from("whatsapp_instances").select("id, instance_name").eq("user_id", userId).is("deleted_at", null),
-        supabase.from("flows").select("*, flow_steps(*)").eq("user_id", userId).eq("is_active", true).order("name"),
-        supabase.from("funnels").select("id, name").eq("user_id", userId).order("created_at"),
-        supabase.from("funnel_stages").select("id, name, color, order, funnel_id").eq("user_id", userId).order("order"),
       ]);
+
       if (convsRes.data) setConversations(convsRes.data);
-      if (leadsRes.data) setLeads(leadsRes.data);
-      if (templatesRes.data) setTemplates(templatesRes.data);
-      if (mediaRes.data) setMediaItems(mediaRes.data);
       if (tagsRes.data) setAllTags(tagsRes.data);
       if (instRes.data) {
         setInstances(instRes.data);
-        if (instRes.data.length > 0 && !selectedInstanceId) {
-          setSelectedInstanceId(instRes.data[0].id);
+        if (instRes.data.length > 0) {
+          setSelectedInstanceId((current) => instRes.data.some((instance) => instance.id === current) ? current : instRes.data[0].id);
         }
       }
-      if (funnelsRes.data) setChatFunnels(funnelsRes.data);
-      if (stagesRes.data) setChatStages(stagesRes.data);
-      if (flowsRes.data) {
-        setFlows(flowsRes.data.map((f: any) => ({
-          ...f,
-          steps: (f.flow_steps || []).sort((a: any, b: any) => a.step_order - b.step_order),
-        })));
-      }
+
       if (leadTagsRes.data) {
         const map: Record<string, string[]> = {};
-        leadTagsRes.data.forEach((l: any) => {
-          const phone = l.phone.replace(/\D/g, "");
-          map[phone] = l.lead_tags?.map((lt: any) => lt.tag_id) || [];
+        leadTagsRes.data.forEach((lead: any) => {
+          const phone = lead.phone.replace(/\D/g, "");
+          map[phone] = lead.lead_tags?.map((item: any) => item.tag_id) || [];
         });
         setConvLeadTags(map);
       }
-    } catch { /* */ } finally { setLoading(false); }
-  }, [authUser]);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, [authUser, setSelectedInstanceId]);
+
+  const ensureLeadOptionsLoaded = useCallback(async () => {
+    if (!authUser) return leads;
+    if (hasLoadedLeadOptions) return leads;
+    if (loadingLeadOptions) return leads;
+
+    setLoadingLeadOptions(true);
+    try {
+      const { data } = await supabase
+        .from("leads")
+        .select("id, name, phone")
+        .eq("user_id", authUser.id)
+        .is("deleted_at", null)
+        .order("name");
+
+      if (data) {
+        setLeads(data);
+        setHasLoadedLeadOptions(true);
+        return data;
+      }
+    } finally {
+      setLoadingLeadOptions(false);
+    }
+
+    return leads;
+  }, [authUser, hasLoadedLeadOptions, leads, loadingLeadOptions]);
+
+  const ensureMediaLibraryLoaded = useCallback(async () => {
+    if (!authUser || hasLoadedMediaLibrary || loadingMediaLibrary) return;
+
+    setLoadingMediaLibrary(true);
+    try {
+      const [templatesRes, mediaRes] = await Promise.all([
+        supabase.from("message_templates").select("id, name, content").eq("user_id", authUser.id).order("name"),
+        supabase.from("media").select("id, file_name, file_type, file_url, file_size").eq("user_id", authUser.id).order("created_at", { ascending: false }),
+      ]);
+
+      if (templatesRes.data) setTemplates(templatesRes.data);
+      if (mediaRes.data) setMediaItems(mediaRes.data);
+      setHasLoadedMediaLibrary(true);
+    } finally {
+      setLoadingMediaLibrary(false);
+    }
+  }, [authUser, hasLoadedMediaLibrary, loadingMediaLibrary]);
+
+  const ensureFlowsLoaded = useCallback(async () => {
+    if (!authUser || hasLoadedFlows || loadingFlows) return;
+
+    setLoadingFlows(true);
+    try {
+      const { data } = await supabase
+        .from("flows")
+        .select("*, flow_steps(*)")
+        .eq("user_id", authUser.id)
+        .eq("is_active", true)
+        .order("name");
+
+      if (data) {
+        setFlows(data.map((flow: any) => ({
+          ...flow,
+          steps: (flow.flow_steps || []).sort((a: any, b: any) => a.step_order - b.step_order),
+        })));
+        setHasLoadedFlows(true);
+      }
+    } finally {
+      setLoadingFlows(false);
+    }
+  }, [authUser, hasLoadedFlows, loadingFlows]);
+
+  const ensureLeadPanelMetaLoaded = useCallback(async () => {
+    if (!authUser || hasLoadedLeadPanelMeta || loadingLeadPanelMeta) return;
+
+    setLoadingLeadPanelMeta(true);
+    try {
+      const [funnelsRes, stagesRes] = await Promise.all([
+        supabase.from("funnels").select("id, name").eq("user_id", authUser.id).order("created_at"),
+        supabase.from("funnel_stages").select("id, name, color, order, funnel_id").eq("user_id", authUser.id).order("order"),
+      ]);
+
+      if (funnelsRes.data) setChatFunnels(funnelsRes.data);
+      if (stagesRes.data) setChatStages(stagesRes.data);
+      setHasLoadedLeadPanelMeta(true);
+    } finally {
+      setLoadingLeadPanelMeta(false);
+    }
+  }, [authUser, hasLoadedLeadPanelMeta, loadingLeadPanelMeta]);
+
+  const fetchMessagesPage = useCallback(async (conversationId: string, beforeCreatedAt?: string) => {
+    let query = supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: false })
+      .limit(MESSAGES_PAGE_SIZE);
+
+    if (beforeCreatedAt) {
+      query = query.lt("created_at", beforeCreatedAt);
+    }
+
+    const { data } = await query;
+    const nextMessages = (data || []).slice().reverse();
+
+    return {
+      messages: nextMessages,
+      hasMore: (data || []).length === MESSAGES_PAGE_SIZE,
+    };
+  }, []);
 
   const loadMessages = useCallback(async (conversationId: string) => {
-    const { data } = await supabase.from("messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: true });
-    if (data) { setMessages(data); setTimeout(scrollToBottom, 100); }
-  }, []);
+    setLoadingMessages(true);
+    setHasOlderMessages(false);
+    try {
+      const result = await fetchMessagesPage(conversationId);
+      shouldStickToBottomRef.current = true;
+      setMessages(result.messages);
+      setHasOlderMessages(result.hasMore);
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, [fetchMessagesPage]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingMessages || loadingOlderMessages || !hasOlderMessages) return;
+
+    const conversationId = selectedConversationRef.current;
+    const oldestMessage = messages[0];
+
+    if (!conversationId || !oldestMessage) return;
+
+    const container = messagesContainerRef.current;
+    preserveScrollHeightRef.current = container?.scrollHeight ?? null;
+    setLoadingOlderMessages(true);
+
+    try {
+      const result = await fetchMessagesPage(conversationId, oldestMessage.created_at);
+      setMessages((current) => {
+        const nextIds = new Set(current.map((message) => message.id));
+        const olderMessages = result.messages.filter((message) => !nextIds.has(message.id));
+        return olderMessages.length > 0 ? [...olderMessages, ...current] : current;
+      });
+      setHasOlderMessages(result.hasMore);
+    } finally {
+      setLoadingOlderMessages(false);
+    }
+  }, [fetchMessagesPage, hasOlderMessages, loadingMessages, loadingOlderMessages, messages]);
 
   const normalizePhoneVariants = (phone: string): string[] => {
     const digits = phone.replace(/\D/g, "");
@@ -239,43 +520,56 @@ export default function ChatPage() {
     return Array.from(result);
   };
 
-  const loadLeadInfo = async (phone: string) => {
-    const convVariants = normalizePhoneVariants(phone);
-
-    if (!authUser) { setLeadInfo(null); setRightPanel("lead"); return; }
-
-    const { data: allLeads } = await supabase
-      .from("leads")
-      .select("*, lead_tags(tags(*)), notes(*)")
-      .eq("user_id", authUser.id)
-      .is("deleted_at", null);
-
-    let foundLead = null;
-    if (allLeads) {
-      for (const lead of allLeads) {
-        const leadVariants = normalizePhoneVariants(lead.phone || "");
-        // Check if any variant from the conversation phone matches any variant from the lead phone
-        const match = convVariants.some((cv) => leadVariants.includes(cv));
-        if (match) { foundLead = lead; break; }
-      }
-    }
-
-    if (foundLead) {
-      setLeadInfo({
-        ...foundLead,
-        tags: foundLead.lead_tags?.map((lt: any) => lt.tags).filter(Boolean) || [],
-        notes: foundLead.notes || [],
-      });
-    } else {
-      setLeadInfo(null);
-    }
+  const loadLeadInfo = useCallback(async (phone: string) => {
     setRightPanel("lead");
-  };
+    setLoadingLeadInfo(true);
+
+    try {
+      if (!authUser) {
+        setLeadInfo(null);
+        return;
+      }
+
+      await ensureLeadPanelMetaLoaded();
+
+      const leadOptions = await ensureLeadOptionsLoaded();
+      const convVariants = normalizePhoneVariants(phone);
+      const matchedLead = leadOptions.find((lead) => {
+        const leadVariants = normalizePhoneVariants(lead.phone || "");
+        return convVariants.some((variant) => leadVariants.includes(variant));
+      });
+
+      if (!matchedLead) {
+        setLeadInfo(null);
+        return;
+      }
+
+      const { data } = await supabase
+        .from("leads")
+        .select("*, lead_tags(tags(*)), notes(*)")
+        .eq("id", matchedLead.id)
+        .single();
+
+      if (data) {
+        setLeadInfo({
+          ...data,
+          tags: data.lead_tags?.map((item: any) => item.tags).filter(Boolean) || [],
+          notes: data.notes || [],
+        });
+      } else {
+        setLeadInfo(null);
+      }
+    } finally {
+      setLoadingLeadInfo(false);
+    }
+  }, [authUser, ensureLeadOptionsLoaded, ensureLeadPanelMetaLoaded]);
 
   const refreshTags = async () => {
+    if (!authUser) return;
+
     const [tagsRes, leadTagsRes] = await Promise.all([
-      supabase.from("tags").select("id, name, color"),
-      supabase.from("leads").select("phone, lead_tags(tag_id)"),
+      supabase.from("tags").select("id, name, color").eq("user_id", authUser.id),
+      supabase.from("leads").select("phone, lead_tags(tag_id)").eq("user_id", authUser.id).is("deleted_at", null),
     ]);
     if (tagsRes.data) setAllTags(tagsRes.data);
     if (leadTagsRes.data) {
@@ -292,11 +586,23 @@ export default function ChatPage() {
       .channel("flowlux-realtime")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
         const msg = payload.new as ChatMessage;
+        if (msg.conversation_id !== selectedConversationRef.current) {
+          return;
+        }
+        const shouldAutoScroll = isNearBottom();
         setMessages((prev) => {
           if (prev.some((m) => m.id === msg.id)) return prev;
+          const optimisticIndex = prev.findIndex((message) => matchesOptimisticMessage(message, msg));
+          if (optimisticIndex !== -1) {
+            const next = [...prev];
+            next[optimisticIndex] = msg;
+            return next;
+          }
           return [...prev, msg];
         });
-        setTimeout(scrollToBottom, 100);
+        if (shouldAutoScroll) {
+          shouldStickToBottomRef.current = true;
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, (payload) => {
         if (payload.eventType === "INSERT") {
@@ -307,24 +613,54 @@ export default function ChatPage() {
           });
         } else if (payload.eventType === "UPDATE") {
           const conv = payload.new as Conversation;
-          setConversations((prev) => prev.map((c) => c.id === conv.id ? { ...c, ...conv } : c));
+          setConversations((prev) => {
+            const index = prev.findIndex((conversation) => conversation.id === conv.id);
+            if (index === -1) return prev;
+
+            const updatedConversation = { ...prev[index], ...conv };
+            return [
+              updatedConversation,
+              ...prev.slice(0, index),
+              ...prev.slice(index + 1),
+            ];
+          });
+          setSelectedConv((prev) => (prev?.id === conv.id ? { ...prev, ...conv } : prev));
         }
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [loadInitialData]);
+  }, [isNearBottom, loadInitialData, matchesOptimisticMessage]);
+
+  useEffect(() => {
+    if (showNewConv) {
+      ensureLeadOptionsLoaded();
+    }
+  }, [ensureLeadOptionsLoaded, showNewConv]);
+
+  useEffect(() => {
+    if (showFlowPicker) {
+      ensureFlowsLoaded();
+    }
+  }, [ensureFlowsLoaded, showFlowPicker]);
+
+  useEffect(() => {
+    if (rightPanel === "media") {
+      ensureMediaLibraryLoaded();
+    }
+  }, [ensureMediaLibraryLoaded, rightPanel]);
 
   // === ACTIONS ===
   const handleStartConversation = async (lead: LeadOption) => {
     if (!authUser) return;
 
-    let phone = lead.phone.replace(/\D/g, "");
-    // Ensure country code
-    if (!phone.startsWith("55")) phone = "55" + phone;
-    // Strip 9th digit for Brazilian mobile numbers to match WhatsApp JID format
-    // Brazilian mobile with 9th digit: 55 + DD(2) + 9XXXXXXXX(9) = 13 digits
-    // WhatsApp JID format: 55 + DD(2) + XXXXXXXX(8) = 12 digits
+    // Normalize to full BR format: 55 + DD + 9XXXXXXXX (13 digits mobile) or 55 + DD + XXXXXXXX (12 digits landline)
+    const normalized = normalizePhoneBR(lead.phone);
+    if (!normalized) { toast("Telefone inválido.", "warning"); return; }
+
+    // Convert to WhatsApp JID format: strip 9th digit for mobile numbers
+    // WhatsApp uses 55 + DD(2) + XXXXXXXX(8) = 12 digits for Brazilian numbers
+    let phone = normalized;
     if (phone.length === 13 && phone[4] === "9") {
       phone = phone.substring(0, 4) + phone.substring(5);
     }
@@ -343,22 +679,29 @@ export default function ChatPage() {
       contact_name: lead.name, contact_phone: phone, unread_count: 0,
     }).select().single();
 
-    if (conv) { setConversations((prev) => [conv, ...prev]); setSelectedConv(conv); setMessages([]); }
+    if (conv) {
+      selectedConversationRef.current = conv.id;
+      setConversations((prev) => [conv, ...prev]);
+      setSelectedConv(conv);
+      setMessages([]);
+    }
     setShowNewConv(false);
     setLeadSearch("");
   };
 
   const handleSelectConversation = async (conv: Conversation) => {
+    selectedConversationRef.current = conv.id;
     setSelectedConv(conv);
     setRightPanel(null);
     setLeadInfo(null);
+    preserveScrollHeightRef.current = null;
+    shouldStickToBottomRef.current = false;
+    setMessages([]);
     await loadMessages(conv.id);
     if (conv.unread_count > 0) {
       await supabase.from("conversations").update({ unread_count: 0 }).eq("id", conv.id);
       setConversations((prev) => prev.map((c) => (c.id === conv.id ? { ...c, unread_count: 0 } : c)));
     }
-    // Auto-load lead info for this conversation
-    loadLeadInfo(conv.contact_phone);
   };
 
   const handleSendMessage = async () => {
@@ -444,8 +787,7 @@ export default function ChatPage() {
     if (!selectedFlow || !selectedConv || !selectedInstanceId) return;
     setExecutingFlow(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!authUser) return;
       const inst = instances.find((i) => i.id === selectedInstanceId);
       if (!inst) { toast("Selecione um WhatsApp.", "warning"); return; }
 
@@ -466,7 +808,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           flow_id: selectedFlow.id,
-          user_id: userData.user.id,
+          user_id: authUser.id,
           instance_id: selectedInstanceId,
           instance_name: inst.instance_name,
           remote_jid: selectedConv.remote_jid,
@@ -558,11 +900,10 @@ export default function ChatPage() {
       const inst = instances.find((i) => i.id === selectedInstanceId);
       if (!inst) { toast("Selecione um WhatsApp.", "warning"); setSendingMessage(false); return; }
 
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) { setSendingMessage(false); return; }
+      if (!authUser) { setSendingMessage(false); return; }
 
       const fileName = `audio_${Date.now()}.webm`;
-      const filePath = `media/${userData.user.id}/${fileName}`;
+      const filePath = `media/${authUser.id}/${fileName}`;
       const { error: upErr } = await supabase.storage.from("public_bucket").upload(filePath, recordedAudioBlob, { cacheControl: "3600", contentType: "audio/webm", upsert: true });
       if (upErr) { toast("Erro ao fazer upload do áudio.", "error"); setSendingMessage(false); return; }
 
@@ -595,6 +936,191 @@ export default function ChatPage() {
     }
   };
 
+  const handleSendMessageOptimized = async () => {
+    if (sendingMessage || (!newMessage.trim() && !selectedMedia) || !selectedConv || !selectedInstanceId) return;
+
+    const conversation = selectedConv;
+    const draftMessage = newMessage;
+    const draftMedia = selectedMedia;
+    const sentAt = new Date().toISOString();
+    const isAudioMedia = draftMedia?.file_type === "audio";
+    const messageType = draftMedia ? draftMedia.file_type : "text";
+    const messageContent = draftMedia
+      ? (isAudioMedia ? "" : (draftMessage || draftMedia.file_name))
+      : draftMessage;
+    const conversationPreview = draftMedia
+      ? (isAudioMedia ? "[Áudio]" : (draftMessage || draftMedia.file_name || "[Mídia]"))
+      : draftMessage;
+    const optimisticMessage = createOptimisticMessage({
+      conversationId: conversation.id,
+      content: messageContent,
+      messageType,
+      mediaUrl: draftMedia?.file_url,
+      createdAt: sentAt,
+    });
+
+    setSendingMessage(true);
+    const inst = instances.find((i) => i.id === selectedInstanceId);
+    if (!inst) {
+      toast("Selecione um WhatsApp primeiro.", "warning");
+      setSendingMessage(false);
+      return;
+    }
+
+    setNewMessage("");
+    setSelectedMedia(null);
+    appendLocalMessage(optimisticMessage);
+    updateConversationPreview(conversation.id, conversationPreview, sentAt);
+
+    try {
+      if (draftMedia) {
+        const proxyRes = await fetch("/api/send-media", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: isAudioMedia ? "audio" : "media",
+            instance_name: inst.instance_name,
+            number: conversation.remote_jid,
+            media_url: draftMedia.file_url,
+            media_type: draftMedia.file_type,
+            caption: isAudioMedia ? "" : (draftMessage || ""),
+            file_name: draftMedia.file_name,
+          }),
+        });
+        if (!proxyRes.ok) {
+          const err = await proxyRes.json().catch(() => ({}));
+          throw new Error(err.error || "Erro ao enviar mídia");
+        }
+      } else {
+        await evolutionApi.sendText(inst.instance_name, conversation.remote_jid, draftMessage);
+      }
+
+      const [messageInsert, conversationUpdate] = await Promise.all([
+        supabase.from("messages").insert({
+          conversation_id: conversation.id,
+          remote_jid: conversation.remote_jid,
+          from_me: true,
+          message_type: messageType,
+          content: messageContent,
+          media_url: draftMedia?.file_url,
+          status: "sent",
+        }).select().single(),
+        supabase.from("conversations")
+          .update({ last_message: conversationPreview, last_message_at: sentAt })
+          .eq("id", conversation.id),
+      ]);
+
+      if (messageInsert.data) {
+        reconcileLocalMessage(conversation.id, optimisticMessage.id, messageInsert.data as ChatMessage);
+      }
+
+      if (messageInsert.error || conversationUpdate.error) {
+        console.error("Chat sync error after send:", {
+          messageError: messageInsert.error,
+          conversationError: conversationUpdate.error,
+        });
+        toast("Mensagem enviada, mas houve falha ao sincronizar o histórico.", "warning");
+      }
+    } catch (err: any) {
+      console.error("Error sending message:", err);
+      reconcileLocalMessage(conversation.id, optimisticMessage.id);
+      updateConversationPreview(conversation.id, conversation.last_message, conversation.last_message_at);
+
+      if (selectedConversationRef.current === conversation.id) {
+        setNewMessage(draftMessage);
+        setSelectedMedia(draftMedia);
+      }
+
+      toast("Erro ao enviar mensagem: " + (err?.message || ""), "error");
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const sendRecordedAudioOptimized = async () => {
+    if (sendingMessage || !recordedAudioBlob || !selectedConv || !selectedInstanceId) return;
+
+    const conversation = selectedConv;
+    const audioBlob = recordedAudioBlob;
+    let optimisticMessage: ChatMessage | null = null;
+    setSendingMessage(true);
+
+    try {
+      const inst = instances.find((i) => i.id === selectedInstanceId);
+      if (!inst) { toast("Selecione um WhatsApp.", "warning"); setSendingMessage(false); return; }
+      if (!authUser) { setSendingMessage(false); return; }
+
+      const fileName = `audio_${Date.now()}.webm`;
+      const filePath = `media/${authUser.id}/${fileName}`;
+      const { error: upErr } = await supabase.storage.from("public_bucket").upload(filePath, audioBlob, { cacheControl: "3600", contentType: "audio/webm", upsert: true });
+      if (upErr) { toast("Erro ao fazer upload do áudio.", "error"); setSendingMessage(false); return; }
+
+      const { data: urlData } = supabase.storage.from("public_bucket").getPublicUrl(filePath);
+      const publicUrl = urlData?.publicUrl;
+      if (!publicUrl) { toast("Erro ao obter URL do áudio.", "error"); setSendingMessage(false); return; }
+
+      const sentAt = new Date().toISOString();
+      optimisticMessage = createOptimisticMessage({
+        conversationId: conversation.id,
+        content: "",
+        messageType: "audio",
+        mediaUrl: publicUrl,
+        createdAt: sentAt,
+      });
+
+      appendLocalMessage(optimisticMessage);
+      updateConversationPreview(conversation.id, "[Áudio]", sentAt);
+
+      const proxyRes = await fetch("/api/send-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "audio", instance_name: inst.instance_name, number: conversation.remote_jid, media_url: publicUrl }),
+      });
+      if (!proxyRes.ok) {
+        const err = await proxyRes.json().catch(() => ({}));
+        throw new Error(err.error || "Erro ao enviar áudio");
+      }
+
+      const [messageInsert, conversationUpdate] = await Promise.all([
+        supabase.from("messages").insert({
+          conversation_id: conversation.id,
+          remote_jid: conversation.remote_jid,
+          from_me: true,
+          message_type: "audio",
+          content: "",
+          media_url: publicUrl,
+          status: "sent",
+        }).select().single(),
+        supabase.from("conversations")
+          .update({ last_message: "[Áudio]", last_message_at: sentAt })
+          .eq("id", conversation.id),
+      ]);
+
+      if (messageInsert.data) {
+        reconcileLocalMessage(conversation.id, optimisticMessage.id, messageInsert.data as ChatMessage);
+      }
+
+      if (messageInsert.error || conversationUpdate.error) {
+        console.error("Audio sync error after send:", {
+          messageError: messageInsert.error,
+          conversationError: conversationUpdate.error,
+        });
+        toast("Áudio enviado, mas houve falha ao sincronizar o histórico.", "warning");
+      }
+
+      discardRecording();
+    } catch (err: any) {
+      console.error("Error sending recorded audio:", err);
+      if (optimisticMessage) {
+        reconcileLocalMessage(conversation.id, optimisticMessage.id);
+        updateConversationPreview(conversation.id, conversation.last_message, conversation.last_message_at);
+      }
+      toast("Erro ao enviar áudio: " + (err?.message || ""), "error");
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
   const formatRecordingTime = (secs: number) => {
     const m = Math.floor(secs / 60).toString().padStart(2, "0");
     const s = (secs % 60).toString().padStart(2, "0");
@@ -605,10 +1131,9 @@ export default function ChatPage() {
   const handleScheduleFromChat = async () => {
     if (!scheduleMessage.trim() || !scheduleDateTime || !selectedConv || !leadInfo) return;
     if (!selectedInstanceId) { toast("Selecione um WhatsApp.", "warning"); return; }
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!authUser) return;
     const { error } = await supabase.from("scheduled_messages").insert({
-      user_id: userData.user.id,
+      user_id: authUser.id,
       lead_id: leadInfo.id,
       instance_id: selectedInstanceId,
       message: scheduleMessage,
@@ -641,15 +1166,42 @@ export default function ChatPage() {
   };
 
   // === FILTERS ===
-  const filteredLeads = leads.filter((l) => l.name.toLowerCase().includes(leadSearch.toLowerCase()) || l.phone.includes(leadSearch));
+  const filteredLeads = leads.filter((lead) =>
+    lead.name.toLowerCase().includes(debouncedLeadSearch.toLowerCase()) ||
+    lead.phone.includes(debouncedLeadSearch)
+  );
 
   const filteredConversations = conversations.filter((c) => {
-    const matchesSearch = c.contact_name?.toLowerCase().includes(searchTerm.toLowerCase()) || c.contact_phone?.includes(searchTerm);
+    const matchesSearch =
+      c.contact_name?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+      c.contact_phone?.includes(debouncedSearchTerm);
     if (!matchesSearch) return false;
     if (selectedInstanceId && c.instance_id !== selectedInstanceId) return false;
     if (!filterTag) return true;
     const phone = c.contact_phone?.replace(/\D/g, "") || "";
     return convLeadTags[phone]?.includes(filterTag);
+  });
+  const conversationFilterKey = `${debouncedSearchTerm}|${selectedInstanceId}|${filterTag}`;
+  const leadFilterKey = `${debouncedLeadSearch}|${showNewConv}`;
+  const {
+    visibleItems: visibleConversations,
+    totalCount: filteredConversationCount,
+    hasMore: hasMoreConversations,
+    loadMore: loadMoreConversations,
+  } = useIncrementalDisplay(filteredConversations, {
+    initialCount: 30,
+    step: 30,
+    resetKey: conversationFilterKey,
+  });
+  const {
+    visibleItems: visibleLeadOptions,
+    totalCount: filteredLeadCount,
+    hasMore: hasMoreLeadOptions,
+    loadMore: loadMoreLeadOptions,
+  } = useIncrementalDisplay(filteredLeads, {
+    initialCount: 25,
+    step: 25,
+    resetKey: leadFilterKey,
   });
 
   const formatTime = (date: string) => {
@@ -717,32 +1269,44 @@ export default function ChatPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {filteredConversations.length === 0 ? (
+            {filteredConversationCount === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground px-4">
                 <MessageSquare className="h-12 w-12 mb-3 opacity-30" />
                 <p className="text-sm text-center">Nenhuma conversa encontrada</p>
               </div>
             ) : (
-              filteredConversations.map((conv) => (
-                <button key={conv.id} onClick={() => handleSelectConversation(conv)}
-                  className={cn("w-full flex items-center gap-3 p-3 hover:bg-sidebar-hover transition-colors text-left border-b border-border/50", selectedConv?.id === conv.id && "bg-sidebar-hover")}>
-                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-bold text-primary">{getInitials(conv.contact_name || conv.contact_phone)}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium text-sm truncate">{conv.contact_name || formatPhone(conv.contact_phone)}</p>
-                      <span className="text-[10px] text-muted-foreground shrink-0">{formatTime(conv.last_message_at)}</span>
+              <>
+                {visibleConversations.map((conv) => (
+                  <button key={conv.id} onClick={() => handleSelectConversation(conv)}
+                    className={cn("w-full flex items-center gap-3 p-3 hover:bg-sidebar-hover transition-colors text-left border-b border-border/50", selectedConv?.id === conv.id && "bg-sidebar-hover")}>
+                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                      <span className="text-xs font-bold text-primary">{getInitials(conv.contact_name || conv.contact_phone)}</span>
                     </div>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <p className="text-xs text-muted-foreground truncate">{conv.last_message || "Sem mensagens"}</p>
-                      {conv.unread_count > 0 && (
-                        <span className="ml-2 w-5 h-5 rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center shrink-0">{conv.unread_count}</span>
-                      )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium text-sm truncate">{conv.contact_name || formatPhone(conv.contact_phone)}</p>
+                        <span className="text-[10px] text-muted-foreground shrink-0">{formatTime(conv.last_message_at)}</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <p className="text-xs text-muted-foreground truncate">{conv.last_message || "Sem mensagens"}</p>
+                        {conv.unread_count > 0 && (
+                          <span className="ml-2 w-5 h-5 rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center shrink-0">{conv.unread_count}</span>
+                        )}
+                      </div>
                     </div>
+                  </button>
+                ))}
+                <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Mostrando {visibleConversations.length} de {filteredConversationCount} conversa{filteredConversationCount !== 1 ? "s" : ""}</span>
+                    {hasMoreConversations && (
+                      <Button variant="outline" size="sm" onClick={loadMoreConversations}>
+                        Carregar mais
+                      </Button>
+                    )}
                   </div>
-                </button>
-              ))
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -768,39 +1332,70 @@ export default function ChatPage() {
               <div className="flex-1 flex overflow-hidden">
                 {/* Messages Column */}
                 <div className="flex-1 flex flex-col">
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-background/50">
-                    {messages.map((msg) => (
-                      <div key={msg.id} className={cn("flex", msg.from_me ? "justify-end" : "justify-start")}>
-                        <div className={cn("max-w-[70%] rounded-2xl px-4 py-2.5 text-sm", msg.from_me ? "bg-primary text-primary-foreground rounded-br-md" : "bg-card border border-border rounded-bl-md")}>
-                          {msg.media_url && msg.message_type === "image" && (
-                            <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block mb-2">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={msg.media_url} alt="" className="rounded-lg max-h-48 w-auto object-cover" loading="lazy" />
-                            </a>
-                          )}
-                          {msg.media_url && msg.message_type === "video" && (
-                            <video src={msg.media_url} controls className="rounded-lg max-h-48 w-full mb-2" preload="metadata" />
-                          )}
-                          {msg.media_url && msg.message_type === "audio" && (
-                            <div className="mb-2 min-w-[240px]">
-                              <audio src={msg.media_url} controls className="w-full h-10" preload="metadata" />
-                            </div>
-                          )}
-                          {msg.media_url && msg.message_type === "document" && (
-                            <a href={msg.media_url} target="_blank" rel="noopener noreferrer"
-                              className={cn("flex items-center gap-2 p-2 rounded-lg mb-2", msg.from_me ? "bg-primary-foreground/10" : "bg-muted")}>
-                              <FileText className="h-5 w-5 shrink-0" />
-                              <span className="text-xs truncate">{msg.content || "Documento"}</span>
-                              <Download className="h-4 w-4 shrink-0 ml-auto" />
-                            </a>
-                          )}
-                          {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
-                          <p className={cn("text-[10px] mt-1", msg.from_me ? "text-primary-foreground/60" : "text-muted-foreground")}>
-                            {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                          </p>
-                        </div>
+                  <div
+                    ref={messagesContainerRef}
+                    className="flex-1 overflow-y-auto p-4 space-y-3 bg-background/50"
+                    onScroll={(event) => {
+                      const target = event.currentTarget;
+                      if (target.scrollTop < 120 && hasOlderMessages && !loadingOlderMessages) {
+                        loadOlderMessages();
+                      }
+                    }}
+                  >
+                    {loadingMessages ? (
+                      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando mensagens...
                       </div>
-                    ))}
+                    ) : (
+                      <>
+                        {loadingOlderMessages && (
+                          <div className="flex items-center justify-center py-2 text-xs text-muted-foreground">
+                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Carregando mensagens antigas...
+                          </div>
+                        )}
+                        {messages.length === 0 ? (
+                          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                            Nenhuma mensagem nesta conversa ainda.
+                          </div>
+                        ) : messages.map((msg) => (
+                          <div key={msg.id} className={cn("flex", msg.from_me ? "justify-end" : "justify-start")}>
+                            <div className={cn("max-w-[70%] rounded-2xl px-4 py-2.5 text-sm", msg.from_me ? "bg-primary text-primary-foreground rounded-br-md" : "bg-card border border-border rounded-bl-md")}>
+                              {msg.media_url && msg.message_type === "image" && (
+                                <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block mb-2">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={msg.media_url} alt="" className="rounded-lg max-h-48 w-auto object-cover" loading="lazy" />
+                                </a>
+                              )}
+                              {msg.media_url && msg.message_type === "video" && (
+                                <video src={msg.media_url} controls className="rounded-lg max-h-48 w-full mb-2" preload="metadata" />
+                              )}
+                              {msg.media_url && msg.message_type === "audio" && (
+                                <div className="mb-2 min-w-[240px]">
+                                  <audio src={msg.media_url} controls className="w-full h-10" preload="metadata" />
+                                </div>
+                              )}
+                              {msg.media_url && msg.message_type === "document" && (
+                                <a href={msg.media_url} target="_blank" rel="noopener noreferrer"
+                                  className={cn("flex items-center gap-2 p-2 rounded-lg mb-2", msg.from_me ? "bg-primary-foreground/10" : "bg-muted")}>
+                                  <FileText className="h-5 w-5 shrink-0" />
+                                  <span className="text-xs truncate">{msg.content || "Documento"}</span>
+                                  <Download className="h-4 w-4 shrink-0 ml-auto" />
+                                </a>
+                              )}
+                              {msg.content && <p className="whitespace-pre-wrap break-words">{msg.content}</p>}
+                              <p className={cn("text-[10px] mt-1", msg.from_me ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                                {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                        {!hasOlderMessages && messages.length > 0 && (
+                          <div className="pt-1 text-center text-[10px] text-muted-foreground">
+                            Início do histórico
+                          </div>
+                        )}
+                      </>
+                    )}
                     <div ref={messagesEndRef} />
                   </div>
 
@@ -857,7 +1452,7 @@ export default function ChatPage() {
                           <span className="text-sm font-mono text-muted-foreground min-w-[40px]">{formatRecordingTime(recordingTime)}</span>
                           <Mic className="h-4 w-4 text-pink-500" />
                         </div>
-                        <Button className="h-10 w-10 rounded-full bg-primary" size="icon" onClick={sendRecordedAudio} disabled={sendingMessage} title="Enviar áudio">
+                        <Button className="h-10 w-10 rounded-full bg-primary" size="icon" onClick={sendRecordedAudioOptimized} disabled={sendingMessage} title="Enviar áudio">
                           {sendingMessage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                         </Button>
                       </div>
@@ -869,11 +1464,30 @@ export default function ChatPage() {
                         <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => { setRightPanel(rightPanel === "media" ? null : "media"); setMediaTab("templates"); }}>
                           <Paperclip className="h-5 w-5" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setShowFlowPicker(true)} title="Gatilhos / Fluxos" disabled={flows.length === 0}>
-                          <Zap className={cn("h-5 w-5", flows.length > 0 ? "text-yellow-500" : "text-muted-foreground")} />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-10 w-10"
+                          onClick={async () => {
+                            await ensureFlowsLoaded();
+                            setShowFlowPicker(true);
+                          }}
+                          title="Gatilhos / Fluxos"
+                          disabled={loadingFlows}
+                        >
+                          {loadingFlows ? (
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          ) : (
+                            <Zap className={cn("h-5 w-5", hasLoadedFlows && flows.length > 0 ? "text-yellow-500" : "text-muted-foreground")} />
+                          )}
                         </Button>
                         <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => {
-                          if (!leadInfo) { toast("Abra as informações do lead primeiro.", "warning"); return; }
+                          if (!selectedConv) return;
+                          if (!leadInfo) {
+                            loadLeadInfo(selectedConv.contact_phone);
+                            toast("Abra o lead carregado na lateral para concluir o agendamento.", "warning");
+                            return;
+                          }
                           setShowScheduleMsg(true);
                         }} title="Agendar mensagem">
                           <CalendarClock className="h-5 w-5 text-muted-foreground hover:text-foreground" />
@@ -908,7 +1522,12 @@ export default function ChatPage() {
                             target.style.height = 'auto';
                             target.style.height = Math.min(target.scrollHeight, 220) + 'px';
                           }}
-                          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                              e.preventDefault();
+                              handleSendMessageOptimized();
+                            }
+                          }}
                           className="flex-1 min-h-[44px] resize-none overflow-hidden"
                           disabled={selectedMedia?.file_type === "audio"}
                           rows={1}
@@ -920,7 +1539,7 @@ export default function ChatPage() {
                         />
                         </div>
                         {newMessage.trim() || selectedMedia ? (
-                          <Button className="h-10 w-10" size="icon" onClick={handleSendMessage} disabled={sendingMessage || (!newMessage.trim() && !selectedMedia)}>
+                          <Button className="h-10 w-10" size="icon" onClick={handleSendMessageOptimized} disabled={sendingMessage || (!newMessage.trim() && !selectedMedia)}>
                             {sendingMessage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                           </Button>
                         ) : (
@@ -940,7 +1559,11 @@ export default function ChatPage() {
                       <h3 className="font-semibold text-sm">Informações do Lead</h3>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setRightPanel(null)}><X className="h-4 w-4" /></Button>
                     </div>
-                    {leadInfo ? (
+                    {loadingLeadInfo ? (
+                      <div className="flex items-center justify-center p-6 text-sm text-muted-foreground">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando lead...
+                      </div>
+                    ) : leadInfo ? (
                       <div className="p-4 space-y-4">
                         <div className="text-center">
                           <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-2">
@@ -1061,24 +1684,23 @@ export default function ChatPage() {
                       <div className="p-4 text-center text-muted-foreground space-y-3">
                         <p className="text-sm">Nenhum lead encontrado para este número</p>
                         <Button size="sm" className="w-full" onClick={async () => {
-                          if (!selectedConv) return;
-                          const { data: userData } = await supabase.auth.getUser();
-                          if (!userData.user) return;
+                          if (!selectedConv || !authUser) return;
                           const phone = selectedConv.contact_phone;
                           const name = selectedConv.contact_name || phone;
                           // Get default funnel and stage
-                          const { data: defaultFunnel } = await supabase.from("funnels").select("id").eq("user_id", userData.user.id).order("created_at").limit(1).single();
+                          const { data: defaultFunnel } = await supabase.from("funnels").select("id").eq("user_id", authUser.id).order("created_at").limit(1).single();
                           let defaultStageId = null;
                           if (defaultFunnel) {
                             const { data: defaultStage } = await supabase.from("funnel_stages").select("id").eq("funnel_id", defaultFunnel.id).order("order").limit(1).single();
                             defaultStageId = defaultStage?.id || null;
                           }
                           const { data, error } = await supabase.from("leads").insert({
-                            user_id: userData.user.id, name, phone, source: "WhatsApp",
+                            user_id: authUser.id, name, phone, source: "WhatsApp",
                             funnel_id: defaultFunnel?.id || null,
                             stage_id: defaultStageId,
                           }).select().single();
                           if (!error && data) {
+                            setLeads((prev) => prev.some((lead) => lead.id === data.id) ? prev : [...prev, { id: data.id, name: data.name, phone: data.phone }]);
                             toast("Lead criado com sucesso!", "success");
                             loadLeadInfo(phone);
                           } else {
@@ -1119,7 +1741,11 @@ export default function ChatPage() {
                     </div>
 
                     <div className="p-3">
-                      {mediaTab === "templates" ? (
+                      {loadingMediaLibrary ? (
+                        <div className="flex items-center justify-center py-8 text-xs text-muted-foreground">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando biblioteca...
+                        </div>
+                      ) : mediaTab === "templates" ? (
                         <div className="space-y-2">
                           {templates.length === 0 ? (
                             <p className="text-xs text-muted-foreground text-center py-4">Nenhuma mensagem pronta. Crie em Mídia.</p>
@@ -1191,21 +1817,35 @@ export default function ChatPage() {
               <Input placeholder="Buscar lead..." className="pl-10" value={leadSearch} onChange={(e) => setLeadSearch(e.target.value)} />
             </div>
             <div className="max-h-[300px] overflow-y-auto space-y-1">
-              {filteredLeads.length === 0 ? (
+              {loadingLeadOptions ? (
+                <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando leads...
+                </div>
+              ) : filteredLeadCount === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-6">Nenhum lead encontrado</p>
               ) : (
-                filteredLeads.map((lead) => (
-                  <button key={lead.id} onClick={() => handleStartConversation(lead)}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left">
-                    <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                      <span className="text-xs font-bold text-primary">{getInitials(lead.name)}</span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">{lead.name}</p>
-                      <p className="text-xs text-muted-foreground">{formatPhone(lead.phone)}</p>
-                    </div>
-                  </button>
-                ))
+                <>
+                  {visibleLeadOptions.map((lead) => (
+                    <button key={lead.id} onClick={() => handleStartConversation(lead)}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left">
+                      <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-bold text-primary">{getInitials(lead.name)}</span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{lead.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatPhone(lead.phone)}</p>
+                      </div>
+                    </button>
+                  ))}
+                  <div className="flex items-center justify-between gap-2 px-1 pt-2 text-xs text-muted-foreground">
+                    <span>Mostrando {visibleLeadOptions.length} de {filteredLeadCount} lead{filteredLeadCount !== 1 ? "s" : ""}</span>
+                    {hasMoreLeadOptions && (
+                      <Button variant="outline" size="sm" onClick={loadMoreLeadOptions}>
+                        Carregar mais
+                      </Button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -1220,7 +1860,11 @@ export default function ChatPage() {
             <DialogDescription>Selecione um fluxo para enviar ao contato</DialogDescription>
           </DialogHeader>
           <div className="max-h-[400px] overflow-y-auto space-y-2">
-            {flows.length === 0 ? (
+            {loadingFlows ? (
+              <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando fluxos...
+              </div>
+            ) : flows.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">Nenhum fluxo ativo. Crie em Automação.</p>
             ) : (
               flows.map((flow) => (

@@ -17,9 +17,13 @@ import {
 import {
   Plus, Search, Phone, Mail, StickyNote, Tag, X, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Pencil, Globe, Archive, ArchiveRestore, Filter, SortAsc, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download,
 } from "lucide-react";
-import { cn, formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
+import { cn, formatPhone, formatPhoneInput, getInitials, normalizePhoneBR } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useSubscription } from "@/lib/use-subscription";
+import { useAuth } from "@/contexts/auth-context";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useIncrementalDisplay } from "@/lib/use-incremental-display";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import Link from "next/link";
 
 interface Lead {
@@ -49,7 +53,7 @@ const STAGE_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EAB308", "#E
 export default function LeadsPage() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = usePersistedState("leads-search-term", "");
   const [showAddLead, setShowAddLead] = useState(false);
   const [showLeadDetail, setShowLeadDetail] = useState(false);
   const [showFunnelConfig, setShowFunnelConfig] = useState(false);
@@ -63,14 +67,16 @@ export default function LeadsPage() {
   const [editLead, setEditLead] = useState({ name: "", phone: "", email: "", source: "", funnel_id: "", stage_id: "" });
   const [editStages, setEditStages] = useState<Stage[]>([]);
   const [newStageName, setNewStageName] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
-  const [filterTag, setFilterTag] = useState("");
-  const [sortBy, setSortBy] = useState<"recent" | "name" | "phone">("recent");
+  const [showArchived, setShowArchived] = usePersistedState("leads-show-archived", false);
+  const [filterTag, setFilterTag] = usePersistedState("leads-filter-tag", "");
+  const [sortBy, setSortBy] = usePersistedState<"recent" | "name" | "phone">("leads-sort-by", "recent");
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const [funnels, setFunnels] = useState<{ id: string; name: string }[]>([]);
   const [newLeadFunnel, setNewLeadFunnel] = useState("");
   const { toast } = useToast();
   const { limits } = useSubscription();
+  const { user } = useAuth();
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 220);
 
   // Import CSV state
   const [showImport, setShowImport] = useState(false);
@@ -79,7 +85,7 @@ export default function LeadsPage() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importData, setImportData] = useState<{ name: string; phone: string; email: string; source: string }[]>([]);
   const [importLoading, setImportLoading] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; errors: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ success: number; errors: number; skipped: number } | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -119,8 +125,7 @@ export default function LeadsPage() {
   const handleAddLead = async () => {
     if (!newLead.name.trim()) { toast("Nome é obrigatório.", "warning"); return; }
     if (!newLead.phone.trim()) { toast("Telefone é obrigatório.", "warning"); return; }
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) return;
 
     const selectedFunnel = newLeadFunnel || funnels[0]?.id || null;
     const funnelStages = stages.filter((s: any) => !selectedFunnel || s.funnel_id === selectedFunnel);
@@ -131,10 +136,13 @@ export default function LeadsPage() {
       return;
     }
 
+    const normalizedPhone = normalizePhoneBR(newLead.phone);
+    if (!normalizedPhone) { toast("Telefone inválido.", "warning"); return; }
+
     const { data, error } = await supabase.from("leads").insert({
-      user_id: userData.user.id,
+      user_id: user.id,
       name: newLead.name,
-      phone: newLead.phone,
+      phone: normalizedPhone,
       email: newLead.email || null,
       stage_id: selectedStage,
       funnel_id: selectedFunnel,
@@ -154,9 +162,12 @@ export default function LeadsPage() {
     if (!editLead.name.trim()) { toast("Nome é obrigatório.", "warning"); return; }
     if (!editLead.phone.trim()) { toast("Telefone é obrigatório.", "warning"); return; }
 
+    const normalizedPhone = normalizePhoneBR(editLead.phone);
+    if (!normalizedPhone) { toast("Telefone inválido.", "warning"); return; }
+
     const { error } = await supabase.from("leads").update({
       name: editLead.name,
-      phone: editLead.phone,
+      phone: normalizedPhone,
       email: editLead.email || null,
       source: editLead.source || null,
       funnel_id: editLead.funnel_id || null,
@@ -164,8 +175,8 @@ export default function LeadsPage() {
     }).eq("id", selectedLead.id);
 
     if (!error) {
-      const updated = { ...selectedLead, name: editLead.name, phone: editLead.phone, email: editLead.email, source: editLead.source, funnel_id: editLead.funnel_id, stage_id: editLead.stage_id };
-      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, name: editLead.name, phone: editLead.phone, email: editLead.email, source: editLead.source, funnel_id: editLead.funnel_id, stage_id: editLead.stage_id } : l));
+      const updated = { ...selectedLead, name: editLead.name, phone: normalizedPhone, email: editLead.email, source: editLead.source, funnel_id: editLead.funnel_id, stage_id: editLead.stage_id };
+      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, name: editLead.name, phone: normalizedPhone, email: editLead.email, source: editLead.source, funnel_id: editLead.funnel_id, stage_id: editLead.stage_id } : l));
       setSelectedLead(updated);
       setShowEditLead(false);
     }
@@ -186,11 +197,10 @@ export default function LeadsPage() {
 
   const handleAddNote = async () => {
     if (!selectedLead || !newNote.trim()) return;
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) return;
 
     const { data, error } = await supabase.from("notes").insert({
-      lead_id: selectedLead.id, user_id: userData.user.id, content: newNote,
+      lead_id: selectedLead.id, user_id: user.id, content: newNote,
     }).select().single();
 
     if (!error && data) {
@@ -202,14 +212,13 @@ export default function LeadsPage() {
 
   const handleAddTag = async () => {
     if (!selectedLead || !newTag.trim()) return;
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) return;
 
     const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
-    let { data: existingTag } = await supabase.from("tags").select().eq("name", newTag).eq("user_id", userData.user.id).single();
+    let { data: existingTag } = await supabase.from("tags").select().eq("name", newTag).eq("user_id", user.id).single();
 
     if (!existingTag) {
-      const { data: created } = await supabase.from("tags").insert({ name: newTag, color, user_id: userData.user.id }).select().single();
+      const { data: created } = await supabase.from("tags").insert({ name: newTag, color, user_id: user.id }).select().single();
       existingTag = created;
     }
 
@@ -251,14 +260,13 @@ export default function LeadsPage() {
   };
 
   const handleSaveFunnel = async () => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) return;
 
     for (let i = 0; i < editStages.length; i++) {
       const s = editStages[i];
       if (s.id.startsWith("temp-")) {
         const { data } = await supabase.from("funnel_stages").insert({
-          user_id: userData.user.id, name: s.name, color: s.color, order: i,
+          user_id: user.id, name: s.name, color: s.color, order: i,
         }).select().single();
         if (data) editStages[i] = { ...data, order: i };
       } else {
@@ -310,11 +318,14 @@ export default function LeadsPage() {
     if (nameIdx === -1 || phoneIdx === -1) return [];
 
     const rows: { name: string; phone: string; email: string; source: string }[] = [];
+    const seenPhones = new Set<string>();
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split(separator).map((c) => c.trim().replace(/^"|"$/g, ""));
       const name = cols[nameIdx]?.trim() || "";
-      const phone = cols[phoneIdx]?.trim().replace(/\D/g, "") || "";
-      if (name && phone) {
+      const rawPhone = cols[phoneIdx]?.trim() || "";
+      const phone = normalizePhoneBR(rawPhone);
+      if (name && phone && !seenPhones.has(phone)) {
+        seenPhones.add(phone);
         rows.push({
           name,
           phone,
@@ -348,12 +359,38 @@ export default function LeadsPage() {
     setImportLoading(true);
     setImportResult(null);
 
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) { setImportLoading(false); return; }
+    if (!user) { setImportLoading(false); return; }
+
+    // Fetch all existing phones for this user to detect duplicates
+    const { data: existingLeads } = await supabase
+      .from("leads")
+      .select("phone")
+      .eq("user_id", user.id);
+
+    const existingPhones = new Set<string>();
+    if (existingLeads) {
+      for (const lead of existingLeads) {
+        if (lead.phone) {
+          const normalized = normalizePhoneBR(lead.phone);
+          if (normalized) existingPhones.add(normalized);
+          // Also add raw digits for broader matching
+          const rawDigits = lead.phone.replace(/\D/g, "");
+          if (rawDigits) existingPhones.add(rawDigits);
+        }
+      }
+    }
+
+    // Filter out duplicates
+    const uniqueData = importData.filter((row) => {
+      const normalized = normalizePhoneBR(row.phone);
+      if (!normalized) return false;
+      return !existingPhones.has(normalized);
+    });
+    const skipped = importData.length - uniqueData.length;
 
     const currentActive = leads.filter((l) => !l.archived).length;
     const available = limits.max_leads === Infinity ? Infinity : limits.max_leads - currentActive;
-    const toImport = available === Infinity ? importData : importData.slice(0, available);
+    const toImport = available === Infinity ? uniqueData : uniqueData.slice(0, available);
 
     let success = 0;
     let errors = 0;
@@ -361,7 +398,7 @@ export default function LeadsPage() {
 
     for (let i = 0; i < toImport.length; i += BATCH_SIZE) {
       const batch = toImport.slice(i, i + BATCH_SIZE).map((row) => ({
-        user_id: userData.user!.id,
+        user_id: user.id,
         name: row.name,
         phone: row.phone,
         email: row.email || null,
@@ -378,11 +415,11 @@ export default function LeadsPage() {
       }
     }
 
-    if (toImport.length < importData.length) {
-      toast(`Limite de leads atingido. ${importData.length - toImport.length} leads não foram importados.`, "warning");
+    if (toImport.length < uniqueData.length) {
+      toast(`Limite de leads atingido. ${uniqueData.length - toImport.length} leads não foram importados.`, "warning");
     }
 
-    setImportResult({ success, errors });
+    setImportResult({ success, errors, skipped });
     setImportLoading(false);
     if (success > 0) loadData();
   };
@@ -411,9 +448,9 @@ export default function LeadsPage() {
   const filteredLeads = leads
     .filter((l) => showArchived ? l.archived : !l.archived)
     .filter((l) =>
-      l.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      l.phone.includes(searchTerm) ||
-      l.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      l.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+      l.phone.includes(debouncedSearchTerm) ||
+      l.email?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
     )
     .filter((l) => !filterTag || l.tags.some((t) => t.id === filterTag))
     .sort((a, b) => {
@@ -421,6 +458,17 @@ export default function LeadsPage() {
       if (sortBy === "phone") return a.phone.localeCompare(b.phone);
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
+  const leadFilterKey = `${debouncedSearchTerm}|${filterTag}|${sortBy}|${showArchived}`;
+  const {
+    visibleItems: visibleLeads,
+    totalCount: filteredLeadCount,
+    hasMore: hasMoreLeads,
+    loadMore: loadMoreLeads,
+  } = useIncrementalDisplay(filteredLeads, {
+    initialCount: 25,
+    step: 25,
+    resetKey: leadFilterKey,
+  });
   if (loading) {
     return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -507,15 +555,28 @@ export default function LeadsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredLeads.length === 0 ? (
+              {filteredLeadCount === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     <Search className="h-10 w-10 mx-auto mb-2 opacity-30" />
                     <p>Nenhum lead encontrado</p>
+                    {(debouncedSearchTerm || filterTag) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-3"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setFilterTag("");
+                        }}
+                      >
+                        Limpar filtros
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ) : (
-                filteredLeads.map((lead) => {
+                visibleLeads.map((lead) => {
                   const stage = stages.find((s) => s.id === lead.stage_id);
                   return (
                     <tr key={lead.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer"
@@ -573,9 +634,16 @@ export default function LeadsPage() {
             </tbody>
           </table>
         </div>
-        {filteredLeads.length > 0 && (
-          <div className="p-3 border-t border-border text-xs text-muted-foreground">
-            {filteredLeads.length} lead{filteredLeads.length !== 1 ? "s" : ""} encontrado{filteredLeads.length !== 1 ? "s" : ""}
+        {filteredLeadCount > 0 && (
+          <div className="flex items-center justify-between gap-3 border-t border-border p-3 text-xs text-muted-foreground">
+            <span>
+              Mostrando {visibleLeads.length} de {filteredLeadCount} lead{filteredLeadCount !== 1 ? "s" : ""} encontrado{filteredLeadCount !== 1 ? "s" : ""}
+            </span>
+            {hasMoreLeads && (
+              <Button variant="outline" size="sm" onClick={loadMoreLeads}>
+                Carregar mais 25
+              </Button>
+            )}
           </div>
         )}
       </Card>
@@ -1012,6 +1080,14 @@ export default function LeadsPage() {
                     <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
                     <div className="text-sm">
                       <p className="font-medium text-green-600">{importResult.success} lead{importResult.success !== 1 ? "s" : ""} importado{importResult.success !== 1 ? "s" : ""} com sucesso!</p>
+                    </div>
+                  </div>
+                )}
+                {importResult.skipped > 0 && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-medium text-amber-600">{importResult.skipped} lead{importResult.skipped !== 1 ? "s" : ""} ignorado{importResult.skipped !== 1 ? "s" : ""} (telefone já cadastrado).</p>
                     </div>
                   </div>
                 )}

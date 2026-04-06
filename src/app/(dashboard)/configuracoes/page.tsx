@@ -21,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useSubscription } from "@/lib/use-subscription";
+import { useAuth } from "@/contexts/auth-context";
 import Link from "next/link";
 
 interface WhatsAppInstance {
@@ -49,6 +50,7 @@ export default function ConfiguracoesPage() {
   const [tags, setTags] = useState<{ id: string; name: string }[]>([]);
   const { toast } = useToast();
   const { limits } = useSubscription();
+  const { user } = useAuth();
 
   const HOTMART_EVENTS = [
     { key: "PURCHASE_APPROVED", label: "Compra Aprovada" },
@@ -70,18 +72,17 @@ export default function ConfiguracoesPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
       const [instancesRes, hotmartRes, funnelsRes, stagesRes, tagsRes] = await Promise.all([
-        userData.user
-          ? supabase.from("whatsapp_instances").select("*").eq("user_id", userData.user.id).is("deleted_at", null).order("created_at")
-          : Promise.resolve({ data: [] }),
-        userData.user
-          ? supabase.from("integrations").select("api_key, config").eq("user_id", userData.user.id).eq("type", "hotmart").single()
-          : Promise.resolve({ data: null }),
-        userData.user ? supabase.from("funnels").select("id, name").eq("user_id", userData.user.id) : Promise.resolve({ data: [] }),
-        userData.user ? supabase.from("funnel_stages").select("id, name, funnel_id").eq("user_id", userData.user.id).order("order") : Promise.resolve({ data: [] }),
-        userData.user ? supabase.from("tags").select("id, name").eq("user_id", userData.user.id) : Promise.resolve({ data: [] }),
+        supabase.from("whatsapp_instances").select("*").eq("user_id", user.id).is("deleted_at", null).order("created_at"),
+        supabase.from("integrations").select("api_key, config").eq("user_id", user.id).eq("type", "hotmart").single(),
+        supabase.from("funnels").select("id, name").eq("user_id", user.id),
+        supabase.from("funnel_stages").select("id, name, funnel_id").eq("user_id", user.id).order("order"),
+        supabase.from("tags").select("id, name").eq("user_id", user.id),
       ]);
 
       if (instancesRes.data) setInstances(instancesRes.data);
@@ -130,7 +131,7 @@ export default function ConfiguracoesPage() {
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     loadData();
@@ -144,12 +145,10 @@ export default function ConfiguracoesPage() {
 
     try {
       const result = await evolutionApi.createInstance(newInstanceName, "https://webhook.devnoflow.com.br/webhook/flow-hook");
-
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!user) return;
 
       const { data: inst } = await supabase.from("whatsapp_instances").insert({
-        user_id: userData.user.id,
+        user_id: user.id,
         instance_name: newInstanceName,
         status: "disconnected",
       }).select().single();
@@ -269,11 +268,13 @@ export default function ConfiguracoesPage() {
 
   const handleSaveHotmart = async () => {
     setHotmartSaving(true);
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) {
+      setHotmartSaving(false);
+      return;
+    }
 
     await supabase.from("integrations").upsert({
-      user_id: userData.user.id,
+      user_id: user.id,
       type: "hotmart",
       api_key: hotmartToken,
       is_active: !!hotmartToken,

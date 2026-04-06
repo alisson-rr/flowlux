@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { PLAN_LIMITS, type PlanId } from "@/lib/plan-limits";
 import { useAuth } from "@/contexts/auth-context";
+import { useDashboardData } from "@/contexts/dashboard-context";
 
 interface SubscriptionData {
   plan_id: PlanId;
@@ -24,10 +25,12 @@ const ACTIVE_STATUSES = ["active", "authorized", "trial"];
 
 export function useSubscription(): UseSubscriptionReturn {
   const { userId, loading: authLoading } = useAuth();
+  const dashboardData = useDashboardData();
   const [data, setData] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (dashboardData) return;
     if (authLoading) return;
     if (!userId) { setLoading(false); return; }
 
@@ -59,7 +62,19 @@ export function useSubscription(): UseSubscriptionReturn {
       finally { setLoading(false); }
     };
     load();
-  }, [userId, authLoading]);
+  }, [dashboardData, userId, authLoading]);
+
+  if (dashboardData) {
+    const plan: PlanId = dashboardData.subscription?.plan_id || "starter";
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.starter;
+    return {
+      plan,
+      limits,
+      status: dashboardData.subscription?.status || "",
+      loading: dashboardData.loading,
+      isActive: dashboardData.hasActivePlan,
+    };
+  }
 
   const plan: PlanId = data?.plan_id || "starter";
   const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.starter;
