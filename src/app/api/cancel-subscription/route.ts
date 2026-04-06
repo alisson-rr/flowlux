@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUserId } from "@/lib/api-auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -7,13 +8,18 @@ const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 
 export async function POST(req: NextRequest) {
   try {
+    const authenticatedUserId = await getAuthenticatedUserId(req);
+    if (!authenticatedUserId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { user_id } = body;
 
-    console.log("[cancel-subscription] Request:", { user_id });
+    console.log("[cancel-subscription] Request:", { user_id, auth_user_id: authenticatedUserId });
 
-    if (!user_id) {
-      return NextResponse.json({ error: "Missing user_id" }, { status: 400 });
+    if (user_id && user_id !== authenticatedUserId) {
+      return NextResponse.json({ error: "User mismatch" }, { status: 403 });
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -22,7 +28,7 @@ export async function POST(req: NextRequest) {
     const { data: subscription } = await supabase
       .from("subscriptions")
       .select("*")
-      .eq("user_id", user_id)
+      .eq("user_id", authenticatedUserId)
       .in("status", ["active", "authorized", "trial", "pending_payment"])
       .order("created_at", { ascending: false })
       .limit(1)
