@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { useAuth } from "@/contexts/auth-context";
 import Link from "next/link";
 
 interface Subscription {
@@ -153,18 +154,18 @@ export default function AssinaturaPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isAlterarMode = searchParams.get("alterar") === "true";
+  const { user } = useAuth();
 
   useEffect(() => {
     const loadSubscription = async () => {
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) return;
+        if (!user) return;
 
         // Check if user ever had a trial
         const { data: trialHistory } = await supabase
           .from("subscriptions")
           .select("id")
-          .eq("user_id", userData.user.id)
+          .eq("user_id", user.id)
           .not("trial_start", "is", null)
           .limit(1);
 
@@ -176,7 +177,7 @@ export default function AssinaturaPage() {
         const { data } = await supabase
           .from("subscriptions")
           .select("*")
-          .eq("user_id", userData.user.id)
+          .eq("user_id", user.id)
           .in("status", ["active", "authorized", "trial", "pending_payment", "pending"])
           .order("created_at", { ascending: false })
           .limit(1)
@@ -194,7 +195,7 @@ export default function AssinaturaPage() {
           const { data: cancelledSub } = await supabase
             .from("subscriptions")
             .select("*")
-            .eq("user_id", userData.user.id)
+            .eq("user_id", user.id)
             .eq("status", "cancelled")
             .gt("current_period_end", new Date().toISOString())
             .order("created_at", { ascending: false })
@@ -217,14 +218,14 @@ export default function AssinaturaPage() {
       }
     };
     loadSubscription();
-  }, [isAlterarMode, router]);
+  }, [isAlterarMode, router, user]);
 
   const [selectingPlan, setSelectingPlan] = useState<string | null>(null);
 
   const handleSelectPlan = async (plan: typeof PLANS[0]) => {
     try {
       setSelectingPlan(plan.id);
-      const { data: userData } = await supabase.auth.getUser();
+      const userData = { user };
       if (!userData.user) {
         toast("Faça login para assinar.", "error");
         setSelectingPlan(null);
@@ -290,7 +291,7 @@ export default function AssinaturaPage() {
   const handleChangePlan = async (plan: typeof PLANS[0]) => {
     try {
       setSelectingPlan(plan.id);
-      const { data: userData } = await supabase.auth.getUser();
+      const userData = { user };
       if (!userData.user) {
         toast("Faça login para alterar o plano.", "error");
         setSelectingPlan(null);

@@ -1,9 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 const mpWebhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET || "";
 
@@ -182,7 +180,7 @@ function detectPlanId(preapproval: any): string {
 export async function POST(req: NextRequest) {
   try {
     // Verify service role key is configured
-    if (!supabaseServiceKey) {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.error("[mp-webhook] SUPABASE_SERVICE_ROLE_KEY not configured!");
       return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
     }
@@ -202,7 +200,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getSupabaseAdmin();
 
     // Support both query params and body for event type/data
     const eventType = body.type || req.nextUrl.searchParams.get("type") || req.nextUrl.searchParams.get("topic") || "";

@@ -17,22 +17,103 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Search, GripVertical, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Globe, StickyNote, Mail, UserPlus, Tag, X, Phone, Pencil, Archive, ArchiveRestore,
 } from "lucide-react";
-import { cn, formatPhone, formatPhoneInput, getInitials } from "@/lib/utils";
+import { cn, formatPhone, formatPhoneInput, getInitials, normalizePhone } from "@/lib/utils";
+import { TAG_COLORS, STAGE_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/ui/toast";
+import { useAuth } from "@/contexts/auth-context";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { usePersistedState } from "@/lib/use-persisted-state";
+import { useIncrementalDisplay } from "@/lib/use-incremental-display";
 
 interface Lead { id: string; name: string; phone: string; email?: string; stage_id: string; source?: string; archived: boolean; created_at: string; tags: { id: string; name: string; color: string }[]; notes: { id: string; content: string; created_at: string }[]; }
 interface Stage { id: string; name: string; color: string; order: number; }
 interface Funnel { id: string; name: string; description: string; }
 
-const STAGE_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EAB308", "#EF4444", "#EC4899", "#06B6D4", "#14B8A6", "#A855F7"];
+
+function StageColumn({
+  stage,
+  leads,
+  draggedLead,
+  onDrop,
+  onDragStart,
+  onOpenLead,
+}: {
+  stage: Stage;
+  leads: Lead[];
+  draggedLead: string | null;
+  onDrop: (stageId: string) => void;
+  onDragStart: (leadId: string) => void;
+  onOpenLead: (lead: Lead) => void;
+}) {
+  const {
+    visibleItems: visibleLeads,
+    totalCount,
+    hasMore,
+    loadMore,
+  } = useIncrementalDisplay(leads, {
+    initialCount: 18,
+    step: 18,
+    resetKey: `${stage.id}|${leads.length}`,
+  });
+
+  return (
+    <div className="flex-shrink-0 w-[300px]" onDragOver={(e) => e.preventDefault()} onDrop={() => onDrop(stage.id)}>
+      <div className="flex items-center gap-2 mb-3 px-1">
+        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }} />
+        <span className="font-medium text-sm">{stage.name}</span>
+        <Badge variant="outline" className="ml-auto text-xs">{totalCount}</Badge>
+      </div>
+      <div className="space-y-2 min-h-[200px] p-2 rounded-lg bg-muted/30 border border-dashed border-border">
+        {visibleLeads.map((lead) => (
+          <Card key={lead.id} draggable onDragStart={() => onDragStart(lead.id)}
+            onClick={() => onOpenLead(lead)}
+            className={cn("p-3 cursor-pointer hover:border-primary/40 transition-all", draggedLead === lead.id && "opacity-50")}>
+            <div className="flex items-start gap-2">
+              <GripVertical className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0 cursor-grab" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0" style={{ backgroundColor: stage.color }}>
+                    {getInitials(lead.name)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate">{lead.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatPhone(lead.phone)}</p>
+                  </div>
+                </div>
+                {lead.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {lead.tags.slice(0, 3).map((tag) => (
+                      <span key={tag.id} className="text-[10px] px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: tag.color }}>{tag.name}</span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-3 mt-2 text-muted-foreground">
+                  {lead.notes.length > 0 && <span className="flex items-center gap-0.5 text-[10px]"><StickyNote className="h-3 w-3" /> {lead.notes.length}</span>}
+                  {lead.email && <Mail className="h-3 w-3" />}
+                  {lead.source && <Globe className="h-3 w-3" />}
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))}
+        {hasMore && (
+          <Button variant="outline" size="sm" className="w-full" onClick={loadMore}>
+            Carregar mais
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function FunilPage() {
   const [funnels, setFunnels] = useState<Funnel[]>([]);
-  const [selectedFunnelId, setSelectedFunnelId] = useState("");
+  const [selectedFunnelId, setSelectedFunnelId] = usePersistedState("funil-selected-funnel-id", "");
   const [stages, setStages] = useState<Stage[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [loadingBoard, setLoadingBoard] = useState(true);
+  const [searchTerm, setSearchTerm] = usePersistedState("funil-search-term", "");
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
 
   // Funnel config
@@ -48,47 +129,108 @@ export default function FunilPage() {
   // Lead detail modal
   const [showLeadDetail, setShowLeadDetail] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [loadingLeadDetail, setLoadingLeadDetail] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [newTag, setNewTag] = useState("");
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
 
-  const TAG_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EF4444", "#EC4899", "#06B6D4", "#EAB308"];
   const { toast } = useToast();
+  const { user } = useAuth();
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 220);
 
-  const loadData = useCallback(async () => {
+  const loadMetaData = useCallback(async () => {
     try {
-      const [funnelsRes, stagesRes, leadsRes, tagsRes] = await Promise.all([
+      const [funnelsRes, stagesRes, tagsRes] = await Promise.all([
         supabase.from("funnels").select("id, name, description").order("created_at"),
         supabase.from("funnel_stages").select("*").order("order"),
-        supabase.from("leads").select("*, lead_tags(tags(*)), notes(*)").is("deleted_at", null).eq("archived", false),
         supabase.from("tags").select("id, name, color"),
       ]);
       if (tagsRes.data) setAllTags(tagsRes.data);
 
       if (funnelsRes.data) {
         setFunnels(funnelsRes.data);
-        if (funnelsRes.data.length > 0 && !selectedFunnelId) {
-          setSelectedFunnelId(funnelsRes.data[0].id);
+        if (funnelsRes.data.length > 0) {
+          const nextFunnelId = funnelsRes.data.some((funnel) => funnel.id === selectedFunnelId)
+            ? selectedFunnelId
+            : funnelsRes.data[0].id;
+          setSelectedFunnelId(nextFunnelId);
         }
       }
       if (stagesRes.data) setStages(stagesRes.data);
-      if (leadsRes.data) {
-        setLeads(leadsRes.data.map((l: any) => ({
-          ...l, archived: l.archived || false,
-          tags: l.lead_tags?.map((lt: any) => lt.tags).filter(Boolean) || [],
-          notes: l.notes || [],
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, [setSelectedFunnelId]);
+
+  const loadBoardData = useCallback(async () => {
+    if (!selectedFunnelId) {
+      setLeads([]);
+      setLoadingBoard(false);
+      return;
+    }
+
+    setLoadingBoard(true);
+    try {
+      const { data } = await supabase
+        .from("leads")
+        .select("id, name, phone, email, stage_id, source, archived, created_at, funnel_id, lead_tags(tags(id, name, color)), notes(id)")
+        .eq("funnel_id", selectedFunnelId)
+        .is("deleted_at", null)
+        .eq("archived", false)
+        .order("created_at", { ascending: false });
+
+      if (data) {
+        setLeads(data.map((lead: any) => ({
+          ...lead,
+          archived: lead.archived || false,
+          tags: lead.lead_tags?.map((item: any) => item.tags).filter(Boolean) || [],
+          notes: lead.notes?.map((note: any) => ({ id: note.id, content: "", created_at: "" })) || [],
         })));
+      } else {
+        setLeads([]);
       }
-    } catch { /* */ } finally { setLoading(false); }
+    } finally {
+      setLoadingBoard(false);
+    }
   }, [selectedFunnelId]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  const loadLeadDetail = useCallback(async (leadId: string) => {
+    setLoadingLeadDetail(true);
+    setSelectedLead(null);
+    setShowLeadDetail(true);
+    try {
+      const { data } = await supabase
+        .from("leads")
+        .select("*, lead_tags(tags(*)), notes(*)")
+        .eq("id", leadId)
+        .single();
+
+      if (data) {
+        setSelectedLead({
+          ...data,
+          archived: data.archived || false,
+          tags: data.lead_tags?.map((item: any) => item.tags).filter(Boolean) || [],
+          notes: data.notes || [],
+        });
+      }
+    } finally {
+      setLoadingLeadDetail(false);
+    }
+  }, []);
+
+  useEffect(() => { loadMetaData(); }, [loadMetaData]);
+  useEffect(() => {
+    if (selectedFunnelId) {
+      loadBoardData();
+    }
+  }, [loadBoardData, selectedFunnelId]);
 
   // Filter stages/leads by selected funnel
   const funnelStages = stages.filter((s) => (s as any).funnel_id === selectedFunnelId);
   const filteredLeads = leads
-    .filter((l) => (l as any).funnel_id === selectedFunnelId)
-    .filter((l) => l.name.toLowerCase().includes(searchTerm.toLowerCase()) || l.phone.includes(searchTerm));
+    .filter((l) => l.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) || l.phone.includes(debouncedSearchTerm));
   const getLeadsByStage = (stageId: string) => filteredLeads.filter((l) => l.stage_id === stageId);
 
   // Drag & Drop
@@ -96,15 +238,15 @@ export default function FunilPage() {
     if (!draggedLead) return;
     await supabase.from("leads").update({ stage_id: stageId }).eq("id", draggedLead);
     setLeads((prev) => prev.map((l) => l.id === draggedLead ? { ...l, stage_id: stageId } : l));
+    setSelectedLead((prev) => prev && prev.id === draggedLead ? { ...prev, stage_id: stageId } : prev);
     setDraggedLead(null);
   };
 
   // Funnel CRUD
   const handleAddFunnel = async () => {
     if (!newFunnelName.trim()) return;
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
-    const { data, error } = await supabase.from("funnels").insert({ user_id: userData.user.id, name: newFunnelName }).select().single();
+    if (!user) return;
+    const { data, error } = await supabase.from("funnels").insert({ user_id: user.id, name: newFunnelName }).select().single();
     if (!error && data) {
       setFunnels((prev) => [...prev, data]);
       setSelectedFunnelId(data.id);
@@ -115,11 +257,12 @@ export default function FunilPage() {
 
   const handleAddLead = async () => {
     if (!newLead.name || !newLead.phone) return;
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) return;
+    const normalizedPhone = normalizePhone(newLead.phone);
+    if (!normalizedPhone) { toast("Telefone inválido.", "warning"); return; }
     const stageId = newLeadStage || funnelStages[0]?.id;
     const { data, error } = await supabase.from("leads").insert({
-      user_id: userData.user.id, name: newLead.name, phone: newLead.phone,
+      user_id: user.id, name: newLead.name, phone: normalizedPhone,
       email: newLead.email || null, stage_id: stageId, source: newLead.source || null,
       funnel_id: selectedFunnelId,
     }).select("*, lead_tags(tags(*)), notes(*)").single();
@@ -135,21 +278,22 @@ export default function FunilPage() {
     if (!selectedFunnelId || funnels.length <= 1) { toast("Deve haver pelo menos um funil.", "warning"); return; }
     await supabase.from("funnel_stages").delete().eq("funnel_id", selectedFunnelId);
     await supabase.from("funnels").delete().eq("id", selectedFunnelId);
-    setFunnels((prev) => prev.filter((f) => f.id !== selectedFunnelId));
-    setSelectedFunnelId(funnels[0]?.id || "");
+    const nextFunnels = funnels.filter((f) => f.id !== selectedFunnelId);
+    setFunnels(nextFunnels);
+    setStages((prev) => prev.filter((stage: any) => stage.funnel_id !== selectedFunnelId));
+    setSelectedFunnelId(nextFunnels[0]?.id || "");
   };
 
   // Stage CRUD
   const openFunnelConfig = () => { setEditStages([...funnelStages]); setShowFunnelConfig(true); };
 
   const handleSaveFunnel = async () => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) return;
     for (let i = 0; i < editStages.length; i++) {
       const s = editStages[i];
       if (s.id.startsWith("temp-")) {
         const { data } = await supabase.from("funnel_stages").insert({
-          user_id: userData.user.id, funnel_id: selectedFunnelId, name: s.name, color: s.color, order: i,
+          user_id: user.id, funnel_id: selectedFunnelId, name: s.name, color: s.color, order: i,
         }).select().single();
         if (data) editStages[i] = { ...data, order: i };
       } else {
@@ -171,10 +315,9 @@ export default function FunilPage() {
   // === LEAD DETAIL: Tags & Notes ===
   const handleAddNote = async () => {
     if (!selectedLead || !newNote.trim()) return;
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) return;
     const { data, error } = await supabase.from("notes").insert({
-      lead_id: selectedLead.id, user_id: userData.user.id, content: newNote,
+      lead_id: selectedLead.id, user_id: user.id, content: newNote,
     }).select().single();
     if (!error && data) {
       setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, notes: [...l.notes, data] } : l));
@@ -185,12 +328,11 @@ export default function FunilPage() {
 
   const handleAddTag = async () => {
     if (!selectedLead || !newTag.trim()) return;
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) return;
     const color = TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
-    let { data: existingTag } = await supabase.from("tags").select().eq("name", newTag).eq("user_id", userData.user.id).single();
+    let { data: existingTag } = await supabase.from("tags").select().eq("name", newTag).eq("user_id", user.id).single();
     if (!existingTag) {
-      const { data: created } = await supabase.from("tags").insert({ name: newTag, color, user_id: userData.user.id }).select().single();
+      const { data: created } = await supabase.from("tags").insert({ name: newTag, color, user_id: user.id }).select().single();
       existingTag = created;
     }
     if (existingTag) {
@@ -247,50 +389,40 @@ export default function FunilPage() {
           <p>Nenhuma etapa configurada neste funil.</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={openFunnelConfig}><Settings2 className="h-4 w-4 mr-1" /> Configurar Etapas</Button>
         </Card>
-      ) : (
+      ) : loadingBoard ? (
         <div className="flex gap-4 overflow-x-auto pb-4">
           {funnelStages.map((stage) => (
-            <div key={stage.id} className="flex-shrink-0 w-[300px]" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop(stage.id)}>
+            <div key={stage.id} className="flex-shrink-0 w-[300px]">
               <div className="flex items-center gap-2 mb-3 px-1">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }} />
                 <span className="font-medium text-sm">{stage.name}</span>
-                <Badge variant="outline" className="ml-auto text-xs">{getLeadsByStage(stage.id).length}</Badge>
               </div>
               <div className="space-y-2 min-h-[200px] p-2 rounded-lg bg-muted/30 border border-dashed border-border">
-                {getLeadsByStage(stage.id).map((lead) => (
-                  <Card key={lead.id} draggable onDragStart={() => setDraggedLead(lead.id)}
-                    onClick={() => { setSelectedLead(lead); setShowLeadDetail(true); }}
-                    className={cn("p-3 cursor-pointer hover:border-primary/40 transition-all", draggedLead === lead.id && "opacity-50")}>
-                    <div className="flex items-start gap-2">
-                      <GripVertical className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0 cursor-grab" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0" style={{ backgroundColor: stage.color }}>
-                            {getInitials(lead.name)}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium text-sm truncate">{lead.name}</p>
-                            <p className="text-xs text-muted-foreground">{formatPhone(lead.phone)}</p>
-                          </div>
-                        </div>
-                        {lead.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {lead.tags.slice(0, 3).map((tag) => (
-                              <span key={tag.id} className="text-[10px] px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: tag.color }}>{tag.name}</span>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex items-center gap-3 mt-2 text-muted-foreground">
-                          {lead.notes.length > 0 && <span className="flex items-center gap-0.5 text-[10px]"><StickyNote className="h-3 w-3" /> {lead.notes.length}</span>}
-                          {lead.email && <Mail className="h-3 w-3" />}
-                          {lead.source && <Globe className="h-3 w-3" />}
-                        </div>
-                      </div>
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <Card key={index} className="p-3 animate-pulse">
+                    <div className="space-y-2">
+                      <div className="h-4 w-2/3 rounded bg-muted" />
+                      <div className="h-3 w-1/2 rounded bg-muted" />
+                      <div className="h-3 w-1/3 rounded bg-muted" />
                     </div>
                   </Card>
                 ))}
               </div>
             </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {funnelStages.map((stage) => (
+            <StageColumn
+              key={stage.id}
+              stage={stage}
+              leads={getLeadsByStage(stage.id)}
+              draggedLead={draggedLead}
+              onDrop={handleDrop}
+              onDragStart={setDraggedLead}
+              onOpenLead={(lead) => loadLeadDetail(lead.id)}
+            />
           ))}
         </div>
       )}
@@ -413,7 +545,11 @@ export default function FunilPage() {
             <DialogDescription>Detalhes do lead</DialogDescription>
           </DialogHeader>
 
-          {selectedLead && (
+          {loadingLeadDetail ? (
+            <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Carregando lead...
+            </div>
+          ) : selectedLead && (
             <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-1">
               {/* Contact & Source Info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">

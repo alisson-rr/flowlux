@@ -76,6 +76,9 @@ export interface Message {
   content: string;
   media_url?: string;
   status: "pending" | "sent" | "delivered" | "read";
+  provider_message_id?: string | null;
+  provider_payload?: Record<string, unknown> | null;
+  provider_timestamp?: string | null;
   created_at: string;
 }
 
@@ -98,22 +101,76 @@ export interface MassMessage {
   message: string;
   target_tags?: string[];
   target_stages?: string[];
-  status: "draft" | "scheduled" | "sending" | "completed" | "failed";
+  status: "draft" | "scheduled" | "sending" | "completed" | "completed_with_errors" | "failed" | "cancelled";
   scheduled_at?: string;
   sent_count: number;
+  failed_count: number;
   total_count: number;
+  started_at?: string;
+  completed_at?: string;
+  last_error?: string;
   created_at: string;
+}
+
+export interface MassMessageDelivery {
+  id: string;
+  mass_message_id: string;
+  user_id: string;
+  lead_id?: string | null;
+  instance_id?: string | null;
+  lead_name: string;
+  lead_phone: string;
+  normalized_phone: string;
+  remote_jid?: string | null;
+  status: "pending" | "sending" | "sent" | "failed" | "skipped";
+  attempt_count: number;
+  last_attempt_at?: string | null;
+  sent_at?: string | null;
+  failure_reason?: string | null;
+  provider_response?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ScheduledMessage {
   id: string;
   user_id: string;
-  lead_id: string;
-  instance_id: string;
+  lead_id?: string | null;
+  instance_id?: string | null;
   message: string;
   scheduled_at: string;
-  status: "pending" | "sent" | "failed";
+  status: "pending" | "processing" | "sent" | "failed" | "cancelled";
+  attempt_count: number;
+  claimed_at?: string | null;
+  last_attempt_at?: string | null;
+  sent_at?: string | null;
+  failure_reason?: string | null;
+  provider_response?: Record<string, unknown>;
+  media_url?: string | null;
+  media_type?: "image" | "video" | "document" | null;
+  file_name?: string | null;
   created_at: string;
+  updated_at?: string;
+}
+
+export interface ScheduledMessageAttempt {
+  id: string;
+  scheduled_message_id: string;
+  user_id: string;
+  lead_id?: string | null;
+  instance_id?: string | null;
+  attempt_number: number;
+  target_phone: string;
+  normalized_phone?: string | null;
+  lead_name: string;
+  instance_name?: string | null;
+  status: "processing" | "sent" | "failed" | "skipped";
+  attempted_at: string;
+  completed_at?: string | null;
+  failure_reason?: string | null;
+  provider_response?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface MessageTemplate {

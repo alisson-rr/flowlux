@@ -13,6 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { TERMOS_DE_USO, POLITICA_DE_PRIVACIDADE } from "@/lib/legal-texts";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function PerfilPage() {
   const [loading, setLoading] = useState(true);
@@ -27,36 +28,41 @@ export default function PerfilPage() {
   const [showPrivacy, setShowPrivacy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
     loadProfile();
-  }, []);
+  }, [user]);
 
   const loadProfile = async () => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    const { data } = await supabase.from("profiles").select("*").eq("id", userData.user.id).single();
+    const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
     if (data) {
       setProfile({
         name: data.name || "",
-        email: data.email || userData.user.email || "",
+        email: data.email || user.email || "",
         phone: data.phone || "",
         avatar_url: data.avatar_url || "",
       });
     } else {
-      setProfile((prev) => ({ ...prev, email: userData.user!.email || "" }));
+      setProfile((prev) => ({ ...prev, email: user.email || "" }));
     }
     setLoading(false);
   };
 
   const handleSaveProfile = async () => {
     setSaving(true);
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
+    if (!user) {
+      setSaving(false);
+      return;
+    }
 
     await supabase.from("profiles").upsert({
-      id: userData.user.id,
+      id: user.id,
       name: profile.name,
       email: profile.email,
       phone: profile.phone,
@@ -100,11 +106,10 @@ export default function PerfilPage() {
     setUploading(true);
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) { setUploading(false); return; }
+      if (!user) { setUploading(false); return; }
 
       const ext = file.name.split(".").pop() || "png";
-      const filePath = `avatars/${userData.user.id}-${Date.now()}.${ext}`;
+      const filePath = `avatars/${user.id}-${Date.now()}.${ext}`;
 
       // Try to remove old file first (ignore errors)
       const oldPath = profile.avatar_url?.split("/public_bucket/")[1]?.split("?")[0];
@@ -126,7 +131,7 @@ export default function PerfilPage() {
       const { data: urlData } = supabase.storage.from("public_bucket").getPublicUrl(filePath);
       const avatarUrl = urlData.publicUrl;
 
-      await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", userData.user.id);
+      await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", user.id);
       setProfile((prev) => ({ ...prev, avatar_url: avatarUrl }));
     } catch (err) {
       console.error("Avatar upload error:", err);

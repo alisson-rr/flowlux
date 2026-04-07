@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/auth-context";
+import { useDashboardData } from "@/contexts/dashboard-context";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -38,15 +39,9 @@ const navItems = [
 export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
-  const [user, setUser] = useState<{ name: string; avatar_url: string } | null>(null);
   const { user: authUser } = useAuth();
-
-  useEffect(() => {
-    if (!authUser) return;
-    supabase.from("profiles").select("name, avatar_url").eq("id", authUser.id).single().then(({ data }) => {
-      if (data) setUser({ name: data.name || authUser.email || "", avatar_url: data.avatar_url || "" });
-    });
-  }, [authUser]);
+  const dashboardData = useDashboardData();
+  const profile = dashboardData?.profile;
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -121,14 +116,14 @@ export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
               : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-foreground"
           )}
         >
-          {user?.avatar_url ? (
-            <img src={user.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+          {profile?.avatar_url ? (
+            <img src={profile.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
           ) : (
             <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-              <span className="text-[10px] font-bold text-primary">{getInitials(user?.name || "U")}</span>
+              <span className="text-[10px] font-bold text-primary">{getInitials(profile?.name || authUser?.email || "U")}</span>
             </div>
           )}
-          {!collapsed && <span className="truncate">{user?.name || "Meu Perfil"}</span>}
+          {!collapsed && <span className="truncate">{profile?.name || "Meu Perfil"}</span>}
         </Link>
 
         <a

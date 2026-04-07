@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { useAuth } from "@/contexts/auth-context";
 import Link from "next/link";
 
 interface Payment {
@@ -65,10 +66,11 @@ export default function HistoricoPagamentosPage() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const loadData = async () => {
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      const userData = { user };
       if (!userData.user) return;
 
       // First try to find an active subscription
@@ -112,7 +114,7 @@ export default function HistoricoPagamentosPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
 
   const isSubscriptionActive = (sub: Subscription | null): boolean => {
     if (!sub) return false;
@@ -127,7 +129,7 @@ export default function HistoricoPagamentosPage() {
   const handleCancelSubscription = async () => {
     try {
       setCancelling(true);
-      const { data: userData } = await supabase.auth.getUser();
+      const userData = { user };
       if (!userData.user) {
         toast("Erro de autenticação.", "error");
         return;
