@@ -17,7 +17,8 @@ import {
 import {
   Plus, Search, Phone, Mail, StickyNote, Tag, X, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Pencil, Globe, Archive, ArchiveRestore, Filter, SortAsc, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download,
 } from "lucide-react";
-import { cn, formatPhone, formatPhoneInput, getInitials, normalizePhoneBR } from "@/lib/utils";
+import { cn, formatPhone, formatPhoneInput, getInitials, normalizePhone, phoneVariants } from "@/lib/utils";
+import { TAG_COLORS, STAGE_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/ui/toast";
 import { useSubscription } from "@/lib/use-subscription";
 import { useAuth } from "@/contexts/auth-context";
@@ -46,9 +47,6 @@ interface Stage {
   color: string;
   order: number;
 }
-
-const TAG_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EF4444", "#EC4899", "#06B6D4", "#EAB308"];
-const STAGE_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EAB308", "#EF4444", "#EC4899", "#06B6D4", "#14B8A6", "#A855F7"];
 
 export default function LeadsPage() {
   const [stages, setStages] = useState<Stage[]>([]);
@@ -91,7 +89,7 @@ export default function LeadsPage() {
     try {
       const [stagesRes, leadsRes, tagsRes, funnelsRes] = await Promise.all([
         supabase.from("funnel_stages").select("*").order("order"),
-        supabase.from("leads").select("*, lead_tags(tags(*)), notes(*)"),
+        supabase.from("leads").select("*, lead_tags(tags(*)), notes(*)").is("deleted_at", null),
         supabase.from("tags").select("id, name, color"),
         supabase.from("funnels").select("id, name").order("created_at"),
       ]);
@@ -136,7 +134,7 @@ export default function LeadsPage() {
       return;
     }
 
-    const normalizedPhone = normalizePhoneBR(newLead.phone);
+    const normalizedPhone = normalizePhone(newLead.phone);
     if (!normalizedPhone) { toast("Telefone inválido.", "warning"); return; }
 
     const { data, error } = await supabase.from("leads").insert({
@@ -162,7 +160,7 @@ export default function LeadsPage() {
     if (!editLead.name.trim()) { toast("Nome é obrigatório.", "warning"); return; }
     if (!editLead.phone.trim()) { toast("Telefone é obrigatório.", "warning"); return; }
 
-    const normalizedPhone = normalizePhoneBR(editLead.phone);
+    const normalizedPhone = normalizePhone(editLead.phone);
     if (!normalizedPhone) { toast("Telefone inválido.", "warning"); return; }
 
     const { error } = await supabase.from("leads").update({
@@ -323,7 +321,7 @@ export default function LeadsPage() {
       const cols = lines[i].split(separator).map((c) => c.trim().replace(/^"|"$/g, ""));
       const name = cols[nameIdx]?.trim() || "";
       const rawPhone = cols[phoneIdx]?.trim() || "";
-      const phone = normalizePhoneBR(rawPhone);
+      const phone = normalizePhone(rawPhone);
       if (name && phone && !seenPhones.has(phone)) {
         seenPhones.add(phone);
         rows.push({
@@ -371,20 +369,16 @@ export default function LeadsPage() {
     if (existingLeads) {
       for (const lead of existingLeads) {
         if (lead.phone) {
-          const normalized = normalizePhoneBR(lead.phone);
-          if (normalized) existingPhones.add(normalized);
-          // Also add raw digits for broader matching
-          const rawDigits = lead.phone.replace(/\D/g, "");
-          if (rawDigits) existingPhones.add(rawDigits);
+          for (const v of phoneVariants(lead.phone)) existingPhones.add(v);
         }
       }
     }
 
-    // Filter out duplicates
+    // Filter out duplicates using variant-based matching
     const uniqueData = importData.filter((row) => {
-      const normalized = normalizePhoneBR(row.phone);
+      const normalized = normalizePhone(row.phone);
       if (!normalized) return false;
-      return !existingPhones.has(normalized);
+      return !phoneVariants(normalized).some((v) => existingPhones.has(v));
     });
     const skipped = importData.length - uniqueData.length;
 

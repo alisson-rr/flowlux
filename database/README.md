@@ -2,27 +2,67 @@
 
 ## SQL Migrations (executar na ordem)
 
-1. **`supabase-schema.sql`** — Schema inicial completo (tabelas, RLS, triggers)
-2. **`supabase-migration-v2.sql`** — Soft delete leads, tabela media, storage
-3. **`supabase-migration-v3.sql`** — Múltiplos funis, flows, flow_steps, flow_executions
-4. **`supabase-migration-v4.sql`** — Soft delete para mass_messages, scheduled_messages e flows
+1. `supabase-schema.sql` - Schema inicial completo
+2. `supabase-migration-v2.sql` - Soft delete de leads, media e storage
+3. `supabase-migration-v3.sql` - Multiplos funis, flows, flow_steps e flow_executions
+4. `supabase-migration-v4.sql` - Soft delete para mass_messages, scheduled_messages e flows
+5. `supabase-migration-v5-rls.sql` - Ajustes de RLS
+6. `supabase-migration-v6-subscriptions.sql` - Estrutura de assinaturas
+7. `supabase-migration-v7-flows-rls.sql` - Ajustes de RLS para flows
+8. `supabase-migration-v8-subscription-fixes.sql` - Correcoes de assinatura
+9. `supabase-migration-v9-subscription-management.sql` - Indices e regras de gestao de assinatura
+10. `supabase-migration-v10-mass-message-observability.sql` - Logs por contato, motivo de falha, tentativas e reprocessamento do disparo em massa
+11. `supabase-migration-v11-mass-message-rpc.sql` - Funcoes RPC para claim, preparo, tentativa e finalizacao do disparo em massa live
+12. `supabase-migration-v12-mass-message-usage-index.sql` - Indice para leitura do contador mensal direto dos logs persistidos
+13. `supabase-migration-v13-mass-message-rpc-overload-fix.sql` - Remove overloads antigos UUID das RPCs do disparo em massa
+14. `supabase-migration-v14-mass-message-claim-delivery-lock-fix.sql` - Corrige o lock da RPC claim_next_mass_message_delivery em join com whatsapp_instances
+15. `supabase-migration-v15-scheduled-message-observability.sql` - Logs de tentativa, novos status e observabilidade dos agendamentos
+16. `supabase-migration-v16-scheduled-message-rpc.sql` - Funcoes RPC para claim e finalizacao segura dos agendamentos
+17. `supabase-migration-v17-scheduled-message-rich-content.sql` - Permite agendar midia com legenda e expor esses dados no RPC do agendamento
 
 ## Workflows n8n
 
-- **`n8n-workflow-disparo-massa.json`** — Workflow para disparo em massa via n8n
-- **`n8n-workflow-receber-mensagens.json`** — Workflow para receber mensagens do Evolution API
-  - Recebe webhook `MESSAGES_UPSERT` → parseia → salva em `messages` → atualiza `conversations`
-  - Também verifica keyword triggers para fluxos automáticos
-  - **Configurar**: trocar `CONFIGURE_SUPABASE_CREDENTIAL` pelo ID da credencial Supabase no n8n
+- `n8n-workflow-disparo-massa.json` - Workflow legado do disparo em massa
+- `n8n-workflow-disparo-massa-v3-observability.json` - Workflow importavel do disparo em massa com logs por contato e reprocessamento seguro
+- `n8n-workflow-disparo-massa-v3-observability.md` - Contrato funcional e referencia da versao v3
+- `n8n-workflow-disparo-massa-v4-rpc.json` - Workflow importavel recomendado para live, com a logica pesada movida para RPC no Supabase
+- `n8n-workflow-disparo-massa-v4-rpc.md` - Referencia da versao v4 com RPC
+- `n8n-workflow-mensagem-agendada.json` - Workflow legado dos agendamentos
+- `n8n-workflow-mensagem-agendada-v2-rpc.json` - Workflow importavel recomendado para agendamentos com claim seguro, tentativas e reprocessamento
+- `n8n-workflow-mensagem-agendada-v2-rpc.md` - Referencia da versao v2 RPC dos agendamentos
+- `n8n-workflow-mensagem-agendada-v3-rich-content.json` - Workflow importavel recomendado para agendamentos com texto ou midia com legenda
+- `n8n-workflow-mensagem-agendada-v3-rich-content.md` - Referencia da versao v3 rich content dos agendamentos
+- `n8n-workflow-receber-mensagens.json` - Workflow de recebimento de mensagens do Evolution API
+  - Recebe webhook `MESSAGES_UPSERT`
+  - Salva em `messages`
+  - Atualiza `conversations`
+  - Tambem verifica keyword triggers para fluxos automaticos
+  - Trocar `CONFIGURE_SUPABASE_CREDENTIAL` pelo ID da credencial Supabase no n8n
 
 ## API Route (Next.js)
 
-- **`src/app/api/execute-flow/route.ts`** — Executa fluxos de mensagens sequenciais via Evolution API
+- `src/app/api/execute-flow/route.ts` - Executa fluxos sequenciais via Evolution API
   - Chamado pelo frontend ao executar um fluxo no chat
-  - Usa as env vars `NEXT_PUBLIC_EVOLUTION_API_URL` e `NEXT_PUBLIC_EVOLUTION_API_KEY`
-  - Requer `SUPABASE_SERVICE_ROLE_KEY` para escrita no DB (adicionar ao `.env.local`)
+  - Usa `NEXT_PUBLIC_EVOLUTION_API_URL` e `NEXT_PUBLIC_EVOLUTION_API_KEY`
+  - Requer `SUPABASE_SERVICE_ROLE_KEY` para escrita no banco
 
 ## Notas
 
-- **Soft delete**: Agendamentos e disparos excluídos recebem `status='cancelled'` + `deleted_at`. O n8n deve filtrar por `status != 'cancelled'`.
-- **Gravação de áudio**: Requer HTTPS ou localhost (limitação do browser — `navigator.mediaDevices` indisponível em HTTP).
+- Soft delete: disparos e agendamentos excluidos recebem `status='cancelled'` com `deleted_at`
+- Disparo em massa v3:
+  - persiste logs em `mass_message_deliveries`
+  - resume `sent_count`, `failed_count` e `total_count` a partir dos logs
+  - reenfileira apenas registros `failed`, sem recriar a campanha
+- Disparo em massa v4:
+  - usa RPC no Supabase para `claim`, preparo e fechamento da campanha
+  - reduz a dependencia de `Code` nodes no `n8n`
+  - recomendado para a execucao live
+- Agendamentos v2:
+  - usa RPC no Supabase para `claim` e finalizacao da tentativa
+  - persiste historico em `scheduled_message_attempts`
+  - substitui o workflow legado que varria todos os pendentes sem lock
+- Agendamentos v3:
+  - adiciona suporte a midia com legenda
+  - mantém quebra de linha do texto
+  - recomendado quando você quiser usar mensagens prontas + mídia no mesmo fluxo
+- Gravacao de audio requer HTTPS ou `localhost`

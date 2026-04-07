@@ -16,7 +16,8 @@ import {
 import {
   Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download, Zap, Timer, Play, Mic, Square, Trash2, CalendarClock, Clock,
 } from "lucide-react";
-import { cn, formatPhone, getInitials, normalizePhoneBR } from "@/lib/utils";
+import { cn, formatPhone, getInitials, normalizePhone, phoneToJid, phoneVariants } from "@/lib/utils";
+import { TAG_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/contexts/auth-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -30,7 +31,6 @@ interface MediaItem { id: string; file_name: string; file_type: string; file_url
 interface FlowOption { id: string; name: string; description: string; trigger_type: string; is_active: boolean; steps: FlowStepOption[]; }
 interface FlowStepOption { id: string; step_order: number; step_type: string; content: string; media_url: string; file_name: string; delay_seconds: number; }
 
-const TAG_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EF4444", "#EC4899", "#06B6D4", "#EAB308"];
 const MESSAGES_PAGE_SIZE = 40;
 
 interface InstanceOption { id: string; instance_name: string; }
@@ -492,34 +492,6 @@ export default function ChatPage() {
     }
   }, [fetchMessagesPage, hasOlderMessages, loadingMessages, loadingOlderMessages, messages]);
 
-  const normalizePhoneVariants = (phone: string): string[] => {
-    const digits = phone.replace(/\D/g, "");
-    const result = new Set<string>([digits]);
-    // Add/remove country code variants
-    if (digits.startsWith("55") && digits.length > 11) {
-      result.add(digits.slice(2)); // without country code
-    }
-    if (!digits.startsWith("55") && digits.length <= 11) {
-      result.add("55" + digits); // with country code
-    }
-    // Brazilian 9th digit variants
-    const withCC = digits.startsWith("55") ? digits : "55" + digits;
-    const ddd = withCC.substring(2, 4);
-    const subscriber = withCC.substring(4);
-    if (subscriber.length === 9 && subscriber.startsWith("9")) {
-      // Has 9th digit → generate variant without it
-      const without9 = "55" + ddd + subscriber.substring(1);
-      result.add(without9);
-      result.add(without9.slice(2));
-    } else if (subscriber.length === 8) {
-      // Missing 9th digit → generate variant with it
-      const with9 = "55" + ddd + "9" + subscriber;
-      result.add(with9);
-      result.add(with9.slice(2));
-    }
-    return Array.from(result);
-  };
-
   const loadLeadInfo = useCallback(async (phone: string) => {
     setRightPanel("lead");
     setLoadingLeadInfo(true);
@@ -533,9 +505,9 @@ export default function ChatPage() {
       await ensureLeadPanelMetaLoaded();
 
       const leadOptions = await ensureLeadOptionsLoaded();
-      const convVariants = normalizePhoneVariants(phone);
+      const convVariants = phoneVariants(phone);
       const matchedLead = leadOptions.find((lead) => {
-        const leadVariants = normalizePhoneVariants(lead.phone || "");
+        const leadVariants = phoneVariants(lead.phone || "");
         return convVariants.some((variant) => leadVariants.includes(variant));
       });
 
@@ -654,29 +626,24 @@ export default function ChatPage() {
   const handleStartConversation = async (lead: LeadOption) => {
     if (!authUser) return;
 
-    // Normalize to full BR format: 55 + DD + 9XXXXXXXX (13 digits mobile) or 55 + DD + XXXXXXXX (12 digits landline)
-    const normalized = normalizePhoneBR(lead.phone);
+    const normalized = normalizePhone(lead.phone);
     if (!normalized) { toast("Telefone inválido.", "warning"); return; }
 
-    // Convert to WhatsApp JID format: strip 9th digit for mobile numbers
-    // WhatsApp uses 55 + DD(2) + XXXXXXXX(8) = 12 digits for Brazilian numbers
-    let phone = normalized;
-    if (phone.length === 13 && phone[4] === "9") {
-      phone = phone.substring(0, 4) + phone.substring(5);
-    }
-    const remoteJid = `${phone}@s.whatsapp.net`;
+    const remoteJid = phoneToJid(normalized);
+    const jidPhone = remoteJid.replace("@s.whatsapp.net", "");
 
     if (!selectedInstanceId) { toast("Selecione um WhatsApp primeiro.", "warning"); return; }
 
-    // Check existing conversation considering both phone formats (with/without 9th digit)
-    const phoneVariants = normalizePhoneVariants(phone);
-    const jidVariants = phoneVariants.filter(v => v.startsWith("55")).map(v => `${v}@s.whatsapp.net`);
+    // Check existing conversation considering all phone variants (with/without 9th digit, country code)
+    const variants = phoneVariants(normalized);
+    const jidVariants = variants.filter((v: string) => v.startsWith("55")).map((v: string) => `${v}@s.whatsapp.net`);
+    jidVariants.push(remoteJid);
     const existing = conversations.find((c) => jidVariants.includes(c.remote_jid) && c.instance_id === selectedInstanceId);
     if (existing) { handleSelectConversation(existing); setShowNewConv(false); setLeadSearch(""); return; }
 
     const { data: conv } = await supabase.from("conversations").insert({
       user_id: authUser.id, instance_id: selectedInstanceId, remote_jid: remoteJid,
-      contact_name: lead.name, contact_phone: phone, unread_count: 0,
+      contact_name: lead.name, contact_phone: jidPhone, unread_count: 0,
     }).select().single();
 
     if (conv) {
@@ -1132,12 +1099,17 @@ export default function ChatPage() {
     if (!scheduleMessage.trim() || !scheduleDateTime || !selectedConv || !leadInfo) return;
     if (!selectedInstanceId) { toast("Selecione um WhatsApp.", "warning"); return; }
     if (!authUser) return;
+    const parsedScheduledAt = new Date(scheduleDateTime);
+    if (Number.isNaN(parsedScheduledAt.getTime())) {
+      toast("Selecione uma data e hora válidas.", "warning");
+      return;
+    }
     const { error } = await supabase.from("scheduled_messages").insert({
       user_id: authUser.id,
       lead_id: leadInfo.id,
       instance_id: selectedInstanceId,
       message: scheduleMessage,
-      scheduled_at: scheduleDateTime,
+      scheduled_at: parsedScheduledAt.toISOString(),
       status: "pending",
     });
     if (!error) {

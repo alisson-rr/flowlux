@@ -1,0 +1,374 @@
+{
+  "name": "FlowLux - Mensagem Agendada WhatsApp v3 Rich Content",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# FlowLux - Mensagem Agendada v3 Rich Content\n\nWorkflow recomendado para agendamentos:\n\n1. Claim de um agendamento por vez\n2. Validação e log da tentativa pelo Supabase\n3. Decide entre texto puro ou mídia com legenda\n4. Registra o resultado pelo Supabase\n5. Delay anti-ban aleatório e loop",
+        "height": 620,
+        "width": 3560,
+        "color": 4
+      },
+      "id": "8cec1be6-2402-4d7f-a6e0-e03a277f05c9",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        7280,
+        1104
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "308359d4-5a23-4728-bf02-8d5366ed95a5",
+      "name": "1. Verificar a cada 1 min1",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        7520,
+        1392
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/rpc/claim_next_scheduled_message",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}",
+        "options": {}
+      },
+      "id": "15dfdc7a-5146-493d-b7e6-6de9a464b16c",
+      "name": "2. Claim Next Scheduled Message1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7760,
+        1392
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "found-scheduled",
+              "leftValue": "={{ String($json.found || false) }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cbf6a1ce-0966-4db8-b237-88933c172c14",
+      "name": "3. Encontrou Agendamento?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        8000,
+        1392
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-media",
+              "leftValue": "={{ String(Boolean($json.media_url && $json.media_type)) }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3df5cd1a-2d7f-4b53-839a-ba34beb18f93",
+      "name": "4. Tem Midia?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        8240,
+        1392
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://evo.devnoflow.com.br/message/sendMedia/{{ $json.instance_name }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpMultipleHeadersAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const mediaType = $json.media_type === 'image' ? 'image' : $json.media_type === 'video' ? 'video' : 'document';\n  const mediaUrl = String($json.media_url || '');\n  const ext = (mediaUrl.split('?')[0].split('.').pop() || '').toLowerCase();\n  const mimeMap = {\n    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',\n    mp4: 'video/mp4', avi: 'video/avi', mov: 'video/quicktime', mkv: 'video/x-matroska',\n    pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n    zip: 'application/zip', csv: 'text/csv', txt: 'text/plain'\n  };\n  const fallbackMime = mediaType === 'image' ? 'image/jpeg' : mediaType === 'video' ? 'video/mp4' : 'application/octet-stream';\n\n  return {\n    number: $json.number,\n    mediatype: mediaType,\n    media: $json.media_url,\n    caption: $json.message || ''\n  };\n})() }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a4f1e494-bd37-4cb7-bc9b-1f3ca9a10503",
+      "name": "5. Enviar Midia via Evolution API1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8480,
+        1296
+      ],
+      "credentials": {
+        "httpMultipleHeadersAuth": {
+          "id": "NJ2Tmv50xP6GfnHO",
+          "name": "Header_evo"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://evo.devnoflow.com.br/message/sendText/{{ $json.instance_name }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpMultipleHeadersAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.number }}\",\n  \"text\": {{ JSON.stringify($json.message || '') }}\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "11b0a19b-85a8-4bff-90c2-1e0c9cccef7e",
+      "name": "6. Enviar Texto via Evolution API1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8480,
+        1488
+      ],
+      "credentials": {
+        "httpMultipleHeadersAuth": {
+          "id": "NJ2Tmv50xP6GfnHO",
+          "name": "Header_evo"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/rpc/finish_scheduled_message_attempt",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  p_attempt_id: $('2. Claim Next Scheduled Message1').item.json.attempt_id,\n  p_provider_response: $json || {},\n}) }}",
+        "options": {}
+      },
+      "id": "090291c7-6cb3-4995-becc-b6d3111bebfc",
+      "name": "7. Registrar Resultado1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8752,
+        1392
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 6) + 4 }}"
+      },
+      "id": "803266a7-c3bb-49a6-ac95-3a780726b301",
+      "name": "8. Delay Anti-Ban1",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        9056,
+        1472
+      ],
+      "webhookId": "5ac41f95-a569-4f84-b284-d411b57d2787"
+    }
+  ],
+  "pinData": {
+    "2. Claim Next Scheduled Message1": [
+      {
+        "json": {
+          "found": true,
+          "number": "5551994408307",
+          "lead_id": "0bca4fa4-4011-4722-9e5f-1e38ed7c9e77",
+          "message": "XOlá Alisson!\n 👋 Seja bem-vindo(a) ao nosso canal! 🎉\n Recebi seu interesse no nosso material exclusivo e já enviei tudo para seu e-mail: {email}5551994408307\n \n 📚 Verifique sua caixa de entrada e a pasta de spam!\n \n O material vai transformar seus resultados! 🚀\n \n Tem alguma dúvida sobre o conteúdo? Estou aqui para ajudar! 💪",
+          "user_id": "56ed5bf7-c7ca-4497-aaf7-b202483a0b7b",
+          "file_name": "Campanha 2",
+          "lead_name": "Alisson Rosa",
+          "media_url": "https://ivlwadsixcetunnhkkam.supabase.co/storage/v1/object/public/public_bucket/media/56ed5bf7-c7ca-4497-aaf7-b202483a0b7b/1773944617080-erro_devs_clientes_facebook_1.png",
+          "attempt_id": "2ab03159-e4ef-49d3-be06-d2bb62c330e6",
+          "media_type": "image",
+          "instance_id": "29ecf745-1a83-4361-ad10-b4c60fa65d38",
+          "scheduled_at": "2026-04-07T19:39:00+00:00",
+          "instance_name": "vendas",
+          "scheduled_message_id": "0994132f-2ae2-4fcf-b3c8-ca1a110f5230"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "1. Verificar a cada 1 min1": {
+      "main": [
+        [
+          {
+            "node": "2. Claim Next Scheduled Message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Claim Next Scheduled Message1": {
+      "main": [
+        [
+          {
+            "node": "3. Encontrou Agendamento?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Encontrou Agendamento?1": {
+      "main": [
+        [
+          {
+            "node": "4. Tem Midia?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Tem Midia?1": {
+      "main": [
+        [
+          {
+            "node": "5. Enviar Midia via Evolution API1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "6. Enviar Texto via Evolution API1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Enviar Midia via Evolution API1": {
+      "main": [
+        [
+          {
+            "node": "7. Registrar Resultado1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Enviar Texto via Evolution API1": {
+      "main": [
+        [
+          {
+            "node": "7. Registrar Resultado1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Registrar Resultado1": {
+      "main": [
+        [
+          {
+            "node": "8. Delay Anti-Ban1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8. Delay Anti-Ban1": {
+      "main": [
+        [
+          {
+            "node": "2. Claim Next Scheduled Message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "9b2a6f58-0699-4c65-b653-03e544a051b7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a5bffdfbf51b3ac360223c2749699e9b7c407ef65e1900c9d34d27572fbc319c"
+  },
+  "id": "XKcXk2BqWqjOUOB1",
+  "tags": [
+    {
+      "updatedAt": "2026-03-16T16:17:21.177Z",
+      "createdAt": "2026-03-16T16:17:21.177Z",
+      "id": "WXKzH4jXzCeFbAex",
+      "name": "FlowLux"
+    }
+  ]
+}

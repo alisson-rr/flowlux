@@ -1,0 +1,454 @@
+{
+  "name": "FlowLux - Disparo em Massa WhatsApp v4 RPC",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# FlowLux - Disparo em Massa v4 RPC\n\nWorkflow estabilizado para o live:\n\n1. Claim de uma campanha por vez\n2. Preparo da campanha pelo Supabase RPC\n3. Claim de uma entrega por vez\n4. Envio via Evolution API\n5. Registro do resultado pelo Supabase RPC\n6. Finalizacao da campanha",
+        "height": 640,
+        "width": 3960,
+        "color": 4
+      },
+      "id": "6ec5f5e5-a954-4d9c-8b91-6c8d686cde40",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        120,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "5fd2d76d-69e4-4fec-a7ef-505cd2dbadb8",
+      "name": "1. Verificar a cada 1 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/rpc/claim_next_mass_message_campaign",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}",
+        "options": {}
+      },
+      "id": "c87da347-5426-426c-bde4-f911ee493248",
+      "name": "2. Claim Next Campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        300
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "found-campaign",
+              "leftValue": "={{ String($json.found || false) }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dbeb66e9-54c0-49e4-89ab-0261f12ec5c7",
+      "name": "3. Encontrou Campanha?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/rpc/prepare_mass_message_campaign",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_mass_message_id\": \"{{ $json.mass_id }}\"\n}",
+        "options": {}
+      },
+      "id": "a4b5c65f-79d2-4850-9ddd-270a1553d0e8",
+      "name": "4. Preparar Campanha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        220
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "campaign-ready",
+              "leftValue": "={{ String($json.ok || false) }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "745c1620-1caf-4b0f-b8ec-5324eab72b02",
+      "name": "5. Campanha Pronta?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/rpc/claim_next_mass_message_delivery",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_mass_message_id\": \"{{ $json.mass_id }}\"\n}",
+        "options": {}
+      },
+      "id": "fbe5680e-4de6-45f5-ba24-5dd4522ab7d8",
+      "name": "6. Claim Next Delivery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1520,
+        220
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "found-delivery",
+              "leftValue": "={{ String($json.found || false) }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4f818dfd-a042-4d72-ae5e-2774ae535f4e",
+      "name": "7. Encontrou Entrega?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://evo.devnoflow.com.br/message/sendText/{{ $json.instance_name }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpMultipleHeadersAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $json.number }}\",\n  \"text\": \"{{ $json.message }}\"\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "06e6c89d-ef1a-4548-9f7c-764f6cc35779",
+      "name": "8. Enviar via Evolution API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        120
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpMultipleHeadersAuth": {
+          "id": "NJ2Tmv50xP6GfnHO",
+          "name": "Header_evo"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/rpc/finish_mass_message_delivery_attempt",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_delivery_id\": \"{{ $('6. Claim Next Delivery').item.json.delivery_id }}\",\n  \"p_provider_response\": {{ JSON.stringify($json || {}) }}\n}",
+        "options": {}
+      },
+      "id": "be5415de-fde3-43c2-a7e8-d12cdcf0f657",
+      "name": "9. Registrar Resultado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        120
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": "4"
+      },
+      "id": "7993dc82-f651-4268-8207-d55dcd87dff0",
+      "name": "10. Delay Anti-Ban",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2480,
+        120
+      ],
+      "webhookId": "4c9ca61f-3090-4185-8e79-a67642cd30b9"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/rpc/finalize_mass_message_campaign",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"p_mass_message_id\": \"{{ $json.mass_id }}\"\n}",
+        "options": {}
+      },
+      "id": "1c7aeef2-bc1d-48a5-bf62-30d9d88f1986",
+      "name": "11. Finalizar Campanha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        320
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "1. Verificar a cada 1 min": {
+      "main": [
+        [
+          {
+            "node": "2. Claim Next Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Claim Next Campaign": {
+      "main": [
+        [
+          {
+            "node": "3. Encontrou Campanha?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Encontrou Campanha?": {
+      "main": [
+        [
+          {
+            "node": "4. Preparar Campanha",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "4. Preparar Campanha": {
+      "main": [
+        [
+          {
+            "node": "5. Campanha Pronta?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Campanha Pronta?": {
+      "main": [
+        [
+          {
+            "node": "6. Claim Next Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "6. Claim Next Delivery": {
+      "main": [
+        [
+          {
+            "node": "7. Encontrou Entrega?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Encontrou Entrega?": {
+      "main": [
+        [
+          {
+            "node": "8. Enviar via Evolution API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "11. Finalizar Campanha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8. Enviar via Evolution API": {
+      "main": [
+        [
+          {
+            "node": "9. Registrar Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9. Registrar Resultado": {
+      "main": [
+        [
+          {
+            "node": "10. Delay Anti-Ban",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10. Delay Anti-Ban": {
+      "main": [
+        [
+          {
+            "node": "6. Claim Next Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "f4bc7d57-a87a-4348-bc5e-4ab8cf501d55",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a5bffdfbf51b3ac360223c2749699e9b7c407ef65e1900c9d34d27572fbc319c"
+  },
+  "id": "3n98Hn9mRpcFlowLux",
+  "tags": [
+    {
+      "updatedAt": "2026-04-07T00:00:00.000Z",
+      "createdAt": "2026-04-07T00:00:00.000Z",
+      "id": "WXKzH4jXzCeFbAex",
+      "name": "FlowLux"
+    }
+  ]
+}

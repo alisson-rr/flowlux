@@ -1,11 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-  return createClient(url, key);
-}
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 const EVOLUTION_API_URL = process.env.NEXT_PUBLIC_EVOLUTION_API_URL || "";
 const EVOLUTION_API_KEY = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || "";
@@ -94,24 +88,21 @@ export async function POST(req: NextRequest) {
 
     if (token) {
       // Validate the token via Supabase
-      const supabaseAuth = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-      );
+      const supabaseAuth = getSupabaseAdmin();
       const { data: { user } } = await supabaseAuth.auth.getUser(token);
       if (!user || user.id !== user_id) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
     } else {
       // Fallback: verify user_id exists via service role (for internal calls)
-      const supabase = getSupabase();
-      const { data: userCheck } = await supabase.auth.admin.getUserById(user_id);
+      const sb = getSupabaseAdmin();
+      const { data: userCheck } = await sb.auth.admin.getUserById(user_id);
       if (!userCheck?.user) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
     }
 
-    const supabase = getSupabase();
+    const supabase = getSupabaseAdmin();
 
     const { data: steps, error: stepsError } = await supabase
       .from("flow_steps")

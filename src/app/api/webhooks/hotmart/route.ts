@@ -1,14 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { normalizePhone } from "@/lib/utils";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { normalizePhone, phoneVariants } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getSupabaseAdmin();
 
     const event = body.event || body.data?.purchase?.status || "unknown";
     const buyerEmail = body.data?.buyer?.email || body.buyer?.email || "";
@@ -44,14 +41,19 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanPhone = normalizePhone(buyerPhone);
+    if (!cleanPhone) {
+      return NextResponse.json({ success: true, processed: false, reason: "invalid_phone" });
+    }
     const cfg = eventConfig[event] || {};
 
-    // Check if lead exists
+    // Check if lead exists using all phone variants for robust matching
+    const variants = phoneVariants(cleanPhone);
+    const orFilter = variants.map((v) => `phone.eq.${v}`).join(",");
     const { data: existingLead } = await supabase
       .from("leads")
       .select("id")
       .eq("user_id", userId)
-      .or(`phone.eq.${cleanPhone},phone.ilike.%${cleanPhone}%`)
+      .or(orFilter)
       .is("deleted_at", null)
       .limit(1)
       .single();

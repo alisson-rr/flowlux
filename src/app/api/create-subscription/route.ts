@@ -1,9 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUserId } from "@/lib/api-auth";
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const mpAccessToken = process.env.MERCADOPAGO_ACCESS_TOKEN || "";
 
 // Plan configurations
@@ -275,7 +273,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Invalid plan_id: ${plan_id}` }, { status: 400 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getSupabaseAdmin();
 
     // Check if user already has an active subscription
     const { data: activeSub } = await supabase

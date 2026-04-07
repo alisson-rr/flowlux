@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { TERMOS_DE_USO, POLITICA_DE_PRIVACIDADE } from "@/lib/legal-texts";
+import { formatPhoneInput } from "@/lib/utils";
 
 export default function CadastroPage() {
   const router = useRouter();
@@ -24,13 +25,6 @@ export default function CadastroPage() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
-
-  const formatPhoneInput = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 11);
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-  };
 
   const handleChange = (field: string, value: string) => {
     if (field === "phone") {

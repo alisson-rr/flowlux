@@ -17,7 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Search, GripVertical, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Globe, StickyNote, Mail, UserPlus, Tag, X, Phone, Pencil, Archive, ArchiveRestore,
 } from "lucide-react";
-import { cn, formatPhone, formatPhoneInput, getInitials, normalizePhoneBR } from "@/lib/utils";
+import { cn, formatPhone, formatPhoneInput, getInitials, normalizePhone } from "@/lib/utils";
+import { TAG_COLORS, STAGE_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/contexts/auth-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -28,7 +29,6 @@ interface Lead { id: string; name: string; phone: string; email?: string; stage_
 interface Stage { id: string; name: string; color: string; order: number; }
 interface Funnel { id: string; name: string; description: string; }
 
-const STAGE_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EAB308", "#EF4444", "#EC4899", "#06B6D4", "#14B8A6", "#A855F7"];
 
 function StageColumn({
   stage,
@@ -134,7 +134,6 @@ export default function FunilPage() {
   const [newTag, setNewTag] = useState("");
   const [allTags, setAllTags] = useState<{ id: string; name: string; color: string }[]>([]);
 
-  const TAG_COLORS = ["#8B5CF6", "#F97316", "#3B82F6", "#10B981", "#EF4444", "#EC4899", "#06B6D4", "#EAB308"];
   const { toast } = useToast();
   const { user } = useAuth();
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 220);
@@ -259,7 +258,7 @@ export default function FunilPage() {
   const handleAddLead = async () => {
     if (!newLead.name || !newLead.phone) return;
     if (!user) return;
-    const normalizedPhone = normalizePhoneBR(newLead.phone);
+    const normalizedPhone = normalizePhone(newLead.phone);
     if (!normalizedPhone) { toast("Telefone inválido.", "warning"); return; }
     const stageId = newLeadStage || funnelStages[0]?.id;
     const { data, error } = await supabase.from("leads").insert({
