@@ -575,6 +575,41 @@
           "name": "FlowLux"
         }
       }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ivlwadsixcetunnhkkam.supabase.co/rest/v1/rpc/upsert_inbound_chat_message",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  p_instance_id: $('2. Buscar Instância').item.json.id,\n  p_user_id: $('2. Buscar Instância').item.json.user_id,\n  p_remote_jid: $('normalizacao').item.json.http.remoteJid,\n  p_contact_name: $('normalizacao').item.json.msg.name || '',\n  p_contact_phone: ($('normalizacao').item.json.http.remoteJid || '').replace('@s.whatsapp.net', ''),\n  p_provider_message_id: $('normalizacao').item.json.msg.id,\n  p_from_me: $('normalizacao').item.json.msg.fromMe,\n  p_message_type: $('normalizacao').item.json.msg.dbType || 'text',\n  p_content: $('normalizacao').item.json.msg.conteudo || '',\n  p_media_url: (() => {\n    try {\n      const key = $('6b. Salva imagem no bucket').first().json.Key;\n      if (key) return 'https://ivlwadsixcetunnhkkam.supabase.co/storage/v1/object/public/' + key;\n    } catch (e) {}\n    return $('Webhook').item.json.body.data.message.imageMessage?.url || $('Webhook').item.json.body.data.message.videoMessage?.url || $('Webhook').item.json.body.data.message.audioMessage?.url || $('Webhook').item.json.body.data.message.documentMessage?.url || $('Webhook').item.json.body.data.message.documentWithCaptionMessage?.message?.documentMessage?.url || $('Webhook').item.json.body.data.message.stickerMessage?.url || null;\n  })(),\n  p_status: $('normalizacao').item.json.msg.fromMe ? 'sent' : 'delivered',\n  p_message_created_at: $('normalizacao').item.json.msg.timestamp,\n  p_message_preview: (() => {\n    const content = $('normalizacao').item.json.msg.conteudo || '';\n    if (content) return content;\n    const type = $('normalizacao').item.json.msg.dbType || 'text';\n    if (type === 'image') return '[Imagem]';\n    if (type === 'video') return '[Video]';\n    if (type === 'audio') return '[Audio]';\n    if (type === 'document') return '[Documento]';\n    return '[Mensagem]';\n  })(),\n  p_provider_payload: $('Webhook').item.json.body\n} }}",
+        "options": {}
+      },
+      "id": "persist-chat-inbound-v2-001",
+      "name": "4. Persistir Chat Inbound v2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1024,
+        240
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Pv48djwcm2OcpOqt",
+          "name": "FlowLux"
+        }
+      }
     }
   ],
   "pinData": {
@@ -837,7 +872,7 @@
       "main": [
         [
           {
-            "node": "4. Buscar Conversa",
+            "node": "formatar msg",
             "type": "main",
             "index": 0
           }
@@ -855,7 +890,7 @@
       "main": [
         [
           {
-            "node": "4. Buscar Conversa",
+            "node": "formatar msg",
             "type": "main",
             "index": 0
           }
@@ -866,7 +901,7 @@
       "main": [
         [
           {
-            "node": "6b. Atualizar Conversa",
+            "node": "4. Persistir Chat Inbound v2",
             "type": "main",
             "index": 0
           }
@@ -888,7 +923,7 @@
       "main": [
         [
           {
-            "node": "6b. Atualizar Conversa",
+            "node": "4. Persistir Chat Inbound v2",
             "type": "main",
             "index": 0
           }

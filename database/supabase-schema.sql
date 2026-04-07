@@ -146,6 +146,9 @@ CREATE TABLE messages (
   content TEXT NOT NULL DEFAULT '',
   media_url TEXT,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'delivered', 'read')),
+  provider_message_id TEXT,
+  provider_payload JSONB,
+  provider_timestamp TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -264,14 +267,168 @@ CREATE INDEX idx_leads_user_id ON leads(user_id);
 CREATE INDEX idx_leads_stage_id ON leads(stage_id);
 CREATE INDEX idx_conversations_user_id ON conversations(user_id);
 CREATE INDEX idx_conversations_last_message ON conversations(last_message_at DESC);
+CREATE INDEX idx_conversations_instance_remote_jid ON conversations(instance_id, remote_jid);
 CREATE INDEX idx_messages_conversation_id ON messages(conversation_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at);
+CREATE INDEX idx_messages_provider_timestamp ON messages(provider_timestamp DESC);
 CREATE INDEX idx_lead_tags_lead_id ON lead_tags(lead_id);
 CREATE INDEX idx_lead_tags_tag_id ON lead_tags(tag_id);
 CREATE INDEX idx_notes_lead_id ON notes(lead_id);
 CREATE INDEX idx_automation_triggers_user_id ON automation_triggers(user_id);
 CREATE INDEX idx_scheduled_messages_scheduled_at ON scheduled_messages(scheduled_at);
 CREATE INDEX idx_whatsapp_instances_user_id ON whatsapp_instances(user_id);
+CREATE UNIQUE INDEX uq_conversations_instance_remote_jid ON conversations(instance_id, remote_jid);
+CREATE UNIQUE INDEX uq_messages_conversation_provider_message_id ON messages(conversation_id, provider_message_id);
+
+-- =============================================
+-- FUNCTION: Upsert inbound chat message idempotently
+-- =============================================
+CREATE OR REPLACE FUNCTION upsert_inbound_chat_message(
+  p_instance_id UUID,
+  p_user_id UUID,
+  p_remote_jid TEXT,
+  p_contact_name TEXT,
+  p_contact_phone TEXT,
+  p_provider_message_id TEXT,
+  p_from_me BOOLEAN,
+  p_message_type TEXT,
+  p_content TEXT,
+  p_media_url TEXT,
+  p_status TEXT,
+  p_message_created_at TIMESTAMPTZ,
+  p_message_preview TEXT,
+  p_provider_payload JSONB DEFAULT '{}'::JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_conversation_id UUID;
+  v_message_id UUID;
+  v_inserted BOOLEAN := FALSE;
+  v_effective_created_at TIMESTAMPTZ := COALESCE(p_message_created_at, NOW());
+  v_effective_preview TEXT := COALESCE(NULLIF(BTRIM(p_message_preview), ''), NULLIF(BTRIM(p_content), ''), '[Mensagem]');
+  v_effective_type TEXT := CASE
+    WHEN p_message_type IN ('text', 'image', 'video', 'audio', 'document') THEN p_message_type
+    ELSE 'text'
+  END;
+  v_effective_status TEXT := CASE
+    WHEN p_status IN ('pending', 'sent', 'delivered', 'read') THEN p_status
+    ELSE 'delivered'
+  END;
+  v_unread_count INTEGER := 0;
+BEGIN
+  IF p_instance_id IS NULL THEN
+    RAISE EXCEPTION 'instance_id is required';
+  END IF;
+
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'user_id is required';
+  END IF;
+
+  IF COALESCE(NULLIF(BTRIM(p_remote_jid), ''), '') = '' THEN
+    RAISE EXCEPTION 'remote_jid is required';
+  END IF;
+
+  INSERT INTO conversations (
+    user_id,
+    instance_id,
+    remote_jid,
+    contact_name,
+    contact_phone,
+    unread_count,
+    created_at
+  )
+  VALUES (
+    p_user_id,
+    p_instance_id,
+    p_remote_jid,
+    NULLIF(BTRIM(p_contact_name), ''),
+    COALESCE(NULLIF(BTRIM(p_contact_phone), ''), p_remote_jid),
+    0,
+    NOW()
+  )
+  ON CONFLICT (instance_id, remote_jid) DO UPDATE
+  SET
+    contact_name = COALESCE(NULLIF(EXCLUDED.contact_name, ''), conversations.contact_name),
+    contact_phone = COALESCE(NULLIF(EXCLUDED.contact_phone, ''), conversations.contact_phone)
+  RETURNING id INTO v_conversation_id;
+
+  INSERT INTO messages (
+    conversation_id,
+    remote_jid,
+    from_me,
+    message_type,
+    content,
+    media_url,
+    status,
+    provider_message_id,
+    provider_payload,
+    provider_timestamp,
+    created_at
+  )
+  VALUES (
+    v_conversation_id,
+    p_remote_jid,
+    COALESCE(p_from_me, FALSE),
+    v_effective_type,
+    COALESCE(p_content, ''),
+    NULLIF(BTRIM(COALESCE(p_media_url, '')), ''),
+    v_effective_status,
+    NULLIF(BTRIM(COALESCE(p_provider_message_id, '')), ''),
+    COALESCE(p_provider_payload, '{}'::JSONB),
+    v_effective_created_at,
+    v_effective_created_at
+  )
+  ON CONFLICT (conversation_id, provider_message_id) DO NOTHING
+  RETURNING id INTO v_message_id;
+
+  IF v_message_id IS NOT NULL THEN
+    v_inserted := TRUE;
+
+    IF NOT COALESCE(p_from_me, FALSE) THEN
+      UPDATE conversations
+      SET unread_count = COALESCE(unread_count, 0) + 1
+      WHERE id = v_conversation_id;
+    END IF;
+
+    UPDATE conversations
+    SET
+      contact_name = COALESCE(NULLIF(BTRIM(p_contact_name), ''), contact_name),
+      contact_phone = COALESCE(NULLIF(BTRIM(p_contact_phone), ''), contact_phone),
+      last_message = v_effective_preview,
+      last_message_at = v_effective_created_at
+    WHERE id = v_conversation_id
+      AND (
+        last_message_at IS NULL
+        OR v_effective_created_at >= last_message_at
+      );
+  ELSE
+    SELECT id
+    INTO v_message_id
+    FROM messages
+    WHERE conversation_id = v_conversation_id
+      AND provider_message_id = NULLIF(BTRIM(COALESCE(p_provider_message_id, '')), '')
+    ORDER BY created_at DESC
+    LIMIT 1;
+  END IF;
+
+  SELECT unread_count
+  INTO v_unread_count
+  FROM conversations
+  WHERE id = v_conversation_id;
+
+  RETURN JSONB_BUILD_OBJECT(
+    'conversation_id', v_conversation_id,
+    'message_id', v_message_id,
+    'inserted', v_inserted,
+    'unread_count', COALESCE(v_unread_count, 0),
+    'message_preview', v_effective_preview
+  );
+END;
+$$;
 
 -- =============================================
 -- FUNCTION: Auto-create profile on user signup

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recordOperationalEvent } from "@/lib/operational-events";
 
 const EVOLUTION_API_URL = process.env.NEXT_PUBLIC_EVOLUTION_API_URL || "";
 const EVOLUTION_API_KEY = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || "";
@@ -30,9 +31,12 @@ function isRemoteUrl(value: string) {
 }
 
 export async function POST(req: NextRequest) {
+  let parsedBody: any = null;
+
   try {
-    const body = await req.json();
-    const { action, instance_name, number, media_url, media_type, caption, file_name, audio_base64 } = body;
+    parsedBody = await req.json();
+    const body = parsedBody;
+    const { action, instance_name, number, media_url, media_type, caption, file_name, audio_base64, user_id, conversation_id } = body;
 
     if (!instance_name || !number) {
       return NextResponse.json({ error: "Missing instance_name or number" }, { status: 400 });
@@ -73,6 +77,22 @@ export async function POST(req: NextRequest) {
       }
 
       if (!isRemoteUrl(media_url)) {
+        await recordOperationalEvent({
+          userId: user_id || null,
+          source: "chat_send_media",
+          eventType: "provider_send_failed",
+          severity: "error",
+          status: "error",
+          entityType: "conversation",
+          entityId: conversation_id || null,
+          message: String(directResult.error || "Erro ao enviar mídia"),
+          metadata: {
+            action,
+            instance_name,
+            number,
+            media_type,
+          },
+        });
         return NextResponse.json({ error: directResult.error }, { status: directResult.status });
       }
 
@@ -89,12 +109,46 @@ export async function POST(req: NextRequest) {
         });
 
         if (!fallbackResult.ok) {
+          await recordOperationalEvent({
+            userId: user_id || null,
+            source: "chat_send_media",
+            eventType: "provider_send_failed",
+            severity: "error",
+            status: "error",
+            entityType: "conversation",
+            entityId: conversation_id || null,
+            message: String(fallbackResult.error || "Erro ao enviar mídia"),
+            metadata: {
+              action,
+              instance_name,
+              number,
+              media_type,
+              fallback: "base64",
+            },
+          });
           return NextResponse.json({ error: fallbackResult.error }, { status: fallbackResult.status });
         }
 
         return NextResponse.json(fallbackResult.data);
       } catch (error) {
         console.warn("Failed to convert media URL to base64 after direct send failure:", error);
+        await recordOperationalEvent({
+          userId: user_id || null,
+          source: "chat_send_media",
+          eventType: "provider_send_failed",
+          severity: "error",
+          status: "error",
+          entityType: "conversation",
+          entityId: conversation_id || null,
+          message: String(directResult.error || error || "Erro ao enviar mídia"),
+          metadata: {
+            action,
+            instance_name,
+            number,
+            media_type,
+            fallback: "base64_conversion_failed",
+          },
+        });
         return NextResponse.json({ error: directResult.error }, { status: directResult.status });
       }
     }
@@ -117,6 +171,21 @@ export async function POST(req: NextRequest) {
       }
 
       if (!isRemoteUrl(audioData)) {
+        await recordOperationalEvent({
+          userId: user_id || null,
+          source: "chat_send_media",
+          eventType: "provider_send_failed",
+          severity: "error",
+          status: "error",
+          entityType: "conversation",
+          entityId: conversation_id || null,
+          message: String(directResult.error || "Erro ao enviar áudio"),
+          metadata: {
+            action,
+            instance_name,
+            number,
+          },
+        });
         return NextResponse.json({ error: directResult.error }, { status: directResult.status });
       }
 
@@ -128,12 +197,44 @@ export async function POST(req: NextRequest) {
         });
 
         if (!fallbackResult.ok) {
+          await recordOperationalEvent({
+            userId: user_id || null,
+            source: "chat_send_media",
+            eventType: "provider_send_failed",
+            severity: "error",
+            status: "error",
+            entityType: "conversation",
+            entityId: conversation_id || null,
+            message: String(fallbackResult.error || "Erro ao enviar áudio"),
+            metadata: {
+              action,
+              instance_name,
+              number,
+              fallback: "base64",
+            },
+          });
           return NextResponse.json({ error: fallbackResult.error }, { status: fallbackResult.status });
         }
 
         return NextResponse.json(fallbackResult.data);
       } catch (error) {
         console.warn("Failed to convert audio URL to base64 after direct send failure:", error);
+        await recordOperationalEvent({
+          userId: user_id || null,
+          source: "chat_send_media",
+          eventType: "provider_send_failed",
+          severity: "error",
+          status: "error",
+          entityType: "conversation",
+          entityId: conversation_id || null,
+          message: String(directResult.error || error || "Erro ao enviar áudio"),
+          metadata: {
+            action,
+            instance_name,
+            number,
+            fallback: "base64_conversion_failed",
+          },
+        });
         return NextResponse.json({ error: directResult.error }, { status: directResult.status });
       }
     }
@@ -141,6 +242,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid action. Use 'media' or 'audio'" }, { status: 400 });
   } catch (err: any) {
     console.error("send-media route error:", err);
+    await recordOperationalEvent({
+      userId: parsedBody?.user_id || null,
+      source: "chat_send_media",
+      eventType: "unhandled_exception",
+      severity: "error",
+      status: "error",
+      entityType: "conversation",
+      entityId: parsedBody?.conversation_id || null,
+      message: String(err?.message || err),
+      metadata: {
+        action: parsedBody?.action || null,
+        instance_name: parsedBody?.instance_name || null,
+        number: parsedBody?.number || null,
+      },
+    });
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

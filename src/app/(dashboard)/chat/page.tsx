@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { evolutionApi } from "@/lib/evolution-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -14,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download, Zap, Timer, Play, Mic, Square, Trash2, CalendarClock, Clock,
+  Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download, Zap, Timer, Play, Mic, Square, Trash2, CalendarClock, Clock, Pencil,
 } from "lucide-react";
 import { cn, formatPhone, getInitials, normalizePhone, phoneToJid, phoneVariants } from "@/lib/utils";
 import { TAG_COLORS } from "@/lib/constants";
@@ -24,16 +25,84 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useIncrementalDisplay } from "@/lib/use-incremental-display";
 import { usePersistedState } from "@/lib/use-persisted-state";
 
-interface Conversation { id: string; instance_id: string; remote_jid: string; contact_name: string; contact_phone: string; last_message: string; last_message_at: string; unread_count: number; }
+interface Conversation { id: string; user_id?: string; instance_id: string; remote_jid: string; contact_name: string; contact_phone: string; last_message: string; last_message_at: string; unread_count: number; }
 interface ChatMessage { id: string; conversation_id: string; from_me: boolean; content: string; message_type: string; media_url?: string; status: string; created_at: string; isOptimistic?: boolean; }
 interface LeadOption { id: string; name: string; phone: string; }
 interface MediaItem { id: string; file_name: string; file_type: string; file_url: string; file_size: number; }
 interface FlowOption { id: string; name: string; description: string; trigger_type: string; is_active: boolean; steps: FlowStepOption[]; }
 interface FlowStepOption { id: string; step_order: number; step_type: string; content: string; media_url: string; file_name: string; delay_seconds: number; }
+interface ChatScheduledMessage {
+  id: string;
+  lead_id?: string | null;
+  instance_id?: string | null;
+  message: string;
+  scheduled_at: string;
+  status: string;
+  media_url?: string | null;
+  media_type?: string | null;
+  file_name?: string | null;
+  last_attempt_at?: string | null;
+  sent_at?: string | null;
+  failure_reason?: string | null;
+  deleted_at?: string | null;
+  leads?: { name?: string | null } | null;
+}
 
 const MESSAGES_PAGE_SIZE = 40;
+const CONVERSATIONS_PAGE_SIZE = 50;
 
 interface InstanceOption { id: string; instance_name: string; }
+
+function getConversationRecencyValue(conversation: Pick<Conversation, "last_message_at">) {
+  const timestamp = new Date(conversation.last_message_at || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sortConversationsByRecent(conversations: Conversation[]) {
+  return [...conversations].sort((a, b) => getConversationRecencyValue(b) - getConversationRecencyValue(a));
+}
+
+function buildLeadTagMap(rows: Array<{ phone?: string | null; lead_tags?: Array<{ tag_id?: string | null }> }> = []) {
+  const map: Record<string, string[]> = {};
+
+  rows.forEach((lead) => {
+    const tagIds = (lead.lead_tags || [])
+      .map((item) => item.tag_id)
+      .filter((tagId): tagId is string => Boolean(tagId));
+
+    if (tagIds.length === 0) return;
+
+    phoneVariants(lead.phone || "").forEach((variant) => {
+      if (!variant) return;
+      map[variant] = Array.from(new Set([...(map[variant] || []), ...tagIds]));
+    });
+  });
+
+  return map;
+}
+
+function getScheduledPreviewText(item: Pick<ChatScheduledMessage, "message" | "media_type" | "file_name">) {
+  const message = item.message?.trim();
+  if (message) return message;
+  if (item.media_type === "image") return "[Imagem]";
+  if (item.media_type === "video") return "[Video]";
+  if (item.media_type === "audio") return "[Audio]";
+  if (item.media_type === "document") return item.file_name || "[Documento]";
+  return "[Mensagem agendada]";
+}
+
+function getScheduledStatusMeta(status: string) {
+  if (status === "sent") {
+    return { label: "Enviado", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" };
+  }
+  if (status === "failed") {
+    return { label: "Falhou", className: "border-destructive/40 bg-destructive/10 text-destructive" };
+  }
+  if (status === "processing") {
+    return { label: "Processando", className: "border-amber-500/30 bg-amber-500/10 text-amber-300" };
+  }
+  return { label: "Agendado", className: "border-primary/30 bg-primary/10 text-primary" };
+}
 
 export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -42,6 +111,11 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState("");
   const [searchTerm, setSearchTerm] = usePersistedState("chat-search-term", "");
   const [loading, setLoading] = useState(true);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
+  const [hasMoreConversationPages, setHasMoreConversationPages] = useState(false);
+  const [conversationTotalCount, setConversationTotalCount] = useState(0);
+  const [baseDataReady, setBaseDataReady] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
@@ -99,9 +173,21 @@ export default function ChatPage() {
   const recordedAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Schedule message from chat
+  const getDefaultScheduledFormState = useCallback(() => ({
+    lead_id: "",
+    message: "",
+    scheduled_at: "",
+    instance_id: selectedInstanceId || instances[0]?.id || "",
+    media_url: "",
+    media_type: "",
+    file_name: "",
+  }), [instances, selectedInstanceId]);
   const [showScheduleMsg, setShowScheduleMsg] = useState(false);
-  const [scheduleMessage, setScheduleMessage] = useState("");
-  const [scheduleDateTime, setScheduleDateTime] = useState("");
+  const [newScheduled, setNewScheduled] = useState(() => getDefaultScheduledFormState());
+  const [chatScheduledMessages, setChatScheduledMessages] = useState<ChatScheduledMessage[]>([]);
+  const [loadingScheduledMessages, setLoadingScheduledMessages] = useState(false);
+  const [savingScheduledMessage, setSavingScheduledMessage] = useState(false);
+  const [editingScheduledId, setEditingScheduledId] = useState<string | null>(null);
 
   // Avisos de campos faltantes
   const [missingFields, setMissingFields] = useState<string[]>([]);
@@ -111,10 +197,36 @@ export default function ChatPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const selectedConversationRef = useRef<string | null>(null);
+  const conversationOffsetRef = useRef(0);
+  const initialConversationQueryDoneRef = useRef(false);
   const shouldStickToBottomRef = useRef(false);
   const preserveScrollHeightRef = useRef<number | null>(null);
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 220);
   const debouncedLeadSearch = useDebouncedValue(leadSearch, 220);
+  const normalizedConversationSearch = debouncedSearchTerm.trim().toLowerCase();
+
+  const normalizeConversationSearchInput = useCallback((value: string) => (
+    value
+      .trim()
+      .replace(/[%_(),]/g, " ")
+      .replace(/\s+/g, " ")
+  ), []);
+
+  const matchesConversationBaseFilters = useCallback((conversation: Conversation) => {
+    if (selectedInstanceId && conversation.instance_id !== selectedInstanceId) return false;
+    if (!normalizedConversationSearch) return true;
+
+    return [
+      conversation.contact_name || "",
+      conversation.contact_phone || "",
+      conversation.last_message || "",
+    ].some((value) => value.toLowerCase().includes(normalizedConversationSearch));
+  }, [normalizedConversationSearch, selectedInstanceId]);
+
+  const matchesConversationTagFilter = useCallback((conversation: Conversation) => {
+    if (!filterTag) return true;
+    return phoneVariants(conversation.contact_phone || "").some((variant) => convLeadTags[variant]?.includes(filterTag));
+  }, [convLeadTags, filterTag]);
 
   const updateConversationPreview = useCallback((conversationId: string, lastMessage: string, lastMessageAt: string) => {
     setConversations((prev) => {
@@ -127,11 +239,11 @@ export default function ChatPage() {
         last_message_at: lastMessageAt,
       };
 
-      return [
+      return sortConversationsByRecent([
         updatedConversation,
         ...prev.slice(0, index),
         ...prev.slice(index + 1),
-      ];
+      ]);
     });
 
     setSelectedConv((prev) => (
@@ -311,39 +423,155 @@ export default function ChatPage() {
   };
 
   // === DATA LOADING ===
+  const toDateTimeLocalValue = useCallback((value?: string | null) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+
+    const pad = (input: number) => String(input).padStart(2, "0");
+
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }, []);
+
+  const toIsoDateTime = useCallback((value?: string | null) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString();
+  }, []);
+
+  const formatDateTime = useCallback((value?: string | null) => value ? new Date(value).toLocaleString("pt-BR") : "-", []);
+
+  const loadConversationPage = useCallback(async ({
+    reset = false,
+    forceOffset,
+    instanceIdOverride,
+  }: {
+    reset?: boolean;
+    forceOffset?: number;
+    instanceIdOverride?: string;
+  } = {}) => {
+    const userId = authUser?.id;
+
+    if (!userId) {
+      conversationOffsetRef.current = 0;
+      setConversations([]);
+      setConversationTotalCount(0);
+      setHasMoreConversationPages(false);
+      return;
+    }
+
+    const nextOffset = typeof forceOffset === "number"
+      ? forceOffset
+      : reset
+        ? 0
+        : conversationOffsetRef.current;
+    const isPaginating = !reset && nextOffset > 0;
+
+    if (isPaginating) {
+      setLoadingMoreConversations(true);
+    } else {
+      setLoadingConversations(true);
+    }
+
+    try {
+      const activeInstanceId = typeof instanceIdOverride === "string" ? instanceIdOverride : selectedInstanceId;
+      const safeSearchTerm = normalizeConversationSearchInput(debouncedSearchTerm);
+
+      let query = supabase
+        .from("conversations")
+        .select("*", { count: "exact" })
+        .eq("user_id", userId)
+        .order("last_message_at", { ascending: false })
+        .range(nextOffset, nextOffset + CONVERSATIONS_PAGE_SIZE - 1);
+
+      if (activeInstanceId) {
+        query = query.eq("instance_id", activeInstanceId);
+      }
+
+      if (safeSearchTerm) {
+        query = query.or(`contact_name.ilike.%${safeSearchTerm}%,contact_phone.ilike.%${safeSearchTerm}%,last_message.ilike.%${safeSearchTerm}%`);
+      }
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+
+      const nextPage = sortConversationsByRecent((data || []) as Conversation[]);
+      const nextCount = count ?? nextOffset + nextPage.length;
+      const updatedOffset = nextOffset + nextPage.length;
+
+      conversationOffsetRef.current = updatedOffset;
+      setConversationTotalCount(nextCount);
+      setHasMoreConversationPages(updatedOffset < nextCount);
+      setConversations((prev) => (
+        reset
+          ? nextPage
+          : sortConversationsByRecent([
+            ...prev.filter((existing) => !nextPage.some((incoming) => incoming.id === existing.id)),
+            ...nextPage,
+          ])
+      ));
+    } catch (error) {
+      console.error("Error loading conversations:", error);
+      if (reset) {
+        conversationOffsetRef.current = 0;
+        setConversations([]);
+        setConversationTotalCount(0);
+        setHasMoreConversationPages(false);
+      }
+    } finally {
+      if (isPaginating) {
+        setLoadingMoreConversations(false);
+      } else {
+        setLoadingConversations(false);
+      }
+    }
+  }, [authUser, debouncedSearchTerm, normalizeConversationSearchInput, selectedInstanceId]);
+
   const loadInitialData = useCallback(async () => {
     try {
       const userId = authUser?.id;
-      if (!userId) { setLoading(false); return; }
+      setBaseDataReady(false);
 
-      const [convsRes, tagsRes, leadTagsRes, instRes] = await Promise.all([
-        supabase.from("conversations").select("*").eq("user_id", userId).order("last_message_at", { ascending: false }),
+      if (!userId) {
+        conversationOffsetRef.current = 0;
+        setConversations([]);
+        setAllTags([]);
+        setConvLeadTags({});
+        setInstances([]);
+        setConversationTotalCount(0);
+        setHasMoreConversationPages(false);
+        setBaseDataReady(false);
+        setLoading(false);
+        return;
+      }
+
+      const [tagsRes, leadTagsRes, instRes] = await Promise.all([
         supabase.from("tags").select("id, name, color").eq("user_id", userId),
         supabase.from("leads").select("phone, lead_tags(tag_id)").eq("user_id", userId).is("deleted_at", null),
         supabase.from("whatsapp_instances").select("id, instance_name").eq("user_id", userId).is("deleted_at", null),
       ]);
 
-      if (convsRes.data) setConversations(convsRes.data);
       if (tagsRes.data) setAllTags(tagsRes.data);
       if (instRes.data) {
         setInstances(instRes.data);
         if (instRes.data.length > 0) {
           setSelectedInstanceId((current) => instRes.data.some((instance) => instance.id === current) ? current : instRes.data[0].id);
+        } else {
+          setSelectedInstanceId("");
         }
+      } else {
+        setInstances([]);
+        setSelectedInstanceId("");
       }
 
       if (leadTagsRes.data) {
-        const map: Record<string, string[]> = {};
-        leadTagsRes.data.forEach((lead: any) => {
-          const phone = lead.phone.replace(/\D/g, "");
-          map[phone] = lead.lead_tags?.map((item: any) => item.tag_id) || [];
-        });
-        setConvLeadTags(map);
+        setConvLeadTags(buildLeadTagMap(leadTagsRes.data));
       }
     } catch {
       // ignore
     } finally {
-      setLoading(false);
+      setBaseDataReady(true);
     }
   }, [authUser, setSelectedInstanceId]);
 
@@ -492,6 +720,38 @@ export default function ChatPage() {
     }
   }, [fetchMessagesPage, hasOlderMessages, loadingMessages, loadingOlderMessages, messages]);
 
+  const loadScheduledMessagesForLead = useCallback(async (leadId: string) => {
+    if (!authUser) {
+      setChatScheduledMessages([]);
+      return [];
+    }
+
+    setLoadingScheduledMessages(true);
+    try {
+      const { data, error } = await supabase
+        .from("scheduled_messages")
+        .select("id, lead_id, instance_id, message, scheduled_at, status, media_url, media_type, file_name, last_attempt_at, sent_at, failure_reason, deleted_at, leads(name)")
+        .eq("user_id", authUser.id)
+        .eq("lead_id", leadId)
+        .is("deleted_at", null)
+        .neq("status", "cancelled")
+        .gte("scheduled_at", new Date().toISOString())
+        .order("scheduled_at", { ascending: true });
+
+      if (error) throw error;
+
+      const items = (data || []) as ChatScheduledMessage[];
+      setChatScheduledMessages(items);
+      return items;
+    } catch (error) {
+      console.error("Error loading scheduled messages for lead:", error);
+      setChatScheduledMessages([]);
+      return [];
+    } finally {
+      setLoadingScheduledMessages(false);
+    }
+  }, [authUser]);
+
   const loadLeadInfo = useCallback(async (phone: string) => {
     setRightPanel("lead");
     setLoadingLeadInfo(true);
@@ -499,7 +759,8 @@ export default function ChatPage() {
     try {
       if (!authUser) {
         setLeadInfo(null);
-        return;
+        setChatScheduledMessages([]);
+        return null;
       }
 
       await ensureLeadPanelMetaLoaded();
@@ -513,7 +774,8 @@ export default function ChatPage() {
 
       if (!matchedLead) {
         setLeadInfo(null);
-        return;
+        setChatScheduledMessages([]);
+        return null;
       }
 
       const { data } = await supabase
@@ -523,18 +785,23 @@ export default function ChatPage() {
         .single();
 
       if (data) {
-        setLeadInfo({
+        const nextLead = {
           ...data,
           tags: data.lead_tags?.map((item: any) => item.tags).filter(Boolean) || [],
           notes: data.notes || [],
-        });
+        };
+        setLeadInfo(nextLead);
+        await loadScheduledMessagesForLead(nextLead.id);
+        return nextLead;
       } else {
         setLeadInfo(null);
+        setChatScheduledMessages([]);
+        return null;
       }
     } finally {
       setLoadingLeadInfo(false);
     }
-  }, [authUser, ensureLeadOptionsLoaded, ensureLeadPanelMetaLoaded]);
+  }, [authUser, ensureLeadOptionsLoaded, ensureLeadPanelMetaLoaded, loadScheduledMessagesForLead]);
 
   const refreshTags = async () => {
     if (!authUser) return;
@@ -545,25 +812,56 @@ export default function ChatPage() {
     ]);
     if (tagsRes.data) setAllTags(tagsRes.data);
     if (leadTagsRes.data) {
-      const map: Record<string, string[]> = {};
-      leadTagsRes.data.forEach((l: any) => { map[l.phone.replace(/\D/g, "")] = l.lead_tags?.map((lt: any) => lt.tag_id) || []; });
-      setConvLeadTags(map);
+      setConvLeadTags(buildLeadTagMap(leadTagsRes.data));
     }
   };
 
   useEffect(() => {
+    initialConversationQueryDoneRef.current = false;
+
+    if (!authUser?.id) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     loadInitialData();
+  }, [authUser?.id, loadInitialData]);
+
+  useEffect(() => {
+    if (!authUser?.id || !baseDataReady) return;
+
+    let cancelled = false;
+
+    loadConversationPage({ reset: true, forceOffset: 0 }).finally(() => {
+      if (cancelled) return;
+      if (!initialConversationQueryDoneRef.current) {
+        initialConversationQueryDoneRef.current = true;
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.id, baseDataReady, debouncedSearchTerm, loadConversationPage, selectedInstanceId]);
+
+  useEffect(() => {
+    const conversationId = selectedConv?.id;
+    if (!conversationId) return;
 
     const channel = supabase
-      .channel("flowlux-realtime")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+      .channel(`flowlux-chat-messages-${conversationId}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${conversationId}`,
+      }, (payload) => {
         const msg = payload.new as ChatMessage;
-        if (msg.conversation_id !== selectedConversationRef.current) {
-          return;
-        }
         const shouldAutoScroll = isNearBottom();
         setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
+          if (prev.some((message) => message.id === msg.id)) return prev;
           const optimisticIndex = prev.findIndex((message) => matchesOptimisticMessage(message, msg));
           if (optimisticIndex !== -1) {
             const next = [...prev];
@@ -576,33 +874,95 @@ export default function ChatPage() {
           shouldStickToBottomRef.current = true;
         }
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, (payload) => {
-        if (payload.eventType === "INSERT") {
-          const conv = payload.new as Conversation;
-          setConversations((prev) => {
-            if (prev.some((c) => c.id === conv.id)) return prev;
-            return [conv, ...prev];
-          });
-        } else if (payload.eventType === "UPDATE") {
-          const conv = payload.new as Conversation;
-          setConversations((prev) => {
-            const index = prev.findIndex((conversation) => conversation.id === conv.id);
-            if (index === -1) return prev;
+      .subscribe();
 
-            const updatedConversation = { ...prev[index], ...conv };
-            return [
-              updatedConversation,
-              ...prev.slice(0, index),
-              ...prev.slice(index + 1),
-            ];
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isNearBottom, matchesOptimisticMessage, selectedConv?.id]);
+
+  useEffect(() => {
+    const userId = authUser?.id;
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`flowlux-chat-conversations-${userId}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "conversations",
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        if (payload.eventType === "INSERT") {
+          const newConversation = payload.new as Conversation;
+          if (!matchesConversationBaseFilters(newConversation)) return;
+
+          setConversationTotalCount((prev) => prev + 1);
+          setConversations((prev) => (
+            prev.some((conversation) => conversation.id === newConversation.id)
+              ? prev
+              : sortConversationsByRecent([newConversation, ...prev])
+          ));
+          return;
+        }
+
+        if (payload.eventType === "UPDATE") {
+          const previousConversation = payload.old as Conversation;
+          const nextConversation = payload.new as Conversation;
+          const didMatchBefore = matchesConversationBaseFilters(previousConversation);
+          const matchesNow = matchesConversationBaseFilters(nextConversation);
+
+          if (!didMatchBefore && matchesNow) {
+            setConversationTotalCount((prev) => prev + 1);
+          } else if (didMatchBefore && !matchesNow) {
+            setConversationTotalCount((prev) => Math.max(prev - 1, 0));
+          }
+
+          setConversations((prev) => {
+            const exists = prev.some((conversation) => conversation.id === nextConversation.id);
+            if (!matchesNow) {
+              return exists
+                ? prev.filter((conversation) => conversation.id !== nextConversation.id)
+                : prev;
+            }
+
+            if (!exists) {
+              return sortConversationsByRecent([nextConversation, ...prev]);
+            }
+
+            const updated = prev.map((conversation) => (
+              conversation.id === nextConversation.id
+                ? { ...conversation, ...nextConversation }
+                : conversation
+            ));
+            return sortConversationsByRecent(updated);
           });
-          setSelectedConv((prev) => (prev?.id === conv.id ? { ...prev, ...conv } : prev));
+
+          setSelectedConv((prev) => (prev?.id === nextConversation.id ? { ...prev, ...nextConversation } : prev));
+          return;
+        }
+
+        if (payload.eventType === "DELETE") {
+          const removedConversation = payload.old as Conversation;
+          if (matchesConversationBaseFilters(removedConversation)) {
+            setConversationTotalCount((prev) => Math.max(prev - 1, 0));
+          }
+
+          setConversations((prev) => prev.filter((conversation) => conversation.id !== removedConversation.id));
+
+          if (selectedConversationRef.current === removedConversation.id) {
+            selectedConversationRef.current = null;
+            setSelectedConv(null);
+            setMessages([]);
+          }
         }
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [isNearBottom, loadInitialData, matchesOptimisticMessage]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [authUser?.id, matchesConversationBaseFilters]);
 
   useEffect(() => {
     if (showNewConv) {
@@ -648,7 +1008,7 @@ export default function ChatPage() {
 
     if (conv) {
       selectedConversationRef.current = conv.id;
-      setConversations((prev) => [conv, ...prev]);
+      setConversations((prev) => sortConversationsByRecent([conv, ...prev]));
       setSelectedConv(conv);
       setMessages([]);
     }
@@ -692,6 +1052,8 @@ export default function ChatPage() {
             media_type: selectedMedia.file_type,
             caption: isAudio ? "" : (newMessage || ""),
             file_name: selectedMedia.file_name,
+            user_id: authUser?.id || null,
+            conversation_id: selectedConv.id,
           }),
         });
         if (!proxyRes.ok) {
@@ -765,7 +1127,7 @@ export default function ChatPage() {
       setShowFlowPreview(false);
       setSelectedFlow(null);
       setExecutingFlow(false);
-      toast("Fluxo em execução! As mensagens serão enviadas em sequência.", "success");
+      toast("Fluxo enfileirado! O worker vai processar as etapas em segundo plano.", "success");
 
       fetch("/api/execute-flow", {
         method: "POST",
@@ -881,7 +1243,14 @@ export default function ChatPage() {
       const proxyRes = await fetch("/api/send-media", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "audio", instance_name: inst.instance_name, number: selectedConv.remote_jid, media_url: publicUrl }),
+        body: JSON.stringify({
+          action: "audio",
+          instance_name: inst.instance_name,
+          number: selectedConv.remote_jid,
+          media_url: publicUrl,
+          user_id: authUser.id,
+          conversation_id: selectedConv.id,
+        }),
       });
       if (!proxyRes.ok) {
         const err = await proxyRes.json().catch(() => ({}));
@@ -952,6 +1321,8 @@ export default function ChatPage() {
             media_type: draftMedia.file_type,
             caption: isAudioMedia ? "" : (draftMessage || ""),
             file_name: draftMedia.file_name,
+            user_id: authUser?.id || null,
+            conversation_id: conversation.id,
           }),
         });
         if (!proxyRes.ok) {
@@ -1041,7 +1412,14 @@ export default function ChatPage() {
       const proxyRes = await fetch("/api/send-media", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "audio", instance_name: inst.instance_name, number: conversation.remote_jid, media_url: publicUrl }),
+        body: JSON.stringify({
+          action: "audio",
+          instance_name: inst.instance_name,
+          number: conversation.remote_jid,
+          media_url: publicUrl,
+          user_id: authUser.id,
+          conversation_id: conversation.id,
+        }),
       });
       if (!proxyRes.ok) {
         const err = await proxyRes.json().catch(() => ({}));
@@ -1095,30 +1473,146 @@ export default function ChatPage() {
   };
 
   // === SCHEDULE MESSAGE FROM CHAT ===
-  const handleScheduleFromChat = async () => {
-    if (!scheduleMessage.trim() || !scheduleDateTime || !selectedConv || !leadInfo) return;
-    if (!selectedInstanceId) { toast("Selecione um WhatsApp.", "warning"); return; }
-    if (!authUser) return;
-    const parsedScheduledAt = new Date(scheduleDateTime);
-    if (Number.isNaN(parsedScheduledAt.getTime())) {
-      toast("Selecione uma data e hora válidas.", "warning");
+  const openScheduleDialogForConversation = useCallback(async (scheduledMessage?: ChatScheduledMessage) => {
+    if (!selectedConv) return;
+
+    const activeLead = leadInfo || await loadLeadInfo(selectedConv.contact_phone);
+    if (!activeLead) {
+      toast("Crie ou vincule um lead a este contato antes de agendar mensagens.", "warning");
       return;
     }
-    const { error } = await supabase.from("scheduled_messages").insert({
-      user_id: authUser.id,
-      lead_id: leadInfo.id,
-      instance_id: selectedInstanceId,
-      message: scheduleMessage,
-      scheduled_at: parsedScheduledAt.toISOString(),
-      status: "pending",
-    });
-    if (!error) {
-      toast("Mensagem agendada com sucesso!", "success");
-      setShowScheduleMsg(false);
-      setScheduleMessage("");
-      setScheduleDateTime("");
+
+    await ensureMediaLibraryLoaded();
+
+    if (scheduledMessage) {
+      setEditingScheduledId(scheduledMessage.id);
+      setNewScheduled({
+        lead_id: activeLead.id,
+        message: scheduledMessage.message || "",
+        scheduled_at: toDateTimeLocalValue(scheduledMessage.scheduled_at),
+        instance_id: scheduledMessage.instance_id || selectedInstanceId || instances[0]?.id || "",
+        media_url: scheduledMessage.media_url || "",
+        media_type: scheduledMessage.media_type || "",
+        file_name: scheduledMessage.file_name || "",
+      });
     } else {
-      toast("Erro ao agendar mensagem.", "error");
+      setEditingScheduledId(null);
+      setNewScheduled({
+        ...getDefaultScheduledFormState(),
+        lead_id: activeLead.id,
+        instance_id: selectedInstanceId || instances[0]?.id || "",
+      });
+    }
+
+    setShowScheduleMsg(true);
+  }, [
+    ensureMediaLibraryLoaded,
+    getDefaultScheduledFormState,
+    instances,
+    leadInfo,
+    loadLeadInfo,
+    selectedConv,
+    selectedInstanceId,
+    toDateTimeLocalValue,
+    toast,
+  ]);
+
+  const deleteScheduledMessageFromChat = useCallback(async (scheduledMessageId: string) => {
+    if (!leadInfo) return;
+    if (!window.confirm("Excluir este agendamento?")) return;
+
+    const { error } = await supabase
+      .from("scheduled_messages")
+      .update({ status: "cancelled", deleted_at: new Date().toISOString() })
+      .eq("id", scheduledMessageId);
+
+    if (error) {
+      console.error("Error deleting scheduled message:", error);
+      toast("Nao foi possivel excluir o agendamento.", "error");
+      return;
+    }
+
+    if (editingScheduledId === scheduledMessageId) {
+      setEditingScheduledId(null);
+      setShowScheduleMsg(false);
+      setNewScheduled(getDefaultScheduledFormState());
+    }
+
+    await loadScheduledMessagesForLead(leadInfo.id);
+    toast("Agendamento excluido.", "success");
+  }, [editingScheduledId, getDefaultScheduledFormState, leadInfo, loadScheduledMessagesForLead, toast]);
+
+  const handleScheduleFromChat = async () => {
+    if (savingScheduledMessage || !selectedConv || !authUser) return;
+
+    const activeLead = leadInfo || await loadLeadInfo(selectedConv.contact_phone);
+    if (!activeLead) {
+      toast("Crie ou vincule um lead a este contato antes de agendar mensagens.", "warning");
+      return;
+    }
+
+    const trimmedMessage = newScheduled.message.trim();
+    const resolvedInstanceId = newScheduled.instance_id || selectedInstanceId || instances[0]?.id || "";
+    const parsedScheduledAt = toIsoDateTime(newScheduled.scheduled_at);
+    const hasMediaAttachment = Boolean(newScheduled.media_url && newScheduled.media_type);
+
+    if ((!trimmedMessage && !hasMediaAttachment) || !parsedScheduledAt) {
+      if (!trimmedMessage && !hasMediaAttachment) toast("Preencha a mensagem ou escolha uma midia.", "warning");
+      else toast("Selecione uma data e hora validas.", "warning");
+      return;
+    }
+
+    if (!resolvedInstanceId) {
+      toast("Selecione um WhatsApp.", "warning");
+      return;
+    }
+
+    const payload = {
+      message: trimmedMessage,
+      scheduled_at: parsedScheduledAt,
+      instance_id: resolvedInstanceId,
+      media_url: newScheduled.media_url || null,
+      media_type: newScheduled.media_type || null,
+      file_name: newScheduled.file_name || null,
+      status: "pending",
+      claimed_at: null,
+      sent_at: null,
+      failure_reason: null,
+      provider_response: {},
+    };
+
+    setSavingScheduledMessage(true);
+    try {
+      if (editingScheduledId) {
+        const { error } = await supabase
+          .from("scheduled_messages")
+          .update(payload)
+          .eq("id", editingScheduledId);
+
+        if (error) throw error;
+        toast("Agendamento atualizado!", "success");
+      } else {
+        const { error } = await supabase
+          .from("scheduled_messages")
+          .insert({
+            user_id: authUser.id,
+            lead_id: activeLead.id,
+            ...payload,
+          });
+
+        if (error) throw error;
+        toast("Mensagem agendada!", "success");
+      }
+
+      await loadScheduledMessagesForLead(activeLead.id);
+      setShowScheduleMsg(false);
+      setEditingScheduledId(null);
+      setNewScheduled(getDefaultScheduledFormState());
+    } catch (error) {
+      console.error("Error saving scheduled message from chat:", error);
+      toast(editingScheduledId ? "Erro ao atualizar agendamento." : "Erro ao agendar mensagem.", "error");
+    } finally {
+      setSavingScheduledMessage(false);
     }
   };
 
@@ -1138,33 +1632,18 @@ export default function ChatPage() {
   };
 
   // === FILTERS ===
-  const filteredLeads = leads.filter((lead) =>
-    lead.name.toLowerCase().includes(debouncedLeadSearch.toLowerCase()) ||
-    lead.phone.includes(debouncedLeadSearch)
-  );
+  const filteredLeads = useMemo(() => (
+    leads.filter((lead) =>
+      lead.name.toLowerCase().includes(debouncedLeadSearch.toLowerCase()) ||
+      lead.phone.includes(debouncedLeadSearch)
+    )
+  ), [debouncedLeadSearch, leads]);
 
-  const filteredConversations = conversations.filter((c) => {
-    const matchesSearch =
-      c.contact_name?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-      c.contact_phone?.includes(debouncedSearchTerm);
-    if (!matchesSearch) return false;
-    if (selectedInstanceId && c.instance_id !== selectedInstanceId) return false;
-    if (!filterTag) return true;
-    const phone = c.contact_phone?.replace(/\D/g, "") || "";
-    return convLeadTags[phone]?.includes(filterTag);
-  });
-  const conversationFilterKey = `${debouncedSearchTerm}|${selectedInstanceId}|${filterTag}`;
+  const filteredConversations = useMemo(() => (
+    conversations.filter(matchesConversationTagFilter)
+  ), [conversations, matchesConversationTagFilter]);
+
   const leadFilterKey = `${debouncedLeadSearch}|${showNewConv}`;
-  const {
-    visibleItems: visibleConversations,
-    totalCount: filteredConversationCount,
-    hasMore: hasMoreConversations,
-    loadMore: loadMoreConversations,
-  } = useIncrementalDisplay(filteredConversations, {
-    initialCount: 30,
-    step: 30,
-    resetKey: conversationFilterKey,
-  });
   const {
     visibleItems: visibleLeadOptions,
     totalCount: filteredLeadCount,
@@ -1175,6 +1654,12 @@ export default function ChatPage() {
     step: 25,
     resetKey: leadFilterKey,
   });
+  const visibleConversations = filteredConversations;
+  const filteredConversationCount = filteredConversations.length;
+  const handleLoadMoreConversations = useCallback(() => {
+    if (!hasMoreConversationPages || loadingMoreConversations) return;
+    loadConversationPage({ reset: false });
+  }, [hasMoreConversationPages, loadConversationPage, loadingMoreConversations]);
 
   const formatTime = (date: string) => {
     if (!date) return "";
@@ -1192,6 +1677,99 @@ export default function ChatPage() {
     if (type === "video") return <Video className="h-4 w-4 text-blue-400" />;
     if (type === "audio") return <Music className="h-4 w-4 text-purple-400" />;
     return <FileUp className="h-4 w-4 text-orange-400" />;
+  };
+  const scheduledSupportedMedia = mediaItems.filter((item) => ["image", "video", "document"].includes(item.file_type));
+  const selectedScheduledMediaId = scheduledSupportedMedia.find((item) => item.file_url === newScheduled.media_url)?.id || "none";
+  const selectedScheduledLead = (leadInfo && newScheduled.lead_id === leadInfo.id)
+    ? { id: leadInfo.id, name: leadInfo.name, phone: leadInfo.phone }
+    : newScheduled.lead_id
+      ? leads.find((lead) => lead.id === newScheduled.lead_id) || (selectedConv ? {
+        id: newScheduled.lead_id,
+        name: selectedConv.contact_name || "Contato atual",
+        phone: selectedConv.contact_phone,
+      } : null)
+      : null;
+  const selectedScheduledMedia = newScheduled.media_url
+    ? scheduledSupportedMedia.find((item) => item.file_url === newScheduled.media_url)
+      || {
+        id: "selected",
+        file_name: newScheduled.file_name || "arquivo",
+        file_type: newScheduled.media_type || "document",
+        file_url: newScheduled.media_url,
+        file_size: 0,
+      }
+    : null;
+  const scheduledDateParts = newScheduled.scheduled_at
+    ? (() => {
+      const [datePart, timePart = ""] = newScheduled.scheduled_at.split("T");
+      const date = new Date(newScheduled.scheduled_at);
+      if (Number.isNaN(date.getTime())) {
+        return {
+          dateLabel: datePart || "Data invalida",
+          timeLabel: timePart || "--:--",
+        };
+      }
+      return {
+        dateLabel: date.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "long" }),
+        timeLabel: timePart || date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      };
+    })()
+    : null;
+  const canSaveScheduledFromChat = Boolean(newScheduled.scheduled_at && (newScheduled.message.trim() || selectedScheduledMedia));
+
+  const renderScheduledMediaThumb = (
+    media: { file_type?: string | null; file_url?: string | null; file_name?: string | null },
+    mode: "picker" | "preview" = "picker",
+  ) => {
+    const frameClass = mode === "preview"
+      ? "overflow-hidden rounded-2xl bg-black/10"
+      : "overflow-hidden rounded-xl bg-muted";
+
+    if (media.file_type === "image" && media.file_url) {
+      return (
+        <div className={frameClass}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={media.file_url}
+            alt={media.file_name || "Imagem"}
+            className={cn("w-full object-cover", mode === "preview" ? "max-h-64" : "aspect-square")}
+            loading="lazy"
+          />
+        </div>
+      );
+    }
+
+    if (media.file_type === "video" && media.file_url) {
+      return (
+        <div className={frameClass}>
+          <video
+            src={media.file_url}
+            className={cn("w-full object-cover", mode === "preview" ? "max-h-64" : "aspect-square")}
+            preload="metadata"
+            muted
+          />
+        </div>
+      );
+    }
+
+    const Icon = media.file_type === "video" ? Video : media.file_type === "image" ? Image : FileUp;
+
+    return (
+      <div className={cn(
+        "flex items-center justify-center rounded-xl border border-dashed border-border bg-muted/60",
+        mode === "preview" ? "h-32" : "aspect-square",
+      )}>
+        <div className="space-y-2 px-3 text-center">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-background/80">
+            <Icon className={cn(
+              "h-5 w-5",
+              media.file_type === "video" ? "text-blue-400" : media.file_type === "image" ? "text-green-400" : "text-orange-400",
+            )} />
+          </div>
+          <p className="line-clamp-2 text-xs text-muted-foreground">{media.file_name || "Arquivo"}</p>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -1241,7 +1819,12 @@ export default function ChatPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {filteredConversationCount === 0 ? (
+            {loadingConversations && filteredConversationCount === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground px-4">
+                <Loader2 className="h-8 w-8 animate-spin mb-3 text-primary/70" />
+                <p className="text-sm text-center">Carregando conversas...</p>
+              </div>
+            ) : filteredConversationCount === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground px-4">
                 <MessageSquare className="h-12 w-12 mb-3 opacity-30" />
                 <p className="text-sm text-center">Nenhuma conversa encontrada</p>
@@ -1270,10 +1853,21 @@ export default function ChatPage() {
                 ))}
                 <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
                   <div className="flex items-center justify-between gap-2">
-                    <span>Mostrando {visibleConversations.length} de {filteredConversationCount} conversa{filteredConversationCount !== 1 ? "s" : ""}</span>
-                    {hasMoreConversations && (
-                      <Button variant="outline" size="sm" onClick={loadMoreConversations}>
-                        Carregar mais
+                    <span>
+                      {filterTag
+                        ? `Mostrando ${visibleConversations.length} conversa${visibleConversations.length !== 1 ? "s" : ""} com a tag selecionada`
+                        : `Mostrando ${visibleConversations.length} de ${conversationTotalCount} conversa${conversationTotalCount !== 1 ? "s" : ""}`}
+                    </span>
+                    {hasMoreConversationPages && (
+                      <Button variant="outline" size="sm" onClick={handleLoadMoreConversations} disabled={loadingMoreConversations}>
+                        {loadingMoreConversations ? (
+                          <>
+                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                            Carregando...
+                          </>
+                        ) : (
+                          "Carregar mais"
+                        )}
                       </Button>
                     )}
                   </div>
@@ -1361,11 +1955,6 @@ export default function ChatPage() {
                             </div>
                           </div>
                         ))}
-                        {!hasOlderMessages && messages.length > 0 && (
-                          <div className="pt-1 text-center text-[10px] text-muted-foreground">
-                            Início do histórico
-                          </div>
-                        )}
                       </>
                     )}
                     <div ref={messagesEndRef} />
@@ -1454,13 +2043,7 @@ export default function ChatPage() {
                           )}
                         </Button>
                         <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => {
-                          if (!selectedConv) return;
-                          if (!leadInfo) {
-                            loadLeadInfo(selectedConv.contact_phone);
-                            toast("Abra o lead carregado na lateral para concluir o agendamento.", "warning");
-                            return;
-                          }
-                          setShowScheduleMsg(true);
+                          openScheduleDialogForConversation();
                         }} title="Agendar mensagem">
                           <CalendarClock className="h-5 w-5 text-muted-foreground hover:text-foreground" />
                         </Button>
@@ -1594,6 +2177,71 @@ export default function ChatPage() {
                               </div>
                             ) : null;
                           })()}
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <CalendarClock className="h-3 w-3" /> Próximos agendamentos
+                            </p>
+                            <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => openScheduleDialogForConversation()}>
+                              <Plus className="mr-1 h-3 w-3" /> Novo
+                            </Button>
+                          </div>
+
+                          {loadingScheduledMessages ? (
+                            <div className="flex items-center justify-center rounded-lg border border-dashed p-4 text-xs text-muted-foreground">
+                              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Carregando agendamentos...
+                            </div>
+                          ) : chatScheduledMessages.length === 0 ? (
+                            <div className="rounded-lg border border-dashed p-4 text-xs text-muted-foreground">
+                              Nenhum agendamento futuro para este lead.
+                            </div>
+                          ) : (
+                            <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                              {chatScheduledMessages.map((item) => {
+                                const statusMeta = getScheduledStatusMeta(item.status);
+                                return (
+                                  <div key={item.id} className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 space-y-2">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <Badge variant="outline" className={statusMeta.className}>
+                                            {statusMeta.label}
+                                          </Badge>
+                                          <span className="text-[10px] text-muted-foreground">{formatDateTime(item.scheduled_at)}</span>
+                                        </div>
+                                        <p className="whitespace-pre-wrap break-words text-xs">{getScheduledPreviewText(item)}</p>
+                                        {item.failure_reason && (
+                                          <p className="text-[10px] text-destructive">Falha: {item.failure_reason}</p>
+                                        )}
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-1">
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-7 w-7"
+                                          onClick={() => openScheduleDialogForConversation(item)}
+                                          title="Editar agendamento"
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-7 w-7 text-destructive hover:text-destructive"
+                                          onClick={() => deleteScheduledMessageFromChat(item.id)}
+                                          title="Excluir agendamento"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
 
                         {/* Tags with add/remove */}
@@ -1921,28 +2569,235 @@ export default function ChatPage() {
       </Dialog>
 
       {/* Schedule Message from Chat Dialog */}
-      <Dialog open={showScheduleMsg} onOpenChange={(open) => { setShowScheduleMsg(open); if (!open) { setScheduleMessage(""); setScheduleDateTime(""); } }}>
-        <DialogContent className="max-w-md">
+      <Dialog open={showScheduleMsg} onOpenChange={(open) => {
+        setShowScheduleMsg(open);
+        if (!open) {
+          setEditingScheduledId(null);
+          setNewScheduled(getDefaultScheduledFormState());
+          setSavingScheduledMessage(false);
+        }
+      }}>
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><CalendarClock className="h-5 w-5 text-primary" /> Agendar Mensagem</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-primary" />
+              {editingScheduledId ? "Editar Agendamento" : "Agendar Mensagem"}
+            </DialogTitle>
             <DialogDescription>
-              Agende uma mensagem para <strong>{leadInfo?.name || selectedConv?.contact_name || "este contato"}</strong>
+              {editingScheduledId
+                ? "Altere os dados do agendamento desta conversa."
+                : "Agende uma mensagem para a conversa atual sem precisar escolher o lead novamente."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Mensagem *</p>
-              <Textarea placeholder="Conteúdo da mensagem..." value={scheduleMessage} onChange={(e) => setScheduleMessage(e.target.value)} className="min-h-[80px]" />
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Conversa atual</Label>
+                <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3">
+                  <p className="text-sm font-medium">{selectedScheduledLead?.name || selectedConv?.contact_name || "Contato atual"}</p>
+                  <p className="text-xs text-muted-foreground">{formatPhone(selectedScheduledLead?.phone || selectedConv?.contact_phone || "")}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Mensagem</Label>
+                <Textarea
+                  placeholder={"Conteudo da mensagem...\n\nAs quebras de linha serao preservadas no envio."}
+                  value={newScheduled.message}
+                  onChange={(e) => setNewScheduled((prev) => ({ ...prev, message: e.target.value }))}
+                  className="min-h-28 whitespace-pre-wrap"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Voce pode enviar so texto, so midia ou midia com legenda.
+                </p>
+              </div>
+
+              {templates.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Mensagem pronta</Label>
+                  <Select
+                    value="none"
+                    onValueChange={(v) => {
+                      if (v === "none") return;
+                      const template = templates.find((item) => item.id === v);
+                      if (!template) return;
+                      setNewScheduled((prev) => ({ ...prev, message: template.content }));
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Usar mensagem pronta" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Selecione...</SelectItem>
+                      {templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {scheduledSupportedMedia.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Midia opcional</Label>
+                    {selectedScheduledMedia && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => setNewScheduled((prev) => ({ ...prev, media_url: "", media_type: "", file_name: "" }))}
+                      >
+                        Remover midia
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => setNewScheduled((prev) => ({ ...prev, media_url: "", media_type: "", file_name: "" }))}
+                      className={cn(
+                        "rounded-2xl border p-3 text-left transition-all",
+                        !selectedScheduledMedia ? "border-primary bg-primary/5 shadow-sm" : "border-border hover:border-primary/40 hover:bg-muted/40",
+                      )}
+                    >
+                      <div className="flex aspect-square items-center justify-center rounded-xl border border-dashed border-border bg-muted/60">
+                        <div className="space-y-2 text-center">
+                          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-background/80">
+                            <MessageSquare className="h-5 w-5 text-primary" />
+                          </div>
+                          <p className="text-xs text-muted-foreground">Somente texto</p>
+                        </div>
+                      </div>
+                    </button>
+
+                    {scheduledSupportedMedia.map((item) => {
+                      const isSelected = selectedScheduledMediaId === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setNewScheduled((prev) => ({
+                            ...prev,
+                            media_url: item.file_url,
+                            media_type: item.file_type,
+                            file_name: item.file_name,
+                          }))}
+                          className={cn(
+                            "rounded-2xl border p-2 text-left transition-all",
+                            isSelected ? "border-primary bg-primary/5 shadow-sm" : "border-border hover:border-primary/40 hover:bg-muted/40",
+                          )}
+                        >
+                          {renderScheduledMediaThumb(item)}
+                          <div className="mt-2 space-y-1">
+                            <p className="line-clamp-1 text-xs font-medium">{item.file_name}</p>
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{item.file_type}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                {instances.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>WhatsApp (instancia) *</Label>
+                    <Select
+                      value={newScheduled.instance_id || selectedInstanceId || instances[0]?.id || ""}
+                      onValueChange={(v) => setNewScheduled((prev) => ({ ...prev, instance_id: v }))}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Selecionar instancia" /></SelectTrigger>
+                      <SelectContent>
+                        {instances.map((inst) => <SelectItem key={inst.id} value={inst.id}>{inst.instance_name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Data e hora *</Label>
+                  <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background p-3 shadow-sm">
+                    <div className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <CalendarClock className="h-4 w-4 text-primary" />
+                      Escolha quando a mensagem deve sair
+                    </div>
+                    <Input
+                      type="datetime-local"
+                      value={newScheduled.scheduled_at}
+                      onChange={(e) => setNewScheduled((prev) => ({ ...prev, scheduled_at: e.target.value }))}
+                      className="h-12 border-primary/30 bg-background text-sm font-medium shadow-sm"
+                      style={{ colorScheme: "dark" }}
+                    />
+                    {scheduledDateParts && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Badge variant="secondary" className="rounded-full px-3 py-1 text-[11px] capitalize">
+                          {scheduledDateParts.dateLabel}
+                        </Badge>
+                        <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px]">
+                          {scheduledDateParts.timeLabel}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Data e hora *</p>
-              <Input type="datetime-local" value={scheduleDateTime} onChange={(e) => setScheduleDateTime(e.target.value)} />
+
+            <div className="space-y-3">
+              <div className="rounded-3xl border bg-gradient-to-b from-muted/70 to-background p-3">
+                <div className="rounded-[28px] border bg-background p-3 shadow-sm">
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span className="truncate">{selectedScheduledLead?.name || "Preview da mensagem"}</span>
+                    <Badge variant="outline">Preview</Badge>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <div className="max-w-[88%] rounded-2xl rounded-br-md bg-primary px-3 py-3 text-primary-foreground shadow-sm">
+                      {selectedScheduledMedia && (
+                        <div className="mb-2">
+                          {renderScheduledMediaThumb(selectedScheduledMedia, "preview")}
+                        </div>
+                      )}
+                      {newScheduled.message ? (
+                        <p className="whitespace-pre-wrap break-words text-sm">{newScheduled.message}</p>
+                      ) : (
+                        <p className="text-sm text-primary-foreground/70">
+                          {selectedScheduledMedia ? "Legenda opcional" : "Escreva a mensagem para visualizar aqui"}
+                        </p>
+                      )}
+                      <div className="mt-2 flex items-center justify-between gap-3 text-[10px] text-primary-foreground/70">
+                        <span className="truncate">{selectedScheduledLead?.phone || selectedConv?.contact_phone || "Telefone do lead"}</span>
+                        <span>{newScheduled.scheduled_at ? newScheduled.scheduled_at.slice(11, 16) : "--:--"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-dashed p-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Resumo</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{selectedScheduledMedia ? "Midia + legenda" : "Texto"}</Badge>
+                    {newScheduled.instance_id && (
+                      <Badge variant="outline">
+                        {instances.find((inst) => inst.id === newScheduled.instance_id)?.instance_name || "Instancia"}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <p>Lead: <span className="text-foreground">{selectedScheduledLead?.name || "Nao selecionado"}</span></p>
+                  <p>Agendamento: <span className="text-foreground">{newScheduled.scheduled_at || "Nao definido"}</span></p>
+                  <p>Midia: <span className="text-foreground">{selectedScheduledMedia?.file_name || "Sem midia"}</span></p>
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowScheduleMsg(false)}>Cancelar</Button>
-            <Button onClick={handleScheduleFromChat} disabled={!scheduleMessage.trim() || !scheduleDateTime}>
-              <Clock className="h-4 w-4 mr-1.5" /> Agendar
+            <Button variant="outline" onClick={() => setShowScheduleMsg(false)} disabled={savingScheduledMessage}>Cancelar</Button>
+            <Button onClick={handleScheduleFromChat} disabled={savingScheduledMessage || !canSaveScheduledFromChat}>
+              {savingScheduledMessage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4 mr-1.5" />}
+              {editingScheduledId ? "Salvar" : "Agendar"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -62,3 +62,9 @@ Nesta revisao, o workflow volta a enviar direto pela Evolution API. Com a migrac
 - registrando corretamente `PENDING` como falha/nao confirmado no RPC de finalizacao
 
 Se voce quiser retomar a versao com edge function depois, o arquivo `supabase/functions/send-scheduled-message/index.ts` ficou pronto no projeto, mas precisa ser publicado no Supabase antes de usar no n8n.
+
+## Continuidade
+
+O agendamento v2/v3 ja esta tratado como etapa concluida dentro do roadmap maior. Para a continuidade das proximas fases arquiteturais, consulte:
+
+- [docs/PRODUCT-STORY-ARQUITETURA-CHAT-E-AUTOMACOES.md](/c:/Users/Alisson/CascadeProjects/FlowLux/docs/PRODUCT-STORY-ARQUITETURA-CHAT-E-AUTOMACOES.md)

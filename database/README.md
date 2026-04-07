@@ -19,6 +19,10 @@
 15. `supabase-migration-v15-scheduled-message-observability.sql` - Logs de tentativa, novos status e observabilidade dos agendamentos
 16. `supabase-migration-v16-scheduled-message-rpc.sql` - Funcoes RPC para claim e finalizacao segura dos agendamentos
 17. `supabase-migration-v17-scheduled-message-rich-content.sql` - Permite agendar midia com legenda e expor esses dados no RPC do agendamento
+18. `supabase-migration-v18-scheduled-message-status-and-placeholders.sql` - Ajusta confirmacao real do envio e placeholders no agendamento
+19. `supabase-migration-v19-chat-inbound-idempotency.sql` - Idempotencia do inbound do chat e persistencia correta de conversa e mensagem
+20. `supabase-migration-v20-flow-executions-async.sql` - Fila, status async, retry e auditoria por etapa dos fluxos
+21. `supabase-migration-v21-operational-observability.sql` - Eventos operacionais, metricas de erro e base de observabilidade minima
 
 ## Workflows n8n
 
@@ -32,6 +36,7 @@
 - `n8n-workflow-mensagem-agendada-v2-rpc.md` - Referencia da versao v2 RPC dos agendamentos
 - `n8n-workflow-mensagem-agendada-v3-rich-content.json` - Workflow importavel recomendado para agendamentos com texto ou midia com legenda
 - `n8n-workflow-mensagem-agendada-v3-rich-content.md` - Referencia da versao v3 rich content dos agendamentos
+- `../docs/PRODUCT-STORY-ARQUITETURA-CHAT-E-AUTOMACOES.md` - Story de continuidade das proximas fases de chat, automacoes e endurecimento operacional
 - `n8n-workflow-receber-mensagens.json` - Workflow de recebimento de mensagens do Evolution API
   - Recebe webhook `MESSAGES_UPSERT`
   - Salva em `messages`
@@ -41,10 +46,13 @@
 
 ## API Route (Next.js)
 
-- `src/app/api/execute-flow/route.ts` - Executa fluxos sequenciais via Evolution API
+- `src/app/api/execute-flow/route.ts` - Enfileira a execucao do fluxo e dispara o worker em segundo plano
   - Chamado pelo frontend ao executar um fluxo no chat
+  - Persiste em `flow_executions` e `flow_execution_steps`
   - Usa `NEXT_PUBLIC_EVOLUTION_API_URL` e `NEXT_PUBLIC_EVOLUTION_API_KEY`
   - Requer `SUPABASE_SERVICE_ROLE_KEY` para escrita no banco
+- `src/app/api/flow-worker/route.ts` - Processa execucoes pendentes ou uma execucao especifica
+- `src/app/api/flow-executions/[id]/cancel/route.ts` - Cancela uma execucao pendente ou em andamento
 
 ## Notas
 
@@ -65,4 +73,11 @@
   - adiciona suporte a midia com legenda
   - mantém quebra de linha do texto
   - recomendado quando você quiser usar mensagens prontas + mídia no mesmo fluxo
+- Flows async:
+  - a request do chat apenas enfileira
+  - delays passam a ser retomados pelo banco via `next_run_at`
+  - cada etapa fica rastreavel em `flow_execution_steps`
+- Observabilidade operacional:
+  - erros do inbound, envio de midia e falhas terminais dos fluxos ficam em `operational_events`
+  - o dashboard passa a ler erros, agendamentos processados, tempo medio de execucao e alertas recentes
 - Gravacao de audio requer HTTPS ou `localhost`

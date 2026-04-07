@@ -76,6 +76,9 @@ export interface Message {
   content: string;
   media_url?: string;
   status: "pending" | "sent" | "delivered" | "read";
+  provider_message_id?: string | null;
+  provider_payload?: Record<string, unknown> | null;
+  provider_timestamp?: string | null;
   created_at: string;
 }
 
