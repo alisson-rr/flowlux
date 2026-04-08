@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { normalizePhone, phoneVariants } from "@/lib/utils";
+import { buildLeadPhoneFields } from "@/lib/phone";
 
 export async function POST(req: NextRequest) {
   try {
@@ -75,10 +76,15 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // Create new lead
+      const phoneFields = buildLeadPhoneFields(cleanPhone);
+      if (!phoneFields) {
+        return NextResponse.json({ success: true, processed: false, reason: "invalid_phone_fields" });
+      }
+
       const { data: newLead } = await supabase.from("leads").insert({
         user_id: userId,
         name: buyerName || "Lead Hotmart",
-        phone: cleanPhone,
+        ...phoneFields,
         email: buyerEmail || null,
         source: `Hotmart - ${productName}`,
         stage_id: cfg.stage_id || null,

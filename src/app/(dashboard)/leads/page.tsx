@@ -18,6 +18,7 @@ import {
   Plus, Search, Phone, Mail, StickyNote, Tag, X, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Pencil, Globe, Archive, ArchiveRestore, Filter, SortAsc, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download,
 } from "lucide-react";
 import { cn, formatPhone, formatPhoneInput, getInitials, normalizePhone, phoneVariants } from "@/lib/utils";
+import { buildLeadPhoneFields } from "@/lib/phone";
 import { TAG_COLORS, STAGE_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/ui/toast";
 import { useSubscription } from "@/lib/use-subscription";
@@ -134,13 +135,14 @@ export default function LeadsPage() {
       return;
     }
 
-    const normalizedPhone = normalizePhone(newLead.phone);
+    const phoneFields = buildLeadPhoneFields(newLead.phone);
+    const normalizedPhone = phoneFields?.phone || "";
     if (!normalizedPhone) { toast("Telefone inválido.", "warning"); return; }
 
     const { data, error } = await supabase.from("leads").insert({
       user_id: user.id,
       name: newLead.name,
-      phone: normalizedPhone,
+      ...phoneFields,
       email: newLead.email || null,
       stage_id: selectedStage,
       funnel_id: selectedFunnel,
@@ -160,12 +162,13 @@ export default function LeadsPage() {
     if (!editLead.name.trim()) { toast("Nome é obrigatório.", "warning"); return; }
     if (!editLead.phone.trim()) { toast("Telefone é obrigatório.", "warning"); return; }
 
-    const normalizedPhone = normalizePhone(editLead.phone);
+    const phoneFields = buildLeadPhoneFields(editLead.phone);
+    const normalizedPhone = phoneFields?.phone || "";
     if (!normalizedPhone) { toast("Telefone inválido.", "warning"); return; }
 
     const { error } = await supabase.from("leads").update({
       name: editLead.name,
-      phone: normalizedPhone,
+      ...phoneFields,
       email: editLead.email || null,
       source: editLead.source || null,
       funnel_id: editLead.funnel_id || null,
@@ -391,15 +394,22 @@ export default function LeadsPage() {
     const BATCH_SIZE = 50;
 
     for (let i = 0; i < toImport.length; i += BATCH_SIZE) {
-      const batch = toImport.slice(i, i + BATCH_SIZE).map((row) => ({
-        user_id: user.id,
-        name: row.name,
-        phone: row.phone,
-        email: row.email || null,
-        source: row.source || "Importação CSV",
-        funnel_id: importFunnel,
-        stage_id: importStage,
-      }));
+      const batch = toImport.slice(i, i + BATCH_SIZE).flatMap((row) => {
+        const phoneFields = buildLeadPhoneFields(row.phone);
+        if (!phoneFields) return [];
+
+        return [{
+          user_id: user.id,
+          name: row.name,
+          ...phoneFields,
+          email: row.email || null,
+          source: row.source || "Importação CSV",
+          funnel_id: importFunnel,
+          stage_id: importStage,
+        }];
+      });
+
+      if (!batch.length) continue;
 
       const { data, error } = await supabase.from("leads").insert(batch).select();
       if (error) {
