@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeft, ArrowDown, ArrowUp, ExternalLink, Loader2,
+  ArrowLeft, ArrowDown, ArrowUp, BarChart3, ExternalLink, Loader2,
   MonitorSmartphone, PauseCircle, Palette, Plus, Rocket, Save, Settings2, Trash2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -37,6 +37,25 @@ const STEP_TYPES: Array<{ value: PreCheckoutFormStepType; label: string }> = [
   { value: "multiple_choice", label: "Múltipla escolha" },
 ];
 
+const PANEL_WIDTH_PREVIEW: Record<PreCheckoutForm["theme"]["layout"]["width"], number> = {
+  sm: 440,
+  md: 560,
+  lg: 720,
+};
+
+const PANEL_PADDING_PREVIEW: Record<PreCheckoutForm["theme"]["layout"]["spacing"], string> = {
+  compact: "20px",
+  comfortable: "28px",
+  relaxed: "36px",
+};
+
+const BUTTON_RADIUS_PREVIEW: Record<PreCheckoutForm["theme"]["typography"]["button_radius"], string> = {
+  sm: "10px",
+  md: "14px",
+  lg: "18px",
+  full: "999px",
+};
+
 function createStep(type: PreCheckoutFormStepType, position: number): PreCheckoutFormStep {
   const baseKey = `campo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
   const choiceOptions: PreCheckoutStepOption[] = [
@@ -63,6 +82,43 @@ function normalizeSteps(steps: PreCheckoutFormStep[]) {
   return [...steps]
     .sort((a, b) => a.position - b.position)
     .map((step, index) => ({ ...step, position: index }));
+}
+
+function getStatusLabel(status: PreCheckoutForm["status"]) {
+  switch (status) {
+    case "published":
+      return "Publicado";
+    case "paused":
+      return "Pausado";
+    case "archived":
+      return "Arquivado";
+    default:
+      return "Rascunho";
+  }
+}
+
+function getFinalActionLabel(action: PreCheckoutForm["final_config"]["action"]) {
+  switch (action) {
+    case "checkout_redirect":
+      return "Ir para checkout";
+    case "whatsapp_redirect":
+      return "Abrir WhatsApp";
+    case "thank_you":
+      return "Tela de obrigado";
+    default:
+      return "Somente flow";
+  }
+}
+
+function getWidthLabel(width: PreCheckoutForm["theme"]["layout"]["width"]) {
+  switch (width) {
+    case "sm":
+      return "Mais compacto";
+    case "lg":
+      return "Mais largo";
+    default:
+      return "Medio";
+  }
 }
 
 export default function FormularioEditorPage() {
@@ -114,7 +170,7 @@ export default function FormularioEditorPage() {
     ]);
 
     if (formResponse.error || !formResponse.data) {
-      toast("Não foi possível carregar este formulário.", "error");
+      toast("Nao foi possivel carregar este quiz.", "error");
       router.push("/formularios");
       return;
     }
@@ -158,12 +214,12 @@ export default function FormularioEditorPage() {
 
     const normalizedSlug = slugifyPreCheckoutFormName(form.slug || form.name);
     if (!normalizedSlug) {
-      toast("Defina um slug válido para o formulário.", "warning");
+      toast("Defina um identificador valido para a URL.", "warning");
       return;
     }
 
     if (nextStatus === "published" && !validation.isValid) {
-      toast(validation.errors[0] || "O formulário ainda não pode ser publicado.", "warning");
+      toast(validation.errors[0] || "Ainda faltam ajustes para publicar.", "warning");
       return;
     }
 
@@ -176,7 +232,7 @@ export default function FormularioEditorPage() {
       .limit(1);
 
     if (slugConflict && slugConflict.length > 0) {
-      toast("Esse slug já está em uso. Ajuste antes de salvar.", "warning");
+      toast("Esse identificador ja esta em uso. Ajuste antes de salvar.", "warning");
       setSaving(false);
       return;
     }
@@ -196,7 +252,7 @@ export default function FormularioEditorPage() {
 
     const { error: formError } = await supabase.from("pre_checkout_forms").update(formPayload).eq("id", form.id);
     if (formError) {
-      toast("Não foi possível salvar o formulário.", "error");
+      toast("Nao foi possivel salvar o quiz.", "error");
       setSaving(false);
       return;
     }
@@ -241,7 +297,7 @@ export default function FormularioEditorPage() {
     if (persistedSteps.length) await supabase.from("pre_checkout_form_steps").upsert(persistedSteps);
     if (newSteps.length) await supabase.from("pre_checkout_form_steps").insert(newSteps);
 
-    toast(nextStatus === "published" ? "Formulário publicado!" : "Formulário salvo com sucesso!", "success");
+    toast(nextStatus === "published" ? "Quiz publicado com sucesso!" : "Quiz salvo com sucesso!", "success");
     await loadData();
     setSaving(false);
   };
@@ -271,19 +327,23 @@ export default function FormularioEditorPage() {
           </Link>
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold">{form.name}</h1>
-            <Badge variant={form.status === "published" ? "default" : "outline"}>{form.status}</Badge>
+            <Badge variant={form.status === "published" ? "default" : "outline"}>{getStatusLabel(form.status)}</Badge>
             <Badge variant="outline">{PRE_CHECKOUT_TEMPLATE_LIST.find((item) => item.key === form.template_key)?.name || form.template_key}</Badge>
           </div>
-          <p className="text-sm text-muted-foreground">Configure estrutura, visual, tracking e destino comercial do seu pre-checkout.</p>
+          <p className="text-sm text-muted-foreground">Ajuste o quiz, acompanhe a previa ao lado e publique quando estiver pronto.</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => router.push(`/formularios/${form.id}/relatorio`)}>
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Relatorio
+          </Button>
           <Button
             variant="outline"
             onClick={() => window.open(`/f/${form.slug}`, "_blank")}
             disabled={form.status !== "published"}
           >
             <ExternalLink className="h-4 w-4 mr-2" />
-            Abrir público
+            Abrir pagina
           </Button>
           <Button variant="outline" onClick={() => handleSave(form.status === "published" ? "paused" : "published")} disabled={saving}>
             {form.status === "published" ? <PauseCircle className="h-4 w-4 mr-2" /> : <Rocket className="h-4 w-4 mr-2" />}
@@ -298,21 +358,21 @@ export default function FormularioEditorPage() {
 
       {!validation.isValid && (
         <Card className="border-amber-500/30 bg-amber-500/10 p-4">
-          <p className="text-sm font-medium text-amber-300">Pendências para publicar</p>
+          <p className="text-sm font-medium text-amber-300">Ajustes para publicar</p>
           <ul className="mt-2 space-y-1 text-sm text-amber-100/90">
-            {validation.errors.slice(0, 5).map((error) => <li key={error}>• {error}</li>)}
+            {validation.errors.slice(0, 5).map((error) => <li key={error}>- {error}</li>)}
           </ul>
         </Card>
       )}
 
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
       <Tabs defaultValue="conteudo" className="space-y-4">
         <TabsList className="h-auto flex-wrap justify-start">
-          <TabsTrigger value="conteudo">Conteúdo</TabsTrigger>
+          <TabsTrigger value="conteudo">Basico</TabsTrigger>
           <TabsTrigger value="perguntas">Perguntas</TabsTrigger>
           <TabsTrigger value="estilo">Estilo</TabsTrigger>
-          <TabsTrigger value="integracoes">Integrações</TabsTrigger>
-          <TabsTrigger value="finalizacao">Finalização</TabsTrigger>
-          <TabsTrigger value="preview">Preview</TabsTrigger>
+          <TabsTrigger value="integracoes">Integracoes</TabsTrigger>
+          <TabsTrigger value="finalizacao">Finalizacao</TabsTrigger>
         </TabsList>
 
         <TabsContent value="conteudo">
@@ -431,6 +491,91 @@ export default function FormularioEditorPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Card className="overflow-hidden p-0 xl:sticky xl:top-24">
+        <div className="space-y-4 border-b p-5">
+          <div>
+            <p className="text-base font-semibold">Previa ao vivo</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              O visual ao lado ajuda a comparar texto, imagem, largura e ritmo do quiz.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <div className="rounded-2xl border p-3">
+              <p className="text-xs text-muted-foreground">Modelo</p>
+              <p className="mt-1 text-sm font-medium">{PRE_CHECKOUT_TEMPLATE_LIST.find((item) => item.key === form.template_key)?.name || form.template_key}</p>
+            </div>
+            <div className="rounded-2xl border p-3">
+              <p className="text-xs text-muted-foreground">Depois do envio</p>
+              <p className="mt-1 text-sm font-medium">{getFinalActionLabel(form.final_config.action)}</p>
+            </div>
+            <div className="rounded-2xl border p-3">
+              <p className="text-xs text-muted-foreground">Perguntas</p>
+              <p className="mt-1 text-sm font-medium">{orderedSteps.length}</p>
+            </div>
+            <div className="rounded-2xl border p-3">
+              <p className="text-xs text-muted-foreground">Largura</p>
+              <p className="mt-1 text-sm font-medium">{getWidthLabel(form.theme.layout.width)}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4" style={previewStyle}>
+          <div
+            style={{
+              width: "100%",
+              maxWidth: `${PANEL_WIDTH_PREVIEW[form.theme.layout.width]}px`,
+              marginLeft: form.theme.layout.align === "left" ? 0 : "auto",
+              marginRight: "auto",
+              background: form.theme.panel_color,
+              color: form.theme.text_color,
+              fontFamily: form.theme.typography.body_font,
+              borderRadius: "28px",
+              boxShadow: "0 24px 60px rgba(0, 0, 0, 0.35)",
+              overflow: "hidden",
+            }}
+          >
+            {form.theme.top_image_url ? (
+              <img src={form.theme.top_image_url} alt="Imagem do topo do quiz" className="h-44 w-full object-cover" />
+            ) : null}
+
+            <div style={{ padding: PANEL_PADDING_PREVIEW[form.theme.layout.spacing] }}>
+              <h2 className="text-2xl font-semibold" style={{ fontFamily: form.theme.typography.heading_font }}>
+                {form.name}
+              </h2>
+              {form.description ? <p className="mt-2 text-sm opacity-80">{form.description}</p> : null}
+
+              <div className="mt-5 space-y-3">
+                {orderedSteps.slice(0, 3).map((step, index) => (
+                  <div key={step.id} className="rounded-2xl border border-white/10 bg-black/10 p-4">
+                    <p className="text-xs uppercase tracking-wide opacity-60">Pergunta {index + 1}</p>
+                    <p className="mt-1 font-medium">{step.title}</p>
+                    <p className="mt-2 text-sm opacity-70">{step.description || step.placeholder || "Campo configurado para esta resposta."}</p>
+                  </div>
+                ))}
+                {orderedSteps.length > 3 ? (
+                  <div className="rounded-2xl border border-dashed border-white/15 p-4 text-sm opacity-75">
+                    +{orderedSteps.length - 3} pergunta(s) continuam abaixo.
+                  </div>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                className="mt-5 h-12 w-full text-sm font-semibold"
+                style={{
+                  background: form.theme.primary_color,
+                  color: "#ffffff",
+                  borderRadius: BUTTON_RADIUS_PREVIEW[form.theme.typography.button_radius],
+                }}
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      </Card>
+      </div>
     </div>
   );
 }

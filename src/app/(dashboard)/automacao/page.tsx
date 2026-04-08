@@ -239,7 +239,7 @@ export default function AutomacaoPage() {
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
 
-      const [flowsRes, massRes, schedRes, instRes, leadsRes, mediaRes, templatesRes, tagsRes, stagesRes, massUsageRes, scheduledUsageRes] = await Promise.all([
+      const [flowsRes, massRes, schedRes, instRes, leadsRes, mediaRes, templatesRes, tagsRes, stagesRes, massUsageRes, scheduledUsageRes, groupScheduledUsageRes] = await Promise.all([
         supabase.from("flows").select("*, flow_steps(*)").eq("user_id", userId).order("created_at", { ascending: false }),
         supabase.from("mass_messages").select("*").eq("user_id", userId).is("deleted_at", null).neq("status", "cancelled").order("created_at", { ascending: false }),
         supabase.from("scheduled_messages").select("*, leads(name)").eq("user_id", userId).is("deleted_at", null).neq("status", "cancelled").order("created_at", { ascending: false }),
@@ -264,6 +264,14 @@ export default function AutomacaoPage() {
           .is("deleted_at", null)
           .gte("sent_at", monthStart)
           .lt("sent_at", nextMonthStart),
+        supabase
+          .from("group_scheduled_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("status", "sent")
+          .is("deleted_at", null)
+          .gte("sent_at", monthStart)
+          .lt("sent_at", nextMonthStart),
       ]);
       if (flowsRes.data) {
         setFlows(flowsRes.data.map((f: any) => ({
@@ -274,7 +282,7 @@ export default function AutomacaoPage() {
       if (massRes.data) {
         setMassMessages(massRes.data);
       }
-      setMonthlyDisparos((massUsageRes.count || 0) + (scheduledUsageRes.count || 0));
+      setMonthlyDisparos((massUsageRes.count || 0) + (scheduledUsageRes.count || 0) + (groupScheduledUsageRes.count || 0));
       if (schedRes.data) setScheduledMessages(schedRes.data.map((s: any) => ({ ...s, lead_name: s.leads?.name })));
       if (instRes.data) {
         setInstances(instRes.data);

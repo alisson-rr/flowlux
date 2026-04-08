@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { recordOperationalEvent } from "@/lib/operational-events";
+import { sendGroupMessage } from "@/lib/whatsapp-groups";
 
 const EVOLUTION_API_URL = process.env.NEXT_PUBLIC_EVOLUTION_API_URL || "";
 const EVOLUTION_API_KEY = process.env.NEXT_PUBLIC_EVOLUTION_API_KEY || "";
@@ -133,6 +134,10 @@ export function kickFlowExecution(executionId: string, dateLike?: string | null)
 
 function getRemotePhone(remoteJid: string) {
   return remoteJid.replace("@s.whatsapp.net", "").replace("@g.us", "");
+}
+
+function isGroupExecution(execution: FlowExecutionRecord) {
+  return execution.metadata?.channel === "group" && typeof execution.metadata?.group_id === "string";
 }
 
 function getConversationPreviewForStep(step: Pick<FlowExecutionStepRecord, "step_type" | "content" | "file_name">) {
@@ -283,6 +288,10 @@ async function sendAudio(instanceName: string, number: string, audioUrl: string)
 }
 
 async function ensureConversationForExecution(execution: FlowExecutionRecord) {
+  if (isGroupExecution(execution)) {
+    return null;
+  }
+
   const supabase = getSupabaseAdmin();
 
   if (execution.conversation_id) {
@@ -383,6 +392,26 @@ async function markExecutionCancelled(executionId: string, reason?: string | nul
 }
 
 async function sendStep(execution: FlowExecutionRecord, step: FlowExecutionStepRecord) {
+  if (isGroupExecution(execution)) {
+    if (!execution.metadata?.group_id) {
+      throw new Error("Flow execution de grupo sem group_id");
+    }
+
+    return sendGroupMessage({
+      userId: execution.user_id,
+      groupId: execution.metadata.group_id,
+      message: step.content || "",
+      mediaUrl: step.media_url || null,
+      mediaType:
+        step.step_type === "image" || step.step_type === "video" || step.step_type === "audio" || step.step_type === "document"
+          ? step.step_type
+          : null,
+      fileName: step.file_name || null,
+      sendMode: "flow",
+      flowExecutionId: execution.id,
+    });
+  }
+
   const instanceName = execution.instance_name || execution.metadata?.instance_name;
   if (!instanceName) {
     throw new Error("Flow execution is missing instance_name");
@@ -720,11 +749,31 @@ export async function processFlowExecution(executionId: string): Promise<FlowExe
       const conversationId = await ensureConversationForExecution(execution);
       const providerResponse = await sendStep(execution, currentStep);
       const sentAt = nowIso();
-      const preview = getConversationPreviewForStep(currentStep);
-      const messageType = getMessageTypeForStep(currentStep.step_type);
+      const providerPayload = providerResponse && typeof providerResponse === "object" && "providerResponse" in providerResponse
+        ? (providerResponse as any).providerResponse
+        : providerResponse;
 
-      await Promise.all([
-        supabase.from("messages").insert({
+      await supabase.from("flow_execution_steps").update({
+        status: "completed",
+        completed_at: sentAt,
+        provider_response: providerPayload || {},
+        error_message: null,
+      }).eq("id", currentStep.id);
+
+      await supabase.from("flow_executions").update({
+        conversation_id: conversationId,
+        current_step: currentStep.step_order + 1,
+        next_run_at: null,
+        heartbeat_at: sentAt,
+        provider_response: providerPayload || {},
+        error_message: null,
+      }).eq("id", execution.id);
+
+      if (conversationId) {
+        const preview = getConversationPreviewForStep(currentStep);
+        const messageType = getMessageTypeForStep(currentStep.step_type);
+
+        await supabase.from("messages").insert({
           conversation_id: conversationId,
           remote_jid: execution.remote_jid,
           from_me: true,
@@ -732,29 +781,16 @@ export async function processFlowExecution(executionId: string): Promise<FlowExe
           content: getMessageContentForStep(currentStep),
           media_url: currentStep.media_url || null,
           status: "sent",
-          provider_payload: providerResponse || {},
+          provider_payload: providerPayload || {},
           provider_timestamp: sentAt,
           created_at: sentAt,
-        }),
-        supabase.from("conversations").update({
+        });
+
+        await supabase.from("conversations").update({
           last_message: preview,
           last_message_at: sentAt,
-        }).eq("id", conversationId),
-        supabase.from("flow_execution_steps").update({
-          status: "completed",
-          completed_at: sentAt,
-          provider_response: providerResponse || {},
-          error_message: null,
-        }).eq("id", currentStep.id),
-        supabase.from("flow_executions").update({
-          conversation_id: conversationId,
-          current_step: currentStep.step_order + 1,
-          next_run_at: null,
-          heartbeat_at: sentAt,
-          provider_response: providerResponse || {},
-          error_message: null,
-        }).eq("id", execution.id),
-      ]);
+        }).eq("id", conversationId);
+      }
 
       processedSteps += 1;
     } catch (error: any) {

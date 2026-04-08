@@ -78,6 +78,7 @@ export function useDashboardMetrics() {
         weekMsgsRes,
         operationalErrorsRes,
         scheduledAttemptsRes,
+        groupScheduledAttemptsRes,
         flowExecutionsRes,
         failedFlowStepsRes,
         recentAlertsRes,
@@ -91,6 +92,7 @@ export function useDashboardMetrics() {
         supabase.from("messages").select("from_me, created_at").gte("created_at", weekAgo),
         supabase.from("operational_events").select("id", { count: "exact", head: true }).eq("severity", "error").gte("created_at", weekAgo),
         supabase.from("scheduled_message_attempts").select("id", { count: "exact", head: true }).in("status", ["sent", "failed", "skipped"]).gte("attempted_at", weekAgo),
+        supabase.from("group_scheduled_message_attempts").select("id", { count: "exact", head: true }).in("status", ["sent", "failed", "skipped"]).gte("attempted_at", weekAgo),
         supabase.from("flow_executions").select("flow_id, started_at, completed_at").gte("started_at", weekAgo).not("completed_at", "is", null),
         supabase.from("flow_execution_steps").select("flow_id, step_order, step_type, updated_at").eq("status", "failed").gte("updated_at", weekAgo),
         supabase.from("operational_events").select("id, severity, source, event_type, message, created_at").in("severity", ["warning", "error"]).gte("created_at", weekAgo).order("created_at", { ascending: false }).limit(8),
@@ -207,7 +209,7 @@ export function useDashboardMetrics() {
         conversionRate: totalLeads > 0 ? Math.round((lastStageCount / totalLeads) * 100) : 0,
         stageCount: stages.length,
         messageErrorsWeek: operationalErrorsRes.count || 0,
-        scheduledProcessedWeek: scheduledAttemptsRes.count || 0,
+        scheduledProcessedWeek: (scheduledAttemptsRes.count || 0) + (groupScheduledAttemptsRes.count || 0),
         averageFlowExecutionMs,
       });
       setStagesData(nextStagesData);

@@ -7,6 +7,7 @@ import { CheckCircle2, ChevronRight, ImageIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { formatPhoneInputValue } from "@/lib/phone";
 import type { PreCheckoutForm, PreCheckoutFormStep } from "@/types";
 
 type SessionPayload = {
@@ -166,6 +167,17 @@ export default function PublicPreCheckoutPage() {
     setAnswers((current) => ({ ...current, [currentStep.id]: value }));
   };
 
+  const handleFieldInputChange = (value: string) => {
+    if (!currentStep) return;
+
+    if (currentStep.type === "phone") {
+      setAnswer(formatPhoneInputValue(value));
+      return;
+    }
+
+    setAnswer(value);
+  };
+
   const toggleMultipleChoice = (value: string) => {
     const current = Array.isArray(currentValue) ? currentValue : [];
     setAnswer(current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
@@ -318,7 +330,15 @@ export default function PublicPreCheckoutPage() {
 
                 <div className="space-y-3">
                   {["short_text", "email", "phone"].includes(currentStep.type) && (
-                    <Input value={Array.isArray(currentValue) ? "" : currentValue} onChange={(e) => setAnswer(e.target.value)} placeholder={currentStep.placeholder || ""} className="h-12 text-base" />
+                    <Input
+                      type={currentStep.type === "phone" ? "tel" : currentStep.type === "email" ? "email" : "text"}
+                      inputMode={currentStep.type === "phone" ? "tel" : undefined}
+                      autoComplete={currentStep.type === "phone" ? "tel" : currentStep.type === "email" ? "email" : "name"}
+                      value={Array.isArray(currentValue) ? "" : currentValue}
+                      onChange={(e) => handleFieldInputChange(e.target.value)}
+                      placeholder={currentStep.placeholder || ""}
+                      className="h-12 text-base"
+                    />
                   )}
                   {currentStep.type === "long_text" && (
                     <Textarea value={Array.isArray(currentValue) ? "" : currentValue} onChange={(e) => setAnswer(e.target.value)} placeholder={currentStep.placeholder || ""} className="min-h-32 text-base" />

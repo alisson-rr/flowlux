@@ -173,6 +173,94 @@ export interface ScheduledMessageAttempt {
   updated_at: string;
 }
 
+export interface WhatsAppGroup {
+  id: string;
+  user_id: string;
+  instance_id: string;
+  remote_jid: string;
+  subject: string;
+  description?: string | null;
+  picture_url?: string | null;
+  owner_jid?: string | null;
+  participants_count: number;
+  source: "sync" | "manual";
+  status: "active" | "paused" | "archived";
+  metadata?: Record<string, unknown>;
+  last_synced_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WhatsAppGroupParticipant {
+  id: string;
+  admin: "superadmin" | "admin" | null;
+  action_target?: string | null;
+}
+
+export interface GroupMessageLog {
+  id: string;
+  group_id: string;
+  user_id: string;
+  instance_id?: string | null;
+  flow_execution_id?: string | null;
+  scheduled_message_id?: string | null;
+  send_mode: "manual" | "flow" | "scheduled";
+  message_type: "text" | "image" | "video" | "audio" | "document";
+  content?: string | null;
+  media_url?: string | null;
+  file_name?: string | null;
+  status: "queued" | "sent" | "failed";
+  error_message?: string | null;
+  provider_response?: Record<string, unknown>;
+  sent_at?: string | null;
+  created_at: string;
+}
+
+export interface GroupScheduledMessage {
+  id: string;
+  user_id: string;
+  group_id: string;
+  instance_id: string;
+  remote_jid: string;
+  group_subject: string;
+  message?: string | null;
+  scheduled_at: string;
+  next_run_at?: string | null;
+  status: "pending" | "processing" | "retry_waiting" | "sent" | "failed" | "cancelled";
+  attempt_count: number;
+  max_attempts: number;
+  claimed_at?: string | null;
+  last_attempt_at?: string | null;
+  sent_at?: string | null;
+  failure_reason?: string | null;
+  provider_response?: Record<string, unknown>;
+  media_url?: string | null;
+  media_type?: "image" | "video" | "audio" | "document" | null;
+  file_name?: string | null;
+  deleted_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupScheduledMessageAttempt {
+  id: string;
+  scheduled_message_id: string;
+  user_id: string;
+  group_id: string;
+  instance_id?: string | null;
+  attempt_number: number;
+  target_group_jid: string;
+  group_subject: string;
+  instance_name?: string | null;
+  status: "processing" | "sent" | "failed" | "skipped";
+  attempted_at: string;
+  completed_at?: string | null;
+  failure_reason?: string | null;
+  provider_response?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface MessageTemplate {
   id: string;
   user_id: string;

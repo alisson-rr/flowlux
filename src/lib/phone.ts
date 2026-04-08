@@ -3,6 +3,7 @@ import { AsYouType, type CountryCode, parsePhoneNumberFromString } from "libphon
 const BRAZIL_COUNTRY_CODE = "55";
 const MIN_PHONE_DIGITS = 8;
 const MAX_PHONE_DIGITS = 15;
+const MAX_BRAZIL_PHONE_DIGITS = 11;
 
 export interface PhoneIdentity {
   rawInput: string;
@@ -203,8 +204,13 @@ export function formatPhoneInputValue(value: string, defaultCountry: CountryCode
   const { digits, hasInternationalPrefix } = sanitizePhoneInput(value);
   if (!digits) return "";
 
-  if (hasInternationalPrefix || (!looksLikeBrazilNational(digits) && !digits.startsWith(BRAZIL_COUNTRY_CODE))) {
-    return new AsYouType().input(`+${digits}`);
+  if (hasInternationalPrefix) {
+    return new AsYouType().input(`+${digits.slice(0, MAX_PHONE_DIGITS)}`);
+  }
+
+  if (defaultCountry === "BR") {
+    const nationalDigits = digits.startsWith(BRAZIL_COUNTRY_CODE) ? digits.slice(2) : digits;
+    return new AsYouType(defaultCountry).input(nationalDigits.slice(0, MAX_BRAZIL_PHONE_DIGITS));
   }
 
   return new AsYouType(defaultCountry).input(digits);
