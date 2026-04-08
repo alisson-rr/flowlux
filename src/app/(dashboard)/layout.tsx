@@ -27,6 +27,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const trialDaysLeft = dashboardData?.trialDaysLeft;
   const [dismissBanner, setDismissBanner] = useState(false);
   const [dismissTrialBanner, setDismissTrialBanner] = useState(false);
+  const isExclusiveEditor = /^\/formularios\/[^/]+$/.test(pathname || "");
 
   useEffect(() => {
     if (authLoading) return;
@@ -54,9 +55,9 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   return (
     <ToastProvider>
       <div className="flex h-screen overflow-hidden">
-        <Sidebar failedCount={dashboardData?.failedCount || 0} />
+        {!isExclusiveEditor ? <Sidebar failedCount={dashboardData?.failedCount || 0} /> : null}
         <main className="flex-1 overflow-y-auto">
-          {trialDaysLeft !== null && trialDaysLeft !== undefined && !dismissTrialBanner && (
+          {!isExclusiveEditor && trialDaysLeft !== null && trialDaysLeft !== undefined && !dismissTrialBanner && (
             <div className="bg-primary/10 border-b border-primary/30 px-4 py-2 flex items-center justify-between text-sm text-primary">
               <div className="flex items-center gap-2">
                 <Crown className="h-4 w-4 shrink-0" />
@@ -69,7 +70,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             </div>
           )}
 
-          {dashboardData && dashboardData.disconnectedInstances.length > 0 && !dismissBanner && (
+          {!isExclusiveEditor && dashboardData && dashboardData.disconnectedInstances.length > 0 && !dismissBanner && (
             <div className="bg-yellow-500/10 border-b border-yellow-500/30 px-4 py-2 flex items-center justify-between text-sm text-yellow-400">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -81,8 +82,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               <button onClick={() => setDismissBanner(true)} className="shrink-0 opacity-60 hover:opacity-100"><X className="h-4 w-4" /></button>
             </div>
           )}
-
-          <div className="p-6">{children}</div>
+          <div className={isExclusiveEditor ? "" : "p-6"}>{children}</div>
         </main>
       </div>
     </ToastProvider>

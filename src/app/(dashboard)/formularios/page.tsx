@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   BarChart3,
   Copy,
-  ExternalLink,
   FileText,
+  ExternalLink,
+  Sparkles,
   Loader2,
   PauseCircle,
   PlayCircle,
@@ -22,13 +23,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { PRE_CHECKOUT_TEMPLATE_LIST, buildFormFromTemplate } from "@/lib/pre-checkout/templates";
+import { PRE_CHECKOUT_DEFAULT_SESSION_SETTINGS, PRE_CHECKOUT_DEFAULT_THEME, PRE_CHECKOUT_TEMPLATE_LIST, buildFormFromTemplate } from "@/lib/pre-checkout/templates";
 import { slugifyPreCheckoutFormName } from "@/lib/pre-checkout/forms";
 import { formatDateTime } from "@/lib/utils";
 import type { PreCheckoutForm } from "@/types";
 
 function buildUniqueSlug(name: string) {
-  const base = slugifyPreCheckoutFormName(name) || "pre-checkout";
+  const base = slugifyPreCheckoutFormName(name) || "form";
   return `${base}-${Date.now().toString(36)}`;
 }
 
@@ -60,80 +61,6 @@ function getStatusLabel(status: PreCheckoutForm["status"] | "all") {
   }
 }
 
-type TemplatePreviewInput = {
-  templateKey: string;
-  title: string;
-  description: string;
-  accentColor: string;
-};
-
-function renderTemplateMock({ templateKey, title, description, accentColor }: TemplatePreviewInput) {
-  const isQualification = templateKey === "application-focus";
-  const isWhatsapp = templateKey === "warmup-whatsapp";
-
-  return (
-    <div
-      className="relative h-44 overflow-hidden rounded-[24px] border border-border/60 p-4"
-      style={{
-        background: isQualification
-          ? "linear-gradient(135deg, #f6f7fb 0%, #e2e8f0 100%)"
-          : isWhatsapp
-            ? "linear-gradient(135deg, #08110a 0%, #22c55e 100%)"
-            : "linear-gradient(135deg, #180b28 0%, #8b5cf6 50%, #0b0b10 100%)",
-      }}
-    >
-      <div
-        className="mx-auto flex h-full max-w-[290px] flex-col rounded-[22px] border p-4 shadow-[0_18px_48px_rgba(0,0,0,0.22)]"
-        style={{
-          background: isQualification ? "#ffffff" : "#17171c",
-          borderColor: isQualification ? "rgba(15,23,42,0.08)" : "rgba(255,255,255,0.12)",
-          color: isQualification ? "#111827" : "#f8fafc",
-        }}
-      >
-        <div className="space-y-1 text-center">
-          <div className="line-clamp-2 text-base font-bold leading-tight">{title}</div>
-          <div className="line-clamp-2 text-[11px] opacity-75">{description}</div>
-        </div>
-
-        <div className="mt-4 space-y-2">
-          <div
-            className="h-9 rounded-xl border"
-            style={{ background: isQualification ? "#f8fafc" : "#ffffff", borderColor: "rgba(15,23,42,0.10)" }}
-          />
-          <div
-            className="h-9 rounded-xl border"
-            style={{ background: isQualification ? "#f8fafc" : "#ffffff", borderColor: "rgba(15,23,42,0.10)" }}
-          />
-          {!isWhatsapp ? (
-            <div
-              className="h-9 rounded-xl border"
-              style={{ background: isQualification ? "#f8fafc" : "#ffffff", borderColor: "rgba(15,23,42,0.10)" }}
-            />
-          ) : null}
-        </div>
-
-        <div
-          className="mt-4 flex h-10 items-center justify-center rounded-xl text-xs font-semibold text-white"
-          style={{ background: accentColor }}
-        >
-          Continuar
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function getTemplateAccentColor(templateKey: string) {
-  switch (templateKey) {
-    case "application-focus":
-      return "#2563eb";
-    case "warmup-whatsapp":
-      return "#22c55e";
-    default:
-      return "#8b5cf6";
-  }
-}
-
 function getTemplateDetails(templateKey: string) {
   switch (templateKey) {
     case "application-focus":
@@ -152,6 +79,72 @@ function getTemplateDetails(templateKey: string) {
         bullets: ["Cadastro rapido", "Bom para checkout", "Ideal para captar antes da compra"],
       };
   }
+}
+
+function buildBlankForm() {
+  return {
+    form: {
+      name: "Novo form",
+      description: "",
+      template_key: "lead-capture-classic",
+      template_version: 1,
+      theme: PRE_CHECKOUT_DEFAULT_THEME,
+      final_config: {
+        action: "thank_you" as const,
+        thank_you_title: "Tudo certo",
+        thank_you_description: "Recebemos sua resposta.",
+        button_label: "Enviar",
+      },
+      integrations: {
+        tag_ids: [],
+        workflows: [],
+        connect: {
+          meta_pixel_enabled: false,
+          meta_pixel_id: "",
+          ga4_enabled: false,
+          ga4_measurement_id: "",
+          gtm_enabled: false,
+          gtm_container_id: "",
+        },
+      },
+      session_settings: PRE_CHECKOUT_DEFAULT_SESSION_SETTINGS,
+    },
+    steps: [
+      {
+        step_key: "boas_vindas",
+        position: 0,
+        type: "welcome_screen" as const,
+        title: "Vamos começar",
+        description: "Apresente o contexto antes da primeira pergunta.",
+        placeholder: "",
+        is_required: false,
+        options: [],
+        settings: { button_label: "Começar" },
+      },
+      {
+        step_key: "pergunta_1",
+        position: 1,
+        type: "short_text" as const,
+        title: "Digite sua resposta",
+        description: "",
+        placeholder: "Sua resposta",
+        is_required: true,
+        options: [],
+        settings: { auto_focus: true, max_length: 160, map_to_contact_field: null },
+      },
+      {
+        step_key: "final",
+        position: 2,
+        type: "end_screen" as const,
+        title: "Tudo certo",
+        description: "Agora siga para a próxima ação.",
+        placeholder: "",
+        is_required: false,
+        options: [],
+        settings: { button_label: "Finalizar" },
+      },
+    ],
+  };
 }
 
 export default function FormulariosPage() {
@@ -204,7 +197,7 @@ export default function FormulariosPage() {
   const handleCreateFromTemplate = async (templateKey: string) => {
     if (!user) return;
 
-    const templateData = buildFormFromTemplate(templateKey);
+    const templateData = templateKey === "blank" ? buildBlankForm() : buildFormFromTemplate(templateKey);
     if (!templateData) {
       toast("Modelo invalido.", "error");
       return;
@@ -258,10 +251,70 @@ export default function FormulariosPage() {
       return;
     }
 
-    toast("Formulario criado com sucesso!", "success");
+    toast("Form criado com sucesso!", "success");
     setShowCreateDialog(false);
     setSaving(null);
-    router.push(`/formularios/${form.id}`);
+    router.push(`/formularios/${form.id}${templateKey === "ai" ? "?source=ai" : ""}`);
+  };
+
+  const handleCreateBlank = async () => {
+    await handleCreateFromTemplate("blank");
+  };
+
+  const handleCreateWithAi = async () => {
+    if (!user) return;
+    const blank = buildBlankForm();
+    setSaving("creating");
+
+    const slug = buildUniqueSlug(blank.form.name);
+    const { data: form, error: formError } = await supabase
+      .from("pre_checkout_forms")
+      .insert({
+        user_id: user.id,
+        name: "Novo form com IA",
+        slug,
+        description: "",
+        template_key: blank.form.template_key,
+        template_version: blank.form.template_version,
+        theme: blank.form.theme,
+        final_config: blank.form.final_config,
+        integrations: blank.form.integrations,
+        session_settings: blank.form.session_settings,
+      })
+      .select("*")
+      .single();
+
+    if (formError || !form) {
+      toast("Nao foi possivel criar o form com IA.", "error");
+      setSaving(null);
+      return;
+    }
+
+    const stepsPayload = blank.steps.map((step) => ({
+      form_id: form.id,
+      user_id: user.id,
+      step_key: step.step_key,
+      position: step.position,
+      type: step.type,
+      title: step.title,
+      description: step.description || "",
+      placeholder: step.placeholder || "",
+      is_required: step.is_required,
+      options: step.options,
+      settings: step.settings,
+    }));
+
+    const { error: stepsError } = await supabase.from("pre_checkout_form_steps").insert(stepsPayload);
+    if (stepsError) {
+      await supabase.from("pre_checkout_forms").delete().eq("id", form.id);
+      toast("Nao foi possivel preparar o form com IA.", "error");
+      setSaving(null);
+      return;
+    }
+
+    setShowCreateDialog(false);
+    setSaving(null);
+    router.push(`/formularios/${form.id}?source=ai`);
   };
 
   const handleDuplicate = async (formId: string) => {
@@ -364,14 +417,12 @@ export default function FormulariosPage() {
     <div className="animate-fade-in space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Formularios de pre-checkout</h1>
-          <p className="text-muted-foreground">
-            Crie experiencias antes do checkout, qualifique leads e acompanhe o desempenho.
-          </p>
+          <h1 className="text-2xl font-bold">Forms</h1>
+          <p className="text-muted-foreground">Crie forms conversacionais, acompanhe respostas e automatize o próximo passo.</p>
         </div>
         <Button onClick={() => setShowCreateDialog(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          Novo formulario
+          Novo form
         </Button>
       </div>
 
@@ -405,9 +456,9 @@ export default function FormulariosPage() {
           <div className="space-y-3 rounded-xl border border-dashed border-border p-10 text-center">
             <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
             <div>
-              <p className="font-medium">Nenhum formulario encontrado</p>
+              <p className="font-medium">Nenhum form encontrado</p>
               <p className="text-sm text-muted-foreground">
-                Crie seu primeiro pre-checkout a partir de um modelo pronto.
+                Crie seu primeiro form do zero, com IA ou a partir de um modelo.
               </p>
             </div>
             <Button onClick={() => setShowCreateDialog(true)}>
@@ -488,22 +539,47 @@ export default function FormulariosPage() {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-5xl">
           <DialogHeader>
-            <DialogTitle>Criar formulario a partir de um modelo</DialogTitle>
-            <DialogDescription>
-              Escolha o formato inicial mais proximo do que voce quer vender. Depois voce ajusta textos, cores e destino final.
-            </DialogDescription>
+          <DialogTitle>Como você quer começar?</DialogTitle>
+          <DialogDescription>
+              Escolha entre começar em branco, montar com IA ou usar um modelo base para acelerar.
+          </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 md:grid-cols-3">
+            <Card className="space-y-4 border-border/60 p-4">
+              <div className="space-y-2">
+                <Badge variant="outline">Em branco</Badge>
+                <div className="text-lg font-semibold">Começar do zero</div>
+                <p className="text-sm text-muted-foreground">Cria um form limpo para você montar a estrutura do seu jeito.</p>
+              </div>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <div>• Estrutura mínima pronta</div>
+                <div>• Ideal para criação manual</div>
+                <div>• Mais controle desde o início</div>
+              </div>
+              <Button className="w-full" disabled={saving === "creating"} onClick={handleCreateBlank}>
+                {saving === "creating" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar em branco"}
+              </Button>
+            </Card>
+
+            <Card className="space-y-4 border-border/60 p-4">
+              <div className="space-y-2">
+                <Badge variant="outline">Com IA</Badge>
+                <div className="text-lg font-semibold">Criar com IA</div>
+                <p className="text-sm text-muted-foreground">Abre o editor com o assistente pronto para gerar a estrutura do form com OpenAI.</p>
+              </div>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <div>• Você usa o seu token</div>
+                <div>• Geração guiada no editor</div>
+                <div>• Ideal para montar rápido</div>
+              </div>
+              <Button className="w-full" disabled={saving === "creating"} onClick={handleCreateWithAi}>
+                {saving === "creating" ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Sparkles className="mr-2 h-4 w-4" />Criar com IA</>}
+              </Button>
+            </Card>
+
             {PRE_CHECKOUT_TEMPLATE_LIST.map((template) => (
               <Card key={template.key} className="space-y-4 overflow-hidden border-border/60 p-4">
-                {renderTemplateMock({
-                  templateKey: template.key,
-                  title: template.form.name,
-                  description: template.description,
-                  accentColor: getTemplateAccentColor(template.key),
-                })}
-
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -529,7 +605,7 @@ export default function FormulariosPage() {
                   </div>
                 </div>
 
-                <Button
+                  <Button
                   className="w-full"
                   disabled={saving === "creating"}
                   onClick={() => handleCreateFromTemplate(template.key)}

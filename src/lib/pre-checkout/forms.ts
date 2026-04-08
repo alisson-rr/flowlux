@@ -4,6 +4,7 @@ import type {
   PreCheckoutFormStep,
   PreCheckoutSession,
 } from "@/types";
+import { getConnectConfig } from "@/lib/pre-checkout/runtime";
 
 export interface PreCheckoutPublishValidationResult {
   isValid: boolean;
@@ -44,7 +45,7 @@ function validateFinalAction(finalAction: PreCheckoutFinalAction, form: PreCheck
   const errors: string[] = [];
 
   if (finalAction === "checkout_redirect" && !isValidAbsoluteUrl(form.final_config.redirect_url)) {
-    errors.push("Defina uma URL válida para o checkout.");
+    errors.push("Defina uma URL valida para o redirecionamento final.");
   }
 
   if (finalAction === "whatsapp_redirect") {
@@ -65,6 +66,25 @@ function validateFinalAction(finalAction: PreCheckoutFinalAction, form: PreCheck
     if (!form.final_config.thank_you_description?.trim()) {
       errors.push("Defina a descrição da tela de conclusão.");
     }
+  }
+
+  return errors;
+}
+
+function validateConnectConfig(form: PreCheckoutForm): string[] {
+  const errors: string[] = [];
+  const connect = getConnectConfig(form.integrations);
+
+  if (connect.meta_pixel_enabled && !String(connect.meta_pixel_id || "").trim()) {
+    errors.push("Defina o ID do Meta Pixel ou desative essa integração.");
+  }
+
+  if (connect.ga4_enabled && !String(connect.ga4_measurement_id || "").trim()) {
+    errors.push("Defina o Measurement ID do Google Analytics 4.");
+  }
+
+  if (connect.gtm_enabled && !String(connect.gtm_container_id || "").trim()) {
+    errors.push("Defina o Container ID do Google Tag Manager.");
   }
 
   return errors;
@@ -108,12 +128,13 @@ export function validatePreCheckoutPublish(
       errors.push(`A pergunta ${step.position + 1} precisa ter um título.`);
     }
 
-    if ((step.type === "single_choice" || step.type === "multiple_choice") && !step.options.length) {
+    if ((step.type === "single_choice" || step.type === "multiple_choice" || step.type === "dropdown" || step.type === "yes_no") && !step.options.length) {
       errors.push(`A pergunta "${step.title}" precisa ter opções configuradas.`);
     }
   });
 
   errors.push(...validateFinalAction(form.final_config.action, form as PreCheckoutForm));
+  errors.push(...validateConnectConfig(form as PreCheckoutForm));
 
   return {
     isValid: errors.length === 0,

@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { buildPreCheckoutSessionExpiry, decidePreCheckoutSessionResume } from "@/lib/pre-checkout/forms";
 import { buildLeadPhoneFields, getPhoneIdentity } from "@/lib/phone";
+import { runPreCheckoutWorkflows } from "@/lib/pre-checkout/runtime";
 import { phoneToJid } from "@/lib/utils";
 import { enqueueFlowExecution, kickFlowExecution } from "@/lib/flow-executions";
 import { isPreCheckoutLabEnabledForHost } from "@/lib/feature-access";
-import type { PreCheckoutSessionStatus } from "@/types";
+import type {
+  PreCheckoutFinalConfig,
+  PreCheckoutFormStepType,
+  PreCheckoutIntegrationsConfig,
+  PreCheckoutSessionStatus,
+} from "@/types";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -17,8 +23,8 @@ type PublicFormRow = {
   description: string | null;
   status: string;
   theme: Record<string, any>;
-  final_config: Record<string, any>;
-  integrations: Record<string, any>;
+  final_config: PreCheckoutFinalConfig;
+  integrations: PreCheckoutIntegrationsConfig;
   session_settings: { resume_window_minutes?: number; abandonment_window_minutes?: number } | null;
 };
 
@@ -26,12 +32,13 @@ type StepRow = {
   id: string;
   step_key: string;
   position: number;
-  type: string;
+  type: PreCheckoutFormStepType;
   title: string;
   description: string | null;
   placeholder: string | null;
   is_required: boolean;
   options: any[];
+  settings: Record<string, any> | null;
 };
 
 type SessionRow = {
@@ -102,7 +109,9 @@ async function insertEvent(input: {
 }
 
 function getAnswerValue(answer: { answer_text?: string | null; answer_json?: Record<string, any> | null }) {
+  if (typeof answer.answer_json?.accepted === "boolean") return answer.answer_json.accepted ? "aceito" : "";
   if (typeof answer.answer_json?.value === "string") return answer.answer_json.value;
+  if (typeof answer.answer_json?.value === "number") return String(answer.answer_json.value);
   if (Array.isArray(answer.answer_json?.values)) return answer.answer_json.values;
   return answer.answer_text || "";
 }
@@ -124,9 +133,9 @@ async function findOrCreateLead(input: {
     .eq("session_id", input.session.id);
 
   const answerMap = new Map((answers || []).map((answer) => [answer.step_id, getAnswerValue(answer)]));
-  const nameStep = input.steps.find((step) => step.step_key === "nome" || step.step_key === "name" || step.type === "short_text");
-  const emailStep = input.steps.find((step) => step.type === "email");
-  const phoneStep = input.steps.find((step) => step.type === "phone");
+  const nameStep = input.steps.find((step) => step.settings?.map_to_contact_field === "name") || input.steps.find((step) => step.step_key === "nome" || step.step_key === "name" || step.type === "short_text");
+  const emailStep = input.steps.find((step) => step.settings?.map_to_contact_field === "email") || input.steps.find((step) => step.type === "email");
+  const phoneStep = input.steps.find((step) => step.settings?.map_to_contact_field === "phone") || input.steps.find((step) => step.type === "phone");
 
   const name = String(nameStep ? answerMap.get(nameStep.id) || "" : "").trim();
   const email = String(emailStep ? answerMap.get(emailStep.id) || "" : "").trim();
@@ -159,7 +168,7 @@ async function findOrCreateLead(input: {
   const basePayload = {
     name: name || existingLead?.name || "Lead do formulário",
     email: email || existingLead?.email || null,
-    source: `Pre-checkout - ${input.form.name}`,
+    source: `Form - ${input.form.name}`,
     funnel_id: input.form.integrations?.funnel_id || null,
     stage_id: input.form.integrations?.stage_id || null,
   };
@@ -187,8 +196,35 @@ async function findOrCreateLead(input: {
   return {
     leadId,
     leadName: basePayload.name,
+    leadEmail: basePayload.email || "",
     leadPhone: phoneFields?.phone || phoneRaw || "",
   };
+}
+
+async function insertWorkflowLogs(input: {
+  formId: string;
+  userId: string;
+  sessionId: string;
+  leadId?: string | null;
+  logs: Array<{ success: boolean; triggerId: string; triggerName: string; actionId?: string; actionType?: string; error?: string | null }>;
+}) {
+  for (const log of input.logs) {
+    await insertEvent({
+      formId: input.formId,
+      userId: input.userId,
+      sessionId: input.sessionId,
+      leadId: input.leadId || null,
+      eventType: log.success ? "workflow_triggered" : "workflow_failed",
+      status: log.success ? "success" : "error",
+      metadata: {
+        trigger_id: log.triggerId,
+        trigger_name: log.triggerName,
+        action_id: log.actionId || null,
+        action_type: log.actionType || null,
+        error: log.error || null,
+      },
+    });
+  }
 }
 
 async function maybeEnqueueFlow(input: {
@@ -340,6 +376,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
   if (action === "answer") {
     const step = bundle.steps.find((item) => item.id === body?.step_id);
     const value = body?.value;
+    const selectedOptionValues = (step?.options || []).map((option) => option.value);
 
     if (!step) {
       return NextResponse.json({ error: "Pergunta não encontrada" }, { status: 404 });
@@ -357,8 +394,52 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
       return NextResponse.json({ error: "Telefone inválido" }, { status: 400 });
     }
 
-    const answerText = Array.isArray(value) ? value.join(", ") : String(value || "").trim();
-    const answerJson = Array.isArray(value) ? { values: value } : { value: answerText };
+    if (["single_choice", "dropdown", "yes_no"].includes(step.type) && value && !selectedOptionValues.includes(String(value))) {
+      return NextResponse.json({ error: "Opcao invalida" }, { status: 400 });
+    }
+
+    if (step.type === "multiple_choice" && Array.isArray(value) && value.some((item) => !selectedOptionValues.includes(String(item)))) {
+      return NextResponse.json({ error: "Uma ou mais opcoes sao invalidas" }, { status: 400 });
+    }
+
+    if (["number", "rating", "opinion_scale"].includes(step.type) && value !== "" && value !== null && value !== undefined) {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue)) {
+        return NextResponse.json({ error: "Digite um valor numerico valido" }, { status: 400 });
+      }
+
+      if (typeof step.settings?.min_value === "number" && numericValue < step.settings.min_value) {
+        return NextResponse.json({ error: `O valor minimo e ${step.settings.min_value}` }, { status: 400 });
+      }
+
+      if (typeof step.settings?.max_value === "number" && numericValue > step.settings.max_value) {
+        return NextResponse.json({ error: `O valor maximo e ${step.settings.max_value}` }, { status: 400 });
+      }
+    }
+
+    if (step.type === "legal") {
+      const accepted = value === true || value === "true" || value === "1";
+      if (step.is_required && !accepted) {
+        return NextResponse.json({ error: "Voce precisa aceitar para continuar" }, { status: 400 });
+      }
+    }
+
+    const answerText =
+      step.type === "legal"
+        ? value === true || value === "true" || value === "1"
+          ? "aceito"
+          : ""
+        : Array.isArray(value)
+          ? value.join(", ")
+          : String(value || "").trim();
+    const answerJson =
+      step.type === "legal"
+        ? { accepted: value === true || value === "true" || value === "1" }
+        : Array.isArray(value)
+          ? { values: value }
+          : step.type === "number" || step.type === "rating" || step.type === "opinion_scale"
+            ? { value: Number(value) }
+            : { value: answerText };
     await supabase.from("pre_checkout_answers").upsert({
       form_id: bundle.form.id,
       session_id: session.id,
@@ -415,6 +496,11 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
 
   if (action === "complete") {
     const lead = await findOrCreateLead({ form: bundle.form, steps: bundle.steps, session });
+    const { data: answers } = await supabase
+      .from("pre_checkout_answers")
+      .select("step_id, answer_text, answer_json")
+      .eq("session_id", session.id);
+    const finalStep = bundle.steps[bundle.steps.length - 1] || null;
 
     const { data: updatedSession } = await supabase
       .from("pre_checkout_sessions")
@@ -442,6 +528,49 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
       await insertEvent({ formId: bundle.form.id, userId: bundle.form.user_id, sessionId: session.id, leadId: lead.leadId, eventType: "redirect_whatsapp" });
     }
 
+    const workflowResult = await runPreCheckoutWorkflows({
+      form: bundle.form,
+      steps: bundle.steps,
+      answers: (answers || []) as Array<{ step_id: string; answer_text?: string | null; answer_json?: Record<string, unknown> | null }>,
+      sessionId: session.id,
+      leadId: lead.leadId,
+      leadName: lead.leadName,
+      leadPhone: lead.leadPhone,
+      leadEmail: lead.leadEmail,
+      eventType: "any_full_response",
+    });
+    await insertWorkflowLogs({
+      formId: bundle.form.id,
+      userId: bundle.form.user_id,
+      sessionId: session.id,
+      leadId: lead.leadId,
+      logs: workflowResult.logs,
+    });
+
+    let workflowRedirectUrl = workflowResult.redirectUrl || null;
+    if (finalStep?.type === "end_screen") {
+      const endingResult = await runPreCheckoutWorkflows({
+        form: bundle.form,
+        steps: bundle.steps,
+        answers: (answers || []) as Array<{ step_id: string; answer_text?: string | null; answer_json?: Record<string, unknown> | null }>,
+        sessionId: session.id,
+        leadId: lead.leadId,
+        leadName: lead.leadName,
+        leadPhone: lead.leadPhone,
+        leadEmail: lead.leadEmail,
+        eventType: "ending_reached",
+        endingStepKey: finalStep.step_key,
+      });
+      await insertWorkflowLogs({
+        formId: bundle.form.id,
+        userId: bundle.form.user_id,
+        sessionId: session.id,
+        leadId: lead.leadId,
+        logs: endingResult.logs,
+      });
+      workflowRedirectUrl = workflowRedirectUrl || endingResult.redirectUrl || null;
+    }
+
     await maybeEnqueueFlow({
       flowId: bundle.form.integrations?.flow_on_complete_id || null,
       userId: bundle.form.user_id,
@@ -455,6 +584,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
       session: updatedSession,
       lead,
       final_config: bundle.form.final_config,
+      redirect_url_override: workflowRedirectUrl,
     });
   }
 
@@ -463,22 +593,47 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
       return NextResponse.json({ success: true });
     }
 
+    const lead = await findOrCreateLead({ form: bundle.form, steps: bundle.steps, session });
+    const { data: answers } = await supabase
+      .from("pre_checkout_answers")
+      .select("step_id, answer_text, answer_json")
+      .eq("session_id", session.id);
+
     await supabase
       .from("pre_checkout_sessions")
       .update({
         status: "abandoned",
+        lead_id: lead.leadId,
         abandoned_at: new Date().toISOString(),
         last_interaction_at: new Date().toISOString(),
       })
       .eq("id", session.id)
       .neq("status", "completed");
 
-    await insertEvent({ formId: bundle.form.id, userId: bundle.form.user_id, sessionId: session.id, leadId: session.lead_id, eventType: "abandoned", status: "warning" });
+    await insertEvent({ formId: bundle.form.id, userId: bundle.form.user_id, sessionId: session.id, leadId: lead.leadId || session.lead_id, eventType: "abandoned", status: "warning" });
+    const workflowResult = await runPreCheckoutWorkflows({
+      form: bundle.form,
+      steps: bundle.steps,
+      answers: (answers || []) as Array<{ step_id: string; answer_text?: string | null; answer_json?: Record<string, unknown> | null }>,
+      sessionId: session.id,
+      leadId: lead.leadId || session.lead_id,
+      leadName: lead.leadName,
+      leadPhone: lead.leadPhone || body?.phone || null,
+      leadEmail: lead.leadEmail,
+      eventType: "abandoned",
+    });
+    await insertWorkflowLogs({
+      formId: bundle.form.id,
+      userId: bundle.form.user_id,
+      sessionId: session.id,
+      leadId: lead.leadId || session.lead_id,
+      logs: workflowResult.logs,
+    });
     await maybeEnqueueFlow({
       flowId: bundle.form.integrations?.flow_on_abandon_id || null,
       userId: bundle.form.user_id,
-      phone: body?.phone || null,
-      leadId: session.lead_id,
+      phone: lead.leadPhone || body?.phone || null,
+      leadId: lead.leadId || session.lead_id,
       sessionId: session.id,
       source: "abandon",
     });

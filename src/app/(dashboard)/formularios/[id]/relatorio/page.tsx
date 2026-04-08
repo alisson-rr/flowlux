@@ -273,7 +273,7 @@ export default function FormularioRelatorioPage() {
               <Badge variant={getStatusVariant(form.status)}>{getStatusLabel(form.status)}</Badge>
             </div>
             <p className="text-muted-foreground">
-              Veja o desempenho do pre-checkout, as principais origens e as ultimas sessoes registradas.
+              Veja o desempenho do form, as principais origens e as ultimas sessoes registradas.
             </p>
           </div>
         </div>

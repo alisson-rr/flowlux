@@ -298,7 +298,7 @@ CREATE TABLE pre_checkout_form_steps (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   step_key TEXT NOT NULL,
   position INTEGER NOT NULL DEFAULT 0,
-  type TEXT NOT NULL CHECK (type IN ('intro', 'short_text', 'long_text', 'email', 'phone', 'single_choice', 'multiple_choice')),
+  type TEXT NOT NULL CHECK (type IN ('intro', 'welcome_screen', 'statement', 'short_text', 'long_text', 'email', 'phone', 'number', 'date', 'single_choice', 'multiple_choice', 'dropdown', 'yes_no', 'rating', 'opinion_scale', 'legal', 'end_screen')),
   title TEXT NOT NULL,
   description TEXT DEFAULT '',
   placeholder TEXT DEFAULT '',
