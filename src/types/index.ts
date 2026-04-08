@@ -390,6 +390,7 @@ export interface PreCheckoutThemeLayout {
 export interface PreCheckoutThemeBranding {
   logo_url?: string | null;
   logo_position: "center" | "left";
+  logo_size?: "sm" | "md" | "lg" | "xl";
   background_image_url?: string | null;
   background_image_focus_x: number;
   background_image_focus_y: number;
@@ -434,6 +435,8 @@ export interface PreCheckoutFormStepSettings {
   video_url?: string | null;
   media_kind?: "image" | "video" | null;
   media_brightness?: number | null;
+  media_layout_desktop?: "top" | "right" | "right-wide" | "left" | "left-wide" | "background" | null;
+  media_layout_mobile?: "top" | "top-wide" | "background" | "hidden" | null;
   legal_consent_text?: string | null;
   legal_required_label?: string | null;
   map_to_contact_field?: "name" | "email" | "phone" | null;

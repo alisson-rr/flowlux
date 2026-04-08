@@ -13,7 +13,6 @@ import {
   Loader2,
   Monitor,
   Palette,
-  PlayCircle,
   Plus,
   Rocket,
   Save,
@@ -94,12 +93,6 @@ const TAB_WORKFLOW = "workflow";
 const TAB_CONNECT = "conexoes";
 const TAB_SETTINGS = "configuracoes";
 
-const PANEL_WIDTH: Record<PreCheckoutForm["theme"]["layout"]["width"], string> = {
-  sm: "max-w-2xl",
-  md: "max-w-4xl",
-  lg: "max-w-5xl",
-};
-
 const PANEL_PADDING: Record<PreCheckoutForm["theme"]["layout"]["spacing"], string> = {
   compact: "p-6",
   comfortable: "p-8",
@@ -119,12 +112,6 @@ const BUTTON_RADIUS: Record<PreCheckoutForm["theme"]["typography"]["button_radiu
   lg: "rounded-[20px]",
   full: "rounded-full",
 };
-
-const LAYOUT_WIDTH_OPTIONS: Array<{ value: PreCheckoutForm["theme"]["layout"]["width"]; label: string }> = [
-  { value: "sm", label: "Compacto" },
-  { value: "md", label: "Medio" },
-  { value: "lg", label: "Amplo" },
-];
 
 const LAYOUT_SPACING_OPTIONS: Array<{ value: PreCheckoutForm["theme"]["layout"]["spacing"]; label: string }> = [
   { value: "compact", label: "Mais enxuto" },
@@ -152,10 +139,33 @@ const FONT_OPTIONS = [
   { label: "Open Sans", value: "'Open Sans', sans-serif" },
 ];
 
+const LOGO_SIZE_OPTIONS: Array<{ value: "sm" | "md" | "lg" | "xl"; label: string }> = [
+  { value: "sm", label: "Pequeno" },
+  { value: "md", label: "Medio" },
+  { value: "lg", label: "Grande" },
+  { value: "xl", label: "Gigante" },
+];
+
+const STEP_MEDIA_LAYOUT_DESKTOP_OPTIONS: Array<{ value: "top" | "right" | "right-wide" | "left" | "left-wide" | "background"; label: string }> = [
+  { value: "top", label: "Topo" },
+  { value: "right", label: "Direita" },
+  { value: "right-wide", label: "Direita ampla" },
+  { value: "left", label: "Esquerda" },
+  { value: "left-wide", label: "Esquerda ampla" },
+  { value: "background", label: "Fundo" },
+];
+
+const STEP_MEDIA_LAYOUT_MOBILE_OPTIONS: Array<{ value: "top" | "top-wide" | "background" | "hidden"; label: string }> = [
+  { value: "top", label: "Topo" },
+  { value: "top-wide", label: "Topo amplo" },
+  { value: "background", label: "Fundo" },
+  { value: "hidden", label: "Sem imagem" },
+];
+
 const WORKFLOW_TRIGGER_OPTIONS: Array<{ value: PreCheckoutWorkflowTrigger["type"]; label: string; description: string }> = [
-  { value: "any_full_response", label: "Qualquer resposta completa", description: "Dispara sempre que alguem conclui o form." },
-  { value: "full_response_with_conditions", label: "Resposta completa com condicoes", description: "Dispara so quando as respostas atendem as condicoes." },
-  { value: "ending_reached", label: "Final especifico atingido", description: "Dispara quando o lead cai em um final especifico." },
+  { value: "any_full_response", label: "Qualquer resposta completa", description: "Dispara sempre que alguém conclui o form." },
+  { value: "full_response_with_conditions", label: "Resposta completa com condições", description: "Dispara só quando as respostas atendem às condições." },
+  { value: "ending_reached", label: "Final específico atingido", description: "Dispara quando o lead cai em um final específico." },
   { value: "abandoned", label: "Abandono", description: "Dispara quando o lead sai sem concluir." },
 ];
 
@@ -171,68 +181,68 @@ const WORKFLOW_ACTION_OPTIONS: Array<{ value: PreCheckoutWorkflowAction["type"];
 
 const SYSTEM_MESSAGE_SECTIONS = {
   buttons: {
-    title: "Botoes, dicas e atalhos",
+    title: "Botões, dicas e atalhos",
     fields: [
-      { key: "confirm_answer", label: "Botao para confirmar resposta" },
-      { key: "next_hint", label: "Instrucao para ir para a proxima pergunta" },
-      { key: "multiple_choice_hint", label: "Dica para selecao multipla" },
-      { key: "dropdown_hint", label: "Instrucao do dropdown" },
-      { key: "dropdown_touch_hint", label: "Instrucao do dropdown em telas touch" },
-      { key: "other_label", label: "Rotulo da opcao Outro" },
+      { key: "confirm_answer", label: "Botão para confirmar resposta" },
+      { key: "next_hint", label: "Instrução para ir para a próxima pergunta" },
+      { key: "multiple_choice_hint", label: "Dica para seleção múltipla" },
+      { key: "dropdown_hint", label: "Instrução do dropdown" },
+      { key: "dropdown_touch_hint", label: "Instrução do dropdown em telas touch" },
+      { key: "other_label", label: "Rótulo da opção Outro" },
       { key: "other_placeholder", label: "Hint do campo Outro" },
       { key: "exact_selection_step_1", label: "Escolha exata - passo 1" },
       { key: "exact_selection_step_2", label: "Escolha exata - passo 2" },
-      { key: "range_max_step_1", label: "Faixa com maximo - passo 1" },
-      { key: "range_max_step_2", label: "Faixa com maximo - passo 2" },
-      { key: "range_between", label: "Faixa com minimo e maximo" },
-      { key: "range_min_step_1", label: "Faixa com minimo - passo 1" },
-      { key: "range_min_step_2", label: "Faixa com minimo - passo 2" },
+      { key: "range_max_step_1", label: "Faixa com máximo - passo 1" },
+      { key: "range_max_step_2", label: "Faixa com máximo - passo 2" },
+      { key: "range_between", label: "Faixa com mínimo e máximo" },
+      { key: "range_min_step_1", label: "Faixa com mínimo - passo 1" },
+      { key: "range_min_step_2", label: "Faixa com mínimo - passo 2" },
       { key: "text_hint", label: "Hint para campo de texto" },
-      { key: "option_key_hint", label: "Hint de tecla ao passar o mouse nas opcoes" },
-      { key: "yes_label", label: "Botao Sim" },
-      { key: "no_label", label: "Botao Nao" },
+      { key: "option_key_hint", label: "Hint de tecla ao passar o mouse nas opções" },
+      { key: "yes_label", label: "Botão Sim" },
+      { key: "no_label", label: "Botão Não" },
       { key: "yes_shortcut", label: "Atalho de teclado do Sim", maxLength: 1 },
-      { key: "no_shortcut", label: "Atalho de teclado do Nao", maxLength: 1 },
-      { key: "legal_accept_label", label: "Botao para aceitar termo legal" },
-      { key: "legal_reject_label", label: "Botao para rejeitar termo legal" },
-      { key: "review_label", label: "Botao para revisar erros" },
-      { key: "submit_label", label: "Botao de envio do form" },
-      { key: "continue_label", label: "Botao para continuar" },
+      { key: "no_shortcut", label: "Atalho de teclado do Não", maxLength: 1 },
+      { key: "legal_accept_label", label: "Botão para aceitar termo legal" },
+      { key: "legal_reject_label", label: "Botão para rejeitar termo legal" },
+      { key: "review_label", label: "Botão para revisar erros" },
+      { key: "submit_label", label: "Botão de envio do form" },
+      { key: "continue_label", label: "Botão para continuar" },
     ],
   },
   errors: {
     title: "Mensagens de erro",
     fields: [
-      { key: "required", label: "Quando a resposta for obrigatoria" },
-      { key: "selection_required", label: "Quando precisar selecionar uma opcao" },
+      { key: "required", label: "Quando a resposta for obrigatória" },
+      { key: "selection_required", label: "Quando precisar selecionar uma opção" },
       { key: "value_required", label: "Quando precisar digitar um valor" },
       { key: "legal_rejected", label: "Quando o termo legal for rejeitado" },
-      { key: "invalid_email", label: "Quando o email for invalido" },
-      { key: "invalid_url", label: "Quando a URL for invalida" },
-      { key: "invalid_number_range", label: "Quando o numero sair da faixa permitida" },
-      { key: "invalid_number_low", label: "Quando o numero for menor que o minimo" },
-      { key: "invalid_number_high", label: "Quando o numero for maior que o maximo" },
-      { key: "dropdown_not_found", label: "Quando nao houver sugestao no dropdown" },
-      { key: "invalid_phone", label: "Quando o telefone for invalido" },
+      { key: "invalid_email", label: "Quando o e-mail for inválido" },
+      { key: "invalid_url", label: "Quando a URL for inválida" },
+      { key: "invalid_number_range", label: "Quando o número sair da faixa permitida" },
+      { key: "invalid_number_low", label: "Quando o número for menor que o mínimo" },
+      { key: "invalid_number_high", label: "Quando o número for maior que o máximo" },
+      { key: "dropdown_not_found", label: "Quando não houver sugestão no dropdown" },
+      { key: "invalid_phone", label: "Quando o telefone for inválido" },
     ],
   },
   completion: {
-    title: "Envio e conclusao",
+    title: "Envio e conclusão",
     fields: [
-      { key: "success", label: "Confirmacao de envio concluido" },
-      { key: "no_connection", label: "Erro sem conexao com o servidor" },
+      { key: "success", label: "Confirmação de envio concluído" },
+      { key: "no_connection", label: "Erro sem conexão com o servidor" },
       { key: "server_error", label: "Erro interno no servidor" },
-      { key: "unavailable", label: "Erro quando o form estiver indisponivel" },
+      { key: "unavailable", label: "Erro quando o form estiver indisponível" },
     ],
   },
   other: {
     title: "Outras mensagens",
     fields: [
-      { key: "unsupported_device", label: "Alerta de dispositivo nao suportado" },
+      { key: "unsupported_device", label: "Alerta de dispositivo não suportado" },
       { key: "line_break_hint", label: "Dica para quebra de linha em texto longo" },
-      { key: "file_required", label: "Mensagem quando um arquivo for obrigatorio" },
-      { key: "file_button", label: "Botao de upload" },
-      { key: "file_drop_hint", label: "Dica da area de drop" },
+      { key: "file_required", label: "Mensagem quando um arquivo for obrigatório" },
+      { key: "file_button", label: "Botão de upload" },
+      { key: "file_drop_hint", label: "Dica da área de drop" },
       { key: "file_too_big", label: "Erro quando o arquivo for grande demais" },
       { key: "file_uploading", label: "Mensagem durante upload do arquivo" },
     ],
@@ -315,11 +325,66 @@ function textValue(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
+function normalizeOptionValue(value: string, index: number) {
+  return slugifyPreCheckoutFormName(value) || `opcao_${index + 1}`;
+}
+
 function radiusClass(radius: "sm" | "md" | "lg" | "full") {
   if (radius === "sm") return "rounded-xl";
   if (radius === "lg") return "rounded-3xl";
   if (radius === "full") return "rounded-full";
   return "rounded-2xl";
+}
+
+function getLogoSizeClass(size?: NonNullable<PreCheckoutForm["theme"]["branding"]>["logo_size"]) {
+  if (size === "sm") return "max-h-10 max-w-[140px]";
+  if (size === "lg") return "max-h-20 max-w-[260px]";
+  if (size === "xl") return "max-h-28 max-w-[320px]";
+  return "max-h-14 max-w-[180px]";
+}
+
+function getStepMediaLayout(
+  settings: PreCheckoutFormStep["settings"] | undefined,
+  device: "desktop" | "mobile"
+) {
+  if (device === "mobile") return settings?.media_layout_mobile || "background";
+  return settings?.media_layout_desktop || "background";
+}
+
+function MediaLayoutButton({
+  active,
+  label,
+  type,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  type: string;
+  onClick: () => void;
+}) {
+  const frameClass = active ? "border-primary bg-primary/10" : "border-white/10 bg-[#171821] hover:border-primary/30";
+  const bar = "rounded-sm bg-zinc-300/90";
+  const darkBar = "rounded-sm bg-zinc-100/95";
+
+  const preview = (() => {
+    if (type === "background") return <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#8B5CF6]"><div className={`h-4 w-5 ${darkBar}`} /></div>;
+    if (type === "top" || type === "top-wide") return <div className="flex h-10 w-10 flex-col gap-1 rounded-lg bg-[#232536] p-1.5"><div className={`w-full ${bar} ${type === "top-wide" ? "h-4" : "h-3"}`} /><div className={`h-2 w-4/5 ${darkBar}`} /><div className={`h-2 w-3/5 ${darkBar}`} /></div>;
+    if (type === "right" || type === "right-wide") return <div className="flex h-10 w-10 gap-1 rounded-lg bg-[#232536] p-1.5"><div className="flex flex-1 flex-col justify-center gap-1"><div className={`h-2 w-full ${darkBar}`} /><div className={`h-2 w-3/4 ${darkBar}`} /></div><div className={`${bar} rounded-md ${type === "right-wide" ? "w-5" : "w-4"} h-full`} /></div>;
+    if (type === "left" || type === "left-wide") return <div className="flex h-10 w-10 gap-1 rounded-lg bg-[#232536] p-1.5"><div className={`${bar} rounded-md ${type === "left-wide" ? "w-5" : "w-4"} h-full`} /><div className="flex flex-1 flex-col justify-center gap-1"><div className={`h-2 w-full ${darkBar}`} /><div className={`h-2 w-3/4 ${darkBar}`} /></div></div>;
+    return <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#232536]"><div className={`h-2 w-5 ${darkBar}`} /></div>;
+  })();
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex h-14 w-14 items-center justify-center rounded-2xl border transition ${frameClass}`}
+      title={label}
+      aria-label={label}
+    >
+      {preview}
+    </button>
+  );
 }
 
 function FontSearchField({
@@ -347,6 +412,46 @@ function FontSearchField({
         </SelectContent>
       </Select>
     </div>
+  );
+}
+
+function AutosizeTextField({
+  value,
+  onChange,
+  placeholder,
+  maxLength,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  maxLength?: number;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  const resize = useCallback(() => {
+    const element = ref.current;
+    if (!element) return;
+    element.style.height = "0px";
+    element.style.height = `${element.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    resize();
+  }, [resize, value]);
+
+  return (
+    <Textarea
+      ref={ref}
+      value={value}
+      maxLength={maxLength}
+      placeholder={placeholder}
+      rows={1}
+      onChange={(event) => {
+        onChange(event.target.value);
+        resize();
+      }}
+      className="min-h-[44px] resize-none overflow-hidden"
+    />
   );
 }
 
@@ -410,133 +515,222 @@ function StepCanvasPreview({
   const options = step.options || [];
   const isChoice = ["single_choice", "multiple_choice", "dropdown", "yes_no"].includes(step.type);
   const mediaBrightness = step.settings?.media_brightness ?? 100;
-  const previewWidthClass = previewDevice === "mobile" ? "max-w-[390px]" : PANEL_WIDTH[form.theme.layout.width];
+  const previewWidthClass = previewDevice === "mobile" ? "max-w-[390px]" : "max-w-[900px]";
   const previewSpacingClass =
     form.theme.layout.spacing === "compact" ? "space-y-5 p-6" : form.theme.layout.spacing === "relaxed" ? "space-y-9 p-10" : "space-y-7 p-8";
+  const stepMediaLayout = getStepMediaLayout(step.settings, previewDevice);
+  const globalBackgroundImageUrl =
+    form.theme.branding?.background_image_url ||
+    (form.theme.background.mode === "image" ? form.theme.background.image_url : null) ||
+    null;
+  const globalBackgroundPosition = `${form.theme.branding?.background_image_focus_x || form.theme.background.image_focus_x}% ${form.theme.branding?.background_image_focus_y || form.theme.background.image_focus_y}%`;
+  const globalBackgroundBrightness = form.theme.branding?.background_brightness || 100;
+  const stepVideoUrl = step.settings?.video_url || null;
+  const stepImageUrl = !stepVideoUrl ? step.settings?.image_url || null : null;
+  const stepHasVisual = Boolean(stepVideoUrl || stepImageUrl);
+  const surfaceHasBackground = Boolean(globalBackgroundImageUrl);
+  const contentUsesOverlay = surfaceHasBackground || (stepHasVisual && stepMediaLayout === "background");
+  const usesBackgroundMedia = stepHasVisual && stepMediaLayout === "background";
+  const surfaceTextColor = contentUsesOverlay ? "#FFFFFF" : form.theme.text_color;
+  const surfaceMetaColor = contentUsesOverlay ? "rgba(255,255,255,0.72)" : "#8C92A4";
+  const contentTextColor = surfaceTextColor;
+  const contentMetaColor = surfaceMetaColor;
+  const surfaceInputStyle: React.CSSProperties = contentUsesOverlay
+    ? {
+        backgroundColor: "rgba(15, 23, 42, 0.55)",
+        borderColor: "rgba(255,255,255,0.16)",
+        color: "#FFFFFF",
+      }
+    : {
+        backgroundColor: form.theme.input_background_color || "#FFFFFF",
+        borderColor: form.theme.input_border_color || "#D8DDE7",
+        color: form.theme.input_text_color || "#111827",
+      };
+
+  const mediaNode = stepHasVisual ? (
+    <div className="relative h-full w-full overflow-hidden rounded-[28px] border border-white/10 bg-[#0B0B12]">
+      {stepVideoUrl ? (
+        <video
+          src={stepVideoUrl}
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ filter: `brightness(${mediaBrightness}%)` }}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+      ) : stepImageUrl ? (
+        <img
+          src={stepImageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ filter: `brightness(${mediaBrightness}%)`, objectPosition: "50% 50%" }}
+        />
+      ) : null}
+    </div>
+  ) : null;
+  const backgroundMediaNode = surfaceHasBackground ? (
+    <div className="absolute inset-0 overflow-hidden bg-[#0B0B12]">
+      {globalBackgroundImageUrl ? (
+        <img
+          src={globalBackgroundImageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ filter: `brightness(${globalBackgroundBrightness}%)`, objectPosition: globalBackgroundPosition }}
+        />
+      ) : null}
+    </div>
+  ) : null;
+  const stepBackgroundNode = usesBackgroundMedia ? (
+    <div className="absolute inset-0 overflow-hidden bg-[#0B0B12]">
+      {stepVideoUrl ? (
+        <video
+          src={stepVideoUrl}
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ filter: `brightness(${mediaBrightness}%)` }}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+      ) : stepImageUrl ? (
+        <img
+          src={stepImageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ filter: `brightness(${mediaBrightness}%)`, objectPosition: "50% 50%" }}
+        />
+      ) : null}
+    </div>
+  ) : null;
+
+  const contentNode = (
+    <div className="mx-auto w-full max-w-[720px] space-y-5">
+      <div className="flex items-center justify-between text-xs uppercase tracking-[0.24em]" style={{ color: contentMetaColor }}>
+        <span>Etapa {stepIndex + 1}</span>
+        <span>{stepIndex + 1}/{totalSteps}</span>
+      </div>
+
+      <Input
+        value={step.title}
+        onChange={(event) => onUpdate((current) => ({ ...current, title: event.target.value }))}
+        className="border-0 px-0 text-center text-3xl font-semibold shadow-none focus-visible:ring-0"
+        style={{ fontFamily: form.theme.typography.heading_font, backgroundColor: "transparent", color: contentTextColor }}
+        placeholder="Digite o titulo da etapa"
+      />
+
+      <Textarea
+        value={textValue(step.description)}
+        onChange={(event) => onUpdate((current) => ({ ...current, description: event.target.value }))}
+        className="min-h-[72px] border-0 px-0 text-center text-base shadow-none focus-visible:ring-0"
+        style={{ backgroundColor: "transparent", color: contentTextColor }}
+        placeholder="Adicione um apoio opcional para esta etapa"
+      />
+
+      {step.type === "welcome_screen" || step.type === "statement" || step.type === "end_screen" ? (
+        <Button
+          type="button"
+          className={`h-12 px-8 ${buttonRadius}`}
+          style={{ backgroundColor: form.theme.primary_color, color: form.theme.button_text_color || "#FFFFFF" }}
+        >
+          {step.type === "welcome_screen"
+            ? PRE_CHECKOUT_SYSTEM_MESSAGE_DEFAULTS.buttons.continue_label
+            : step.type === "end_screen"
+              ? PRE_CHECKOUT_SYSTEM_MESSAGE_DEFAULTS.buttons.submit_label
+              : PRE_CHECKOUT_SYSTEM_MESSAGE_DEFAULTS.buttons.confirm_answer}
+        </Button>
+      ) : step.type === "long_text" ? (
+        <Textarea
+          value={textValue(step.placeholder)}
+          onChange={(event) => onUpdate((current) => ({ ...current, placeholder: event.target.value }))}
+          className={`min-h-[160px] border px-5 py-4 text-base shadow-none ${inputRadius}`}
+          style={surfaceInputStyle}
+          placeholder="Texto de ajuda dentro do campo"
+        />
+      ) : step.type === "dropdown" ? (
+        <div className={`border px-5 py-4 text-base ${inputRadius}`} style={surfaceInputStyle}>
+          {step.placeholder || form.session_settings.system_messages?.buttons.dropdown_hint || "Digite ou selecione uma opcao"}
+        </div>
+      ) : isChoice ? (
+        <div className="grid gap-3">
+          {options.map((option) => (
+            <div key={option.id} className={`border px-5 py-4 text-base ${inputRadius}`} style={surfaceInputStyle}>
+              {option.label}
+            </div>
+          ))}
+        </div>
+      ) : step.type === "rating" || step.type === "opinion_scale" ? (
+        <div className="flex flex-wrap justify-center gap-3">
+          {Array.from({ length: Number(step.settings?.max_value || (step.type === "rating" ? 5 : 10)) }, (_, index) => (
+            <div key={index} className={`flex h-12 w-12 items-center justify-center border text-sm font-semibold ${inputRadius}`} style={surfaceInputStyle}>
+              {index + 1}
+            </div>
+          ))}
+        </div>
+      ) : step.type === "legal" ? (
+        <div className={`border px-5 py-4 text-base ${inputRadius}`} style={surfaceInputStyle}>
+          {step.settings?.legal_consent_text || "Eu aceito continuar"}
+        </div>
+      ) : (
+        <Input
+          value={textValue(step.placeholder)}
+          onChange={(event) => onUpdate((current) => ({ ...current, placeholder: event.target.value }))}
+          className={`h-14 border px-5 text-base shadow-none ${inputRadius}`}
+          style={surfaceInputStyle}
+          placeholder="Texto de ajuda dentro do campo"
+        />
+      )}
+    </div>
+  );
 
   return (
-    <div
-      className={`mx-auto w-full ${previewWidthClass} ${previewSpacingClass}`}
-      style={{
-        backgroundColor: form.theme.panel_color,
-        color: form.theme.text_color,
-        fontFamily: form.theme.typography.form_font,
-        minHeight: previewDevice === "mobile" ? 680 : 560,
-      }}
-    >
-      {form.theme.branding?.logo_url ? (
-        <div className={`flex ${form.theme.branding.logo_position === "left" ? "justify-start" : "justify-center"}`}>
-          <img src={form.theme.branding.logo_url} alt="Logo do form" className="max-h-12 max-w-[180px] object-contain" />
-        </div>
-      ) : null}
+    <div className={`mx-auto w-full ${previewWidthClass}`}>
+      <div
+        className="relative overflow-hidden rounded-[32px] border border-white/10"
+        style={{
+          backgroundColor: form.theme.panel_color,
+          color: contentTextColor,
+          fontFamily: form.theme.typography.form_font,
+          minHeight: previewDevice === "mobile" ? 680 : 560,
+        }}
+      >
+        {surfaceHasBackground ? backgroundMediaNode : null}
+        {usesBackgroundMedia ? stepBackgroundNode : null}
+        {contentUsesOverlay ? <div className="absolute inset-0 bg-black/35" /> : null}
 
-      {step.settings?.image_url ? (
-        <img
-          src={step.settings.image_url}
-          alt=""
-          className={`w-full object-cover ${radiusClass(form.theme.typography.input_radius)}`}
-          style={{ maxHeight: previewDevice === "mobile" ? 220 : 280, filter: `brightness(${mediaBrightness}%)` }}
-        />
-      ) : null}
+        <div className={`relative z-10 flex min-h-[inherit] flex-col ${previewSpacingClass}`}>
+          {form.theme.branding?.logo_url ? (
+            <div className={`flex ${form.theme.branding.logo_position === "left" ? "justify-start" : "justify-center"}`}>
+              <img src={form.theme.branding.logo_url} alt="Logo do form" className={`${getLogoSizeClass(form.theme.branding.logo_size)} w-auto object-contain`} />
+            </div>
+          ) : null}
 
-      {step.settings?.video_url ? (
-        <div
-          className={`flex w-full items-center justify-center border border-black/10 bg-black/5 px-5 py-8 ${radiusClass(form.theme.typography.input_radius)}`}
-          style={{ filter: `brightness(${mediaBrightness}%)` }}
-        >
-          <div className="flex items-center gap-3 text-sm opacity-75">
-            <PlayCircle className="h-5 w-5" />
-            Video desta etapa
-          </div>
-        </div>
-      ) : null}
-
-      <div className="space-y-5">
-        <div className="flex items-center justify-between text-xs uppercase tracking-[0.24em] text-muted-foreground">
-          <span>Etapa {stepIndex + 1}</span>
-          <span>{stepIndex + 1}/{totalSteps}</span>
-        </div>
-
-        <Input
-          value={step.title}
-          onChange={(event) => onUpdate((current) => ({ ...current, title: event.target.value }))}
-          className="border-0 px-0 text-3xl font-semibold shadow-none focus-visible:ring-0"
-          style={{ fontFamily: form.theme.typography.heading_font, backgroundColor: "transparent" }}
-          placeholder="Digite o titulo da etapa"
-        />
-
-        <Textarea
-          value={textValue(step.description)}
-          onChange={(event) => onUpdate((current) => ({ ...current, description: event.target.value }))}
-          className="min-h-[72px] border-0 px-0 text-base shadow-none focus-visible:ring-0"
-          style={{ backgroundColor: "transparent" }}
-          placeholder="Adicione um apoio opcional para esta etapa"
-        />
-
-        {step.type === "welcome_screen" || step.type === "statement" || step.type === "end_screen" ? (
-          <Button
-            type="button"
-            className={`h-12 px-8 ${buttonRadius}`}
-            style={{
-              backgroundColor: form.theme.primary_color,
-              color: form.theme.button_text_color || "#FFFFFF",
-            }}
-          >
-            {step.type === "welcome_screen" ? PRE_CHECKOUT_SYSTEM_MESSAGE_DEFAULTS.buttons.continue_label : step.type === "end_screen" ? PRE_CHECKOUT_SYSTEM_MESSAGE_DEFAULTS.buttons.submit_label : PRE_CHECKOUT_SYSTEM_MESSAGE_DEFAULTS.buttons.confirm_answer}
-          </Button>
-        ) : step.type === "long_text" ? (
-          <Textarea
-            value={textValue(step.placeholder)}
-            onChange={(event) => onUpdate((current) => ({ ...current, placeholder: event.target.value }))}
-            className={`min-h-[160px] border px-5 py-4 text-base shadow-none ${inputRadius}`}
-            style={{
-              backgroundColor: form.theme.input_background_color || "#FFFFFF",
-              borderColor: form.theme.input_border_color || "#D8DDE7",
-              color: form.theme.input_text_color || "#111827",
-            }}
-            placeholder="Texto de ajuda dentro do campo"
-          />
-        ) : step.type === "dropdown" ? (
-          <div className={`border px-5 py-4 text-base ${inputRadius}`} style={{ backgroundColor: form.theme.input_background_color || "#FFFFFF", borderColor: form.theme.input_border_color || "#D8DDE7" }}>
-            {step.placeholder || form.session_settings.system_messages?.buttons.dropdown_hint || "Digite ou selecione uma opcao"}
-          </div>
-        ) : isChoice ? (
-          <div className="grid gap-3">
-            {options.map((option) => (
-              <div key={option.id} className={`border px-5 py-4 text-base ${inputRadius}`} style={{ borderColor: form.theme.input_border_color || "#D8DDE7" }}>
-                {option.label}
+          <div className="mx-auto flex w-full max-w-[900px] flex-1 flex-col items-center justify-center text-center">
+            {stepHasVisual && !usesBackgroundMedia && (stepMediaLayout === "top" || stepMediaLayout === "top-wide") ? (
+              <div className={`mb-6 w-full ${stepMediaLayout === "top-wide" ? "h-64" : "h-44"}`}>
+                {mediaNode}
               </div>
-            ))}
-          </div>
-        ) : step.type === "rating" || step.type === "opinion_scale" ? (
-          <div className="flex flex-wrap gap-3">
-            {Array.from({ length: Number(step.settings?.max_value || (step.type === "rating" ? 5 : 10)) }, (_, index) => (
-              <div
-                key={index}
-                className={`flex h-12 w-12 items-center justify-center border text-sm font-semibold ${inputRadius}`}
-                style={{ borderColor: form.theme.input_border_color || "#D8DDE7" }}
-              >
-                {index + 1}
+            ) : null}
+
+            {stepHasVisual && !usesBackgroundMedia && ["left", "left-wide", "right", "right-wide"].includes(stepMediaLayout) ? (
+              <div className={`grid w-full flex-1 items-stretch gap-6 ${stepMediaLayout === "left-wide" || stepMediaLayout === "right-wide" ? "md:grid-cols-[1.2fr_0.8fr]" : "md:grid-cols-[1fr_1fr]"}`}>
+                {stepMediaLayout.startsWith("left") ? (
+                  <>
+                    <div className="h-full min-h-[420px]">{mediaNode}</div>
+                    <div className="flex flex-col justify-center">{contentNode}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex flex-col justify-center">{contentNode}</div>
+                    <div className="h-full min-h-[420px]">{mediaNode}</div>
+                  </>
+                )}
               </div>
-            ))}
+            ) : (
+              contentNode
+            )}
           </div>
-        ) : step.type === "legal" ? (
-          <div className={`border px-5 py-4 text-base ${inputRadius}`} style={{ borderColor: form.theme.input_border_color || "#D8DDE7" }}>
-            {step.settings?.legal_consent_text || "Eu aceito continuar"}
-          </div>
-        ) : (
-          <Input
-            value={textValue(step.placeholder)}
-            onChange={(event) => onUpdate((current) => ({ ...current, placeholder: event.target.value }))}
-            className={`h-14 border px-5 text-base shadow-none ${inputRadius}`}
-            style={{
-              backgroundColor: form.theme.input_background_color || "#FFFFFF",
-              borderColor: form.theme.input_border_color || "#D8DDE7",
-              color: form.theme.input_text_color || "#111827",
-            }}
-            placeholder="Texto de ajuda dentro do campo"
-          />
-        )}
+        </div>
       </div>
     </div>
   );
@@ -724,7 +918,7 @@ export default function FormularioEditorPage() {
     ]);
 
     if (formResponse.error || !formResponse.data) {
-      toast("N?o foi poss?vel carregar este form.", "error");
+      toast("Não foi possível carregar este form.", "error");
       router.push("/formularios");
       return;
     }
@@ -945,7 +1139,10 @@ export default function FormularioEditorPage() {
           description: step.description || "",
           placeholder: step.placeholder || "",
           is_required: step.is_required,
-          options: step.options,
+          options: step.options.map((option, optionIndex) => ({
+            ...option,
+            value: normalizeOptionValue(option.label || option.value, optionIndex),
+          })),
           settings: step.settings,
         }));
 
@@ -961,7 +1158,10 @@ export default function FormularioEditorPage() {
           description: step.description || "",
           placeholder: step.placeholder || "",
           is_required: step.is_required,
-          options: step.options,
+          options: step.options.map((option, optionIndex) => ({
+            ...option,
+            value: normalizeOptionValue(option.label || option.value, optionIndex),
+          })),
           settings: step.settings,
         }));
 
@@ -1042,7 +1242,7 @@ export default function FormularioEditorPage() {
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(() => {
       void persistFormState({ silent: true });
-    }, 900);
+    }, 1400);
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
@@ -1072,7 +1272,7 @@ export default function FormularioEditorPage() {
     const payload = await response.json().catch(() => ({}));
     setAiLoading(false);
     if (!response.ok || !payload?.result) {
-      toast(payload?.error || "A IA n?o conseguiu montar o form.", "error");
+      toast(payload?.error || "A IA não conseguiu montar o form.", "error");
       return;
     }
 
@@ -1141,7 +1341,7 @@ export default function FormularioEditorPage() {
           options: Array.isArray(step.options)
             ? step.options.map((option: any, optionIndex: number) => ({
                 id: option.id || `option_${index}_${optionIndex}`,
-                label: option.label || `Op??o ${optionIndex + 1}`,
+                label: option.label || `Opção ${optionIndex + 1}`,
                 value: option.value || `opcao_${optionIndex + 1}`,
               }))
             : [],
@@ -1448,14 +1648,6 @@ export default function FormularioEditorPage() {
       </div>
     );
   };
-  const backgroundStyle: React.CSSProperties = form.theme.branding?.background_image_url
-    ? {
-        backgroundImage: `linear-gradient(rgba(15,23,42,${(form.theme.branding.background_overlay || 0) / 100}), rgba(15,23,42,${(form.theme.branding.background_overlay || 0) / 100})), url(${form.theme.branding.background_image_url})`,
-        backgroundSize: "cover",
-        backgroundPosition: `${form.theme.branding.background_image_focus_x}% ${form.theme.branding.background_image_focus_y}%`,
-      }
-    : { background: form.theme.background.color };
-
   return (
     <>
       <div className="flex min-h-screen flex-col bg-[#09090D] text-zinc-100">
@@ -1501,8 +1693,10 @@ export default function FormularioEditorPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="hidden min-w-[88px] text-right text-xs text-zinc-400 md:inline">
-                {saveState === "saving" ? "Salvando..." : saveState === "saved" ? "Salvo" : saveState === "dirty" ? "Alteracoes pendentes" : ""}
+              <span className="hidden w-[160px] shrink-0 justify-end text-right text-xs text-zinc-400 md:flex">
+                <span className={saveState === "idle" ? "opacity-0" : "opacity-100"}>
+                  {saveState === "saving" ? "Salvando..." : saveState === "saved" ? "Salvo" : saveState === "dirty" ? "Alteracoes pendentes" : "."}
+                </span>
               </span>
               <Button variant="outline" onClick={openPreview}>
                 <Eye className="mr-2 h-4 w-4" />
@@ -1566,7 +1760,7 @@ export default function FormularioEditorPage() {
                     </div>
                   </div>
 
-                  <div className="min-h-[calc(100vh-220px)] px-8 py-8" style={{ ...backgroundStyle, backgroundColor: "#0D0E14" }}>
+                  <div className="min-h-[calc(100vh-220px)] bg-[#0D0E14] px-8 py-8">
                     {selectedStep ? (
                       <StepCanvasPreview
                         form={form}
@@ -1619,26 +1813,12 @@ export default function FormularioEditorPage() {
                         </Select>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label>Chave interna da etapa</Label>
-                        <Input value={selectedStep.step_key} onChange={(event) => updateStep(selectedStep.id, (current) => ({ ...current, step_key: slugifyPreCheckoutFormName(event.target.value || current.step_key) || current.step_key }))} />
-                      </div>
-
                       <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[#171821] p-3">
                         <div>
                           <p className="text-sm font-medium text-white">Obrigatoria</p>
                           <p className="text-xs text-zinc-400">So avanca com resposta valida.</p>
                         </div>
                         <Switch checked={selectedStep.is_required} onCheckedChange={(checked) => updateStep(selectedStep.id, (current) => ({ ...current, is_required: checked }))} />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Ajuda da etapa</Label>
-                        <Textarea
-                          value={textValue(selectedStep.settings?.helper_text)}
-                          onChange={(event) => updateStep(selectedStep.id, (current) => ({ ...current, settings: { ...current.settings, helper_text: event.target.value } }))}
-                          placeholder="Explique rapidamente o que espera da resposta"
-                        />
                       </div>
 
                       <div className="space-y-3 rounded-3xl border border-white/10 bg-[#171821] p-4">
@@ -1675,22 +1855,57 @@ export default function FormularioEditorPage() {
                             onChange={(event) => updateStep(selectedStep.id, (current) => ({ ...current, settings: { ...current.settings, media_brightness: Number(event.target.value) } }))}
                           />
                         </div>
-                      </div>
+                        {(selectedStep.settings?.image_url || selectedStep.settings?.video_url) ? (
+                          <div className="space-y-4">
+                            <Label>Layout</Label>
 
-                      <div className="space-y-2">
-                        <Label>Mapear para contato</Label>
-                        <Select
-                          value={selectedStep.settings?.map_to_contact_field || "none"}
-                          onValueChange={(value) => updateStep(selectedStep.id, (current) => ({ ...current, settings: { ...current.settings, map_to_contact_field: value === "none" ? null : value as "name" | "email" | "phone" } }))}
-                        >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Nenhum</SelectItem>
-                            <SelectItem value="name">Nome</SelectItem>
-                            <SelectItem value="email">E-mail</SelectItem>
-                            <SelectItem value="phone">Telefone</SelectItem>
-                          </SelectContent>
-                        </Select>
+                            <div className="rounded-2xl border border-white/10 bg-[#111114] p-3">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <span className="text-sm font-medium text-zinc-200">Mobile</span>
+                                <span className="text-xs text-zinc-500">Como aparece no celular</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {STEP_MEDIA_LAYOUT_MOBILE_OPTIONS.map((option) => (
+                                  <MediaLayoutButton
+                                    key={option.value}
+                                    type={option.value}
+                                    label={option.label}
+                                    active={getStepMediaLayout(selectedStep.settings, "mobile") === option.value}
+                                    onClick={() =>
+                                      updateStep(selectedStep.id, (current) => ({
+                                        ...current,
+                                        settings: { ...current.settings, media_layout_mobile: option.value },
+                                      }))
+                                    }
+                                  />
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/10 bg-[#111114] p-3">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <span className="text-sm font-medium text-zinc-200">Desktop</span>
+                                <span className="text-xs text-zinc-500">Como aparece no computador</span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 max-w-[220px]">
+                                {STEP_MEDIA_LAYOUT_DESKTOP_OPTIONS.map((option) => (
+                                  <MediaLayoutButton
+                                    key={option.value}
+                                    type={option.value}
+                                    label={option.label}
+                                    active={getStepMediaLayout(selectedStep.settings, "desktop") === option.value}
+                                    onClick={() =>
+                                      updateStep(selectedStep.id, (current) => ({
+                                        ...current,
+                                        settings: { ...current.settings, media_layout_desktop: option.value },
+                                      }))
+                                    }
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
 
                       {["single_choice", "multiple_choice", "dropdown", "yes_no"].includes(selectedStep.type) ? (
@@ -1700,7 +1915,7 @@ export default function FormularioEditorPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => updateStep(selectedStep.id, (current) => ({
+                          onClick={() => updateStep(selectedStep.id, (current) => ({
                                 ...current,
                                 options: [...current.options, { id: crypto.randomUUID(), label: `Opcao ${current.options.length + 1}`, value: `opcao_${current.options.length + 1}` }],
                               }))}
@@ -1710,9 +1925,24 @@ export default function FormularioEditorPage() {
                             </Button>
                           </div>
                           {selectedStep.options.map((option) => (
-                            <div key={option.id} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                              <Input value={option.label} onChange={(event) => updateStep(selectedStep.id, (current) => ({ ...current, options: current.options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item) }))} />
-                              <Input value={option.value} onChange={(event) => updateStep(selectedStep.id, (current) => ({ ...current, options: current.options.map((item) => item.id === option.id ? { ...item, value: event.target.value } : item) }))} />
+                            <div key={option.id} className="grid grid-cols-[1fr_auto] gap-2">
+                              <Input
+                                value={option.label}
+                                onChange={(event) =>
+                                  updateStep(selectedStep.id, (current) => ({
+                                    ...current,
+                                    options: current.options.map((item, optionIndex) =>
+                                      item.id === option.id
+                                        ? {
+                                            ...item,
+                                            label: event.target.value,
+                                            value: normalizeOptionValue(event.target.value, optionIndex),
+                                          }
+                                        : item
+                                    ),
+                                  }))
+                                }
+                              />
                               <Button variant="ghost" size="icon" onClick={() => updateStep(selectedStep.id, (current) => ({ ...current, options: current.options.filter((item) => item.id !== option.id) }))}>
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
@@ -2091,22 +2321,22 @@ export default function FormularioEditorPage() {
                     <div className="space-y-5">
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium">Bot?es, dicas e atalhos</p>
-                          <Button variant="ghost" size="sm" onClick={() => resetSystemMessages("buttons")}>Padr?o</Button>
+                          <p className="text-sm font-medium">Botões, dicas e atalhos</p>
+                          <Button variant="ghost" size="sm" onClick={() => resetSystemMessages("buttons")}>Padrão</Button>
                         </div>
-                        <Input value={systemMessages.buttons.confirm_answer} onChange={(event) => updateSystemMessage("buttons", "confirm_answer", event.target.value)} placeholder="Bot?o para confirmar resposta" />
-                        <Input value={systemMessages.buttons.next_hint} onChange={(event) => updateSystemMessage("buttons", "next_hint", event.target.value)} placeholder="Hint da pr?xima pergunta" />
-                        <Input value={systemMessages.buttons.dropdown_hint} onChange={(event) => updateSystemMessage("buttons", "dropdown_hint", event.target.value)} placeholder="Texto do dropdown" />
-                        <Input value={systemMessages.buttons.submit_label} onChange={(event) => updateSystemMessage("buttons", "submit_label", event.target.value)} placeholder="Texto do bot?o final" />
+                        <AutosizeTextField value={systemMessages.buttons.confirm_answer} onChange={(value) => updateSystemMessage("buttons", "confirm_answer", value)} placeholder="Botão para confirmar resposta" />
+                        <AutosizeTextField value={systemMessages.buttons.next_hint} onChange={(value) => updateSystemMessage("buttons", "next_hint", value)} placeholder="Hint da próxima pergunta" />
+                        <AutosizeTextField value={systemMessages.buttons.dropdown_hint} onChange={(value) => updateSystemMessage("buttons", "dropdown_hint", value)} placeholder="Texto do dropdown" />
+                        <AutosizeTextField value={systemMessages.buttons.submit_label} onChange={(value) => updateSystemMessage("buttons", "submit_label", value)} placeholder="Texto do botão final" />
                         {SYSTEM_MESSAGE_SECTIONS.buttons.fields
                           .filter((field) => !["confirm_answer", "next_hint", "dropdown_hint", "submit_label"].includes(String(field.key)))
                           .map((field) => (
                             <div key={String(field.key)} className="space-y-2">
                               <Label>{field.label}</Label>
-                              <Input
+                              <AutosizeTextField
                                 value={String((systemMessages.buttons as Record<string, string>)[String(field.key)] || "")}
                                 maxLength={"maxLength" in field ? Number(field.maxLength) : undefined}
-                                onChange={(event) => updateSystemMessage("buttons", field.key as never, event.target.value as never)}
+                                onChange={(value) => updateSystemMessage("buttons", field.key as never, value as never)}
                               />
                             </div>
                           ))}
@@ -2115,15 +2345,15 @@ export default function FormularioEditorPage() {
                         <div key={groupKey} className="space-y-3 rounded-2xl border border-white/10 bg-[#171821] p-4">
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-medium">{SYSTEM_MESSAGE_SECTIONS[groupKey].title}</p>
-                            <Button variant="ghost" size="sm" onClick={() => resetSystemMessages(groupKey)}>Padr?o</Button>
+                            <Button variant="ghost" size="sm" onClick={() => resetSystemMessages(groupKey)}>Padrão</Button>
                           </div>
                           {SYSTEM_MESSAGE_SECTIONS[groupKey].fields.map((field) => (
                             <div key={String(field.key)} className="space-y-2">
                               <Label>{field.label}</Label>
-                              <Input
+                              <AutosizeTextField
                                 value={String((systemMessages[groupKey] as Record<string, string>)[String(field.key)] || "")}
                                 maxLength={"maxLength" in field ? Number(field.maxLength) : undefined}
-                                onChange={(event) => updateSystemMessage(groupKey, field.key as never, event.target.value as never)}
+                                onChange={(value) => updateSystemMessage(groupKey, field.key as never, value as never)}
                               />
                             </div>
                           ))}
@@ -2164,13 +2394,6 @@ export default function FormularioEditorPage() {
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Largura do painel</Label>
-                <Select value={form.theme.layout.width} onValueChange={(value: PreCheckoutForm["theme"]["layout"]["width"]) => updateForm((current) => ({ ...current, theme: { ...current.theme, layout: { ...current.theme.layout, width: value } } }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{LAYOUT_WIDTH_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
                 <Label>Espacamento</Label>
                 <Select value={form.theme.layout.spacing} onValueChange={(value: PreCheckoutForm["theme"]["layout"]["spacing"]) => updateForm((current) => ({ ...current, theme: { ...current.theme, layout: { ...current.theme.layout, spacing: value } } }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -2196,7 +2419,7 @@ export default function FormularioEditorPage() {
             <div className="space-y-4 rounded-3xl border border-white/10 bg-[#171821] p-4">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Logo</p>
-                <p className="text-xs text-zinc-400">Use uma logo central ou alinhada a esquerda.</p>
+                <p className="text-xs text-zinc-400">Use a logo no topo do form e escolha o tamanho dela.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Label htmlFor="form-logo-upload" className="cursor-pointer">
@@ -2212,26 +2435,30 @@ export default function FormularioEditorPage() {
                   </Button>
                 ) : null}
               </div>
-            </div>
-
-            <div className="space-y-4 rounded-3xl border border-white/10 bg-[#171821] p-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Imagem de abertura</p>
-                <p className="text-xs text-zinc-400">Aparece no topo do form, antes do conteudo.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Label htmlFor="form-top-image-upload" className="cursor-pointer">
-                  <div className="inline-flex h-10 items-center justify-center rounded-xl border border-input px-3 text-sm">
-                    {uploadingAssetKey === "top_image_url" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
-                    Enviar imagem
-                  </div>
-                </Label>
-                <input id="form-top-image-upload" type="file" accept="image/*" className="hidden" onChange={(event) => void handleThemeAssetUpload(event, "top_image_url")} />
-                {form.theme.top_image_url ? (
-                  <Button variant="ghost" className="text-destructive" onClick={() => updateForm((current) => ({ ...current, theme: { ...current.theme, top_image_url: null } }))}>
-                    Remover imagem
-                  </Button>
-                ) : null}
+              <div className="space-y-2">
+                <Label>Tamanho da logo</Label>
+                <Select
+                  value={form.theme.branding?.logo_size || "md"}
+                  onValueChange={(value) =>
+                    updateForm((current) => ({
+                      ...current,
+                      theme: {
+                        ...current.theme,
+                        branding: {
+                          ...(current.theme.branding || PRE_CHECKOUT_DEFAULT_THEME.branding!),
+                          logo_size: value as "sm" | "md" | "lg" | "xl",
+                        },
+                      },
+                    }))
+                  }
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {LOGO_SIZE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

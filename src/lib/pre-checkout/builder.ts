@@ -66,6 +66,8 @@ export function createBuilderStep(type: PreCheckoutFormStepType, position: numbe
       auto_focus: position === 0,
       max_length: 160,
       map_to_contact_field: null,
+      media_layout_desktop: "background",
+      media_layout_mobile: "background",
     },
   };
 

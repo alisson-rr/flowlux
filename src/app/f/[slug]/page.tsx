@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Script from "next/script";
 import { useParams, useSearchParams } from "next/navigation";
-import { CheckCircle2, ChevronRight, ImageIcon, Loader2, PlayCircle } from "lucide-react";
+import { CheckCircle2, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -90,6 +90,18 @@ function radiusClass(radius: "sm" | "md" | "lg" | "full") {
   return "rounded-2xl";
 }
 
+function getLogoSizeClass(size?: NonNullable<PreCheckoutForm["theme"]["branding"]>["logo_size"]) {
+  if (size === "sm") return "max-h-10 max-w-[140px]";
+  if (size === "lg") return "max-h-20 max-w-[260px]";
+  if (size === "xl") return "max-h-28 max-w-[320px]";
+  return "max-h-14 max-w-[180px]";
+}
+
+function getStepMediaLayout(settings: PreCheckoutFormStep["settings"] | undefined, device: "desktop" | "mobile") {
+  if (device === "mobile") return settings?.media_layout_mobile || "background";
+  return settings?.media_layout_desktop || "background";
+}
+
 function getStepLabel(step: PreCheckoutFormStep, isLast: boolean, finalConfig: PreCheckoutForm["final_config"], messages: PreCheckoutSystemMessages) {
   if (step.settings?.button_label?.trim()) return step.settings.button_label;
   if (step.type === "legal") return messages.buttons.legal_accept_label;
@@ -119,6 +131,7 @@ export default function PublicFormPage() {
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [answers, setAnswers] = useState<Record<string, PublicAnswerValue>>({});
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [viewportMode, setViewportMode] = useState<"desktop" | "mobile">("desktop");
   const [screenError, setScreenError] = useState("");
   const [completedMessage, setCompletedMessage] = useState<{ title: string; description: string } | null>(null);
   const startedTrackedRef = useRef(false);
@@ -130,27 +143,10 @@ export default function PublicFormPage() {
   const messages = useMemo(() => getSystemMessages(form), [form]);
   const connectConfig = useMemo(() => getConnectConfigFromForm(form), [form]);
 
-  const pageStyle = useMemo<React.CSSProperties>(() => {
-    const brandingImage = theme.branding?.background_image_url;
-    if (brandingImage) {
-      return {
-        backgroundImage: `linear-gradient(rgba(15,23,42,${(theme.branding?.background_overlay || 0) / 100}), rgba(15,23,42,${(theme.branding?.background_overlay || 0) / 100})), url(${brandingImage})`,
-        backgroundSize: "cover",
-        backgroundPosition: `${theme.branding?.background_image_focus_x || 50}% ${theme.branding?.background_image_focus_y || 50}%`,
-        filter: undefined,
-        fontFamily: theme.typography.body_font,
-      };
-    }
-    if (theme.background.mode === "image" && theme.background.image_url) {
-      return {
-        backgroundImage: `linear-gradient(rgba(15,23,42,${theme.background.image_overlay / 100}), rgba(15,23,42,${theme.background.image_overlay / 100})), url(${theme.background.image_url})`,
-        backgroundSize: "cover",
-        backgroundPosition: `${theme.background.image_focus_x}% ${theme.background.image_focus_y}%`,
-        fontFamily: theme.typography.body_font,
-      };
-    }
-    return { background: theme.background.color, fontFamily: theme.typography.body_font };
-  }, [theme]);
+  const pageStyle = useMemo<React.CSSProperties>(
+    () => ({ fontFamily: theme.typography.body_font }),
+    [theme]
+  );
 
   const fireTrackingEvent = (name: string, payload: Record<string, unknown> = {}) => {
     if (previewMode || typeof window === "undefined") return;
@@ -245,6 +241,13 @@ export default function PublicFormPage() {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [completedMessage, previewMode, session, slug]);
 
+  useEffect(() => {
+    const syncViewport = () => setViewportMode(window.innerWidth < 768 ? "mobile" : "desktop");
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
+
   const setAnswer = (value: PublicAnswerValue) => currentStep && setAnswers((current) => ({ ...current, [currentStep.id]: value }));
 
   const handleFieldInputChange = (value: string) => {
@@ -324,11 +327,133 @@ export default function PublicFormPage() {
 
   const inputStyle: React.CSSProperties = { backgroundColor: theme.input_background_color || "#FFFFFF", color: theme.input_text_color || "#111827", borderColor: theme.input_border_color || "#D8DDE7" };
   const buttonStyle: React.CSSProperties = { backgroundColor: theme.primary_color, color: theme.button_text_color || "#FFFFFF" };
-  const layoutClass = theme.layout.width === "sm" ? "max-w-2xl" : theme.layout.width === "lg" ? "max-w-6xl" : "max-w-4xl";
+  const previewSpacingClass =
+    theme.layout.spacing === "compact"
+      ? "space-y-5 p-6"
+      : theme.layout.spacing === "relaxed"
+        ? "space-y-9 p-10"
+        : "space-y-7 p-8";
   const mediaBrightness = currentStep?.settings?.media_brightness ?? 100;
+  const currentMediaLayout = getStepMediaLayout(currentStep?.settings, viewportMode);
+  const globalBackgroundImageUrl =
+    theme.branding?.background_image_url ||
+    (theme.background.mode === "image" ? theme.background.image_url : null) ||
+    null;
+  const globalBackgroundPosition = `${theme.branding?.background_image_focus_x || theme.background.image_focus_x}% ${theme.branding?.background_image_focus_y || theme.background.image_focus_y}%`;
+  const globalBackgroundBrightness = theme.branding?.background_brightness || 100;
+  const stepVideoUrl = currentStep?.settings?.video_url || null;
+  const stepImageUrl = !stepVideoUrl ? currentStep?.settings?.image_url || null : null;
+  const stepHasVisual = Boolean(stepVideoUrl || stepImageUrl);
+  const surfaceHasBackground = Boolean(globalBackgroundImageUrl);
+  const usesBackgroundMedia = stepHasVisual && currentMediaLayout === "background";
+  const usesTopMedia = stepHasVisual && !usesBackgroundMedia && (currentMediaLayout === "top" || currentMediaLayout === "top-wide");
+  const usesSplitMedia =
+    stepHasVisual &&
+    !usesBackgroundMedia &&
+    ["left", "left-wide", "right", "right-wide"].includes(currentMediaLayout);
+  const contentUsesOverlay = surfaceHasBackground || usesBackgroundMedia;
+  const surfaceTextColor = contentUsesOverlay ? "#FFFFFF" : theme.text_color;
+  const surfaceMetaColor = contentUsesOverlay ? "rgba(255,255,255,0.72)" : "#8C92A4";
+  const surfaceInputStyle: React.CSSProperties = contentUsesOverlay
+    ? {
+        backgroundColor: "rgba(15, 23, 42, 0.55)",
+        borderColor: "rgba(255,255,255,0.16)",
+        color: "#FFFFFF",
+      }
+    : inputStyle;
+  const columnAlignmentClass = "items-center text-center";
+  const mediaNode = stepHasVisual ? (
+    <div className="relative h-full w-full overflow-hidden bg-[#0B0B12]">
+      {stepVideoUrl ? (
+        <video
+          src={stepVideoUrl}
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ filter: `brightness(${mediaBrightness}%)` }}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+      ) : stepImageUrl ? (
+        <img
+          src={stepImageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ filter: `brightness(${mediaBrightness}%)`, objectPosition: "50% 50%" }}
+        />
+      ) : null}
+    </div>
+  ) : null;
+  const backgroundMediaNode = surfaceHasBackground ? (
+    <div className="absolute inset-0 overflow-hidden bg-[#0B0B12]">
+      {globalBackgroundImageUrl ? (
+        <img
+          src={globalBackgroundImageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ filter: `brightness(${globalBackgroundBrightness}%)`, objectPosition: globalBackgroundPosition }}
+        />
+      ) : null}
+    </div>
+  ) : null;
+  const stepBackgroundNode = usesBackgroundMedia ? (
+    <div className="absolute inset-0 overflow-hidden bg-[#0B0B12]">
+      {stepVideoUrl ? (
+        <video
+          src={stepVideoUrl}
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ filter: `brightness(${mediaBrightness}%)` }}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+      ) : stepImageUrl ? (
+        <img
+          src={stepImageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ filter: `brightness(${mediaBrightness}%)`, objectPosition: "50% 50%" }}
+        />
+      ) : null}
+    </div>
+  ) : null;
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#F7F8FC]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-  if (!form || !steps.length) return <div className="flex min-h-screen items-center justify-center bg-[#F7F8FC] p-6 text-center text-foreground">{screenError || messages.completion.unavailable}</div>;
+  const formBody = (
+    <form className={`mx-auto w-full max-w-[720px] space-y-6 ${theme.layout.align === "left" ? "text-left" : "text-center"}`} onSubmit={(event) => { event.preventDefault(); void handleContinue(); }}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em]" style={{ color: surfaceMetaColor }}><span>{form?.name}</span><span>{currentStepIndex + 1}/{steps.length}</span></div>
+        <div className="h-2 overflow-hidden rounded-full bg-black/10"><div className="h-full rounded-full transition-all" style={{ width: `${((currentStepIndex + 1) / steps.length) * 100}%`, backgroundColor: theme.primary_color }} /></div>
+        <div className="space-y-3">
+          <h1 className="text-3xl font-semibold sm:text-4xl" style={{ fontFamily: theme.typography.heading_font }}>{currentStep?.title}</h1>
+          {(currentStep?.description || form?.description) ? <p className="max-w-2xl text-base opacity-80">{currentStep?.description || form?.description}</p> : null}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {currentStep && TEXT_INPUT_TYPES.has(currentStep.type) ? <Input type={currentStep.type === "email" ? "email" : currentStep.type === "date" ? "date" : currentStep.type === "number" ? "number" : "text"} inputMode={currentStep.type === "phone" ? "tel" : currentStep.type === "number" ? "numeric" : undefined} value={typeof currentValue === "string" || typeof currentValue === "number" ? String(currentValue) : ""} onChange={(event) => handleFieldInputChange(event.target.value)} placeholder={currentStep.placeholder || messages.buttons.text_hint} className={`h-14 border ${radiusClass(theme.typography.input_radius)}`} style={surfaceInputStyle} /> : null}
+        {currentStep?.type === "long_text" ? <Textarea value={typeof currentValue === "string" ? currentValue : ""} onChange={(event) => setAnswer(event.target.value)} placeholder={currentStep.placeholder || messages.buttons.text_hint} className={`min-h-[180px] border ${radiusClass(theme.typography.input_radius)}`} style={surfaceInputStyle} /> : null}
+        {currentStep?.type === "dropdown" ? <div className="space-y-2"><select value={typeof currentValue === "string" ? currentValue : ""} onChange={(event) => setAnswer(event.target.value)} className={`h-14 w-full border px-4 ${radiusClass(theme.typography.input_radius)}`} style={surfaceInputStyle}><option value="">{messages.buttons.dropdown_touch_hint}</option>{getStepOptions(currentStep, messages).map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}</select><p className="text-sm opacity-65">{messages.buttons.dropdown_hint}</p></div> : null}
+        {currentStep && (currentStep.type === "single_choice" || currentStep.type === "yes_no") ? <div className="grid gap-3">{getStepOptions(currentStep, messages).map((option) => { const active = currentValue === option.value; return <button key={option.id} type="button" onClick={() => setAnswer(option.value)} className={`border px-5 py-4 text-left text-base transition-colors ${radiusClass(theme.typography.input_radius)} ${active ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: active ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: active ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}>{option.label}</button>; })}</div> : null}
+        {currentStep?.type === "multiple_choice" ? <div className="space-y-3"><p className="text-sm opacity-65">{messages.buttons.multiple_choice_hint}</p><div className="grid gap-3">{getStepOptions(currentStep, messages).map((option) => { const selected = Array.isArray(currentValue) ? currentValue.map(String).includes(option.value) : false; return <button key={option.id} type="button" onClick={() => { const list = Array.isArray(currentValue) ? currentValue.map(String) : []; setAnswer(list.includes(option.value) ? list.filter((item) => item !== option.value) : [...list, option.value]); }} className={`flex items-center gap-3 border px-5 py-4 text-left text-base transition-colors ${radiusClass(theme.typography.input_radius)} ${selected ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: selected ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: selected ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}><span className={`h-5 w-5 rounded-md border ${selected ? "border-white bg-white/20" : "border-black/30"}`} /><span>{option.label}</span></button>; })}</div></div> : null}
+        {currentStep && ["rating", "opinion_scale"].includes(currentStep.type) ? <div className="space-y-4"><div className="flex flex-wrap gap-3">{Array.from({ length: ((currentStep.settings?.max_value || (currentStep.type === "rating" ? 5 : 10)) - (currentStep.settings?.min_value || 1)) + 1 }).map((_, index) => { const min = currentStep.settings?.min_value || 1; const value = min + index; const active = Number(currentValue) === value; return <button key={value} type="button" onClick={() => setAnswer(value)} className={`flex h-14 w-14 items-center justify-center border text-base font-semibold transition-colors ${radiusClass(theme.typography.button_radius)} ${active ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: active ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: active ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}>{value}</button>; })}</div><div className="flex justify-between text-sm opacity-70"><span>{currentStep.settings?.min_label || ""}</span><span>{currentStep.settings?.max_label || ""}</span></div></div> : null}
+        {currentStep?.type === "legal" ? <label className={`flex items-start gap-3 border border-black/10 bg-black/5 px-5 py-5 text-left text-base ${radiusClass(theme.typography.input_radius)}`} style={contentUsesOverlay ? { backgroundColor: "rgba(15, 23, 42, 0.55)", borderColor: "rgba(255,255,255,0.16)" } : undefined}><input type="checkbox" checked={Boolean(currentValue)} onChange={(event) => setAnswer(event.target.checked)} className="mt-1 h-5 w-5 rounded border-black/30" /><div className="space-y-1"><div>{currentStep.settings?.legal_consent_text || currentStep.description || messages.buttons.legal_accept_label}</div><div className="text-sm opacity-70">{currentStep.settings?.legal_required_label || messages.errors.legal_rejected}</div></div></label> : null}
+      </div>
+
+      {screenError ? <p className="text-sm text-rose-500">{screenError}</p> : null}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Button type="button" variant="ghost" disabled={currentStepIndex === 0 || submitting} onClick={() => setCurrentStepIndex((current) => Math.max(0, current - 1))}>Voltar</Button>
+        <div className="flex items-center gap-3">
+          {!DISPLAY_ONLY_STEP_TYPES.has(currentStep?.type || "") && currentStep?.type !== "multiple_choice" && currentStep?.type !== "legal" && currentStep?.type !== "long_text" ? <span className="hidden text-sm opacity-60 sm:inline">{messages.buttons.next_hint}</span> : null}
+          <Button type="submit" disabled={submitting} className={radiusClass(theme.typography.button_radius)} style={buttonStyle}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><span>{currentStep ? getStepLabel(currentStep, isLastStep, form!.final_config, messages) : messages.buttons.confirm_answer}</span><ChevronRight className="ml-2 h-4 w-4" /></>}</Button>
+        </div>
+      </div>
+    </form>
+  );
+
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#0D0E14]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  if (!form || !steps.length) return <div className="flex min-h-screen items-center justify-center bg-[#0D0E14] p-6 text-center text-white">{screenError || messages.completion.unavailable}</div>;
 
   return (
     <div className="min-h-screen" style={pageStyle}>
@@ -336,54 +461,57 @@ export default function PublicFormPage() {
       {!previewMode && connectConfig.ga4_enabled && connectConfig.ga4_measurement_id && <><Script src={`https://www.googletagmanager.com/gtag/js?id=${connectConfig.ga4_measurement_id}`} strategy="afterInteractive" /><Script id={`ga4-${form.id}`} strategy="afterInteractive">{`window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}window.gtag = gtag;gtag('js', new Date());gtag('config', '${connectConfig.ga4_measurement_id}');`}</Script></>}
       {!previewMode && connectConfig.gtm_enabled && connectConfig.gtm_container_id && <><Script id={`gtm-${form.id}`} strategy="afterInteractive">{`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${connectConfig.gtm_container_id}');`}</Script><noscript><iframe src={`https://www.googletagmanager.com/ns.html?id=${connectConfig.gtm_container_id}`} height="0" width="0" style={{ display: "none", visibility: "hidden" }} /></noscript></>}
 
-      <div className={`mx-auto ${layoutClass} px-4 py-8 md:px-8 md:py-12`}>
-        <div className="space-y-8 rounded-[36px] px-4 py-6 md:px-8 md:py-10" style={{ backgroundColor: theme.panel_color, color: theme.text_color }}>
-          {theme.top_image_url ? <img src={theme.top_image_url} alt="" className={`max-h-[320px] w-full object-cover ${radiusClass(theme.typography.input_radius)}`} /> : null}
-          <div className={theme.layout.spacing === "compact" ? "space-y-5" : theme.layout.spacing === "relaxed" ? "space-y-10" : "space-y-8"}>
-            {theme.branding?.logo_url ? <div className={`flex ${theme.branding.logo_position === "left" ? "justify-start" : "justify-center"}`}><img src={theme.branding.logo_url} alt="" className="max-h-16 w-auto object-contain" /></div> : null}
-            {completedMessage ? (
-              <div className={`flex flex-col gap-4 ${theme.layout.align === "left" ? "items-start text-left" : "items-center text-center"} py-10`}>
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10"><CheckCircle2 className="h-8 w-8 text-emerald-500" /></div>
-                <div className="space-y-2"><h1 className="text-3xl font-semibold" style={{ fontFamily: theme.typography.heading_font }}>{completedMessage.title}</h1><p className="max-w-xl text-sm opacity-80">{completedMessage.description}</p></div>
-              </div>
-            ) : (
-              <form className={`space-y-6 ${theme.layout.align === "left" ? "text-left" : "text-center"}`} onSubmit={(event) => { event.preventDefault(); void handleContinue(); }}>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] opacity-60"><span>{form.name}</span><span>{currentStepIndex + 1}/{steps.length}</span></div>
-                  <div className="h-2 overflow-hidden rounded-full bg-black/10"><div className="h-full rounded-full transition-all" style={{ width: `${((currentStepIndex + 1) / steps.length) * 100}%`, backgroundColor: theme.primary_color }} /></div>
-                  {currentStep?.settings?.image_url ? <img src={currentStep.settings.image_url} alt="" className={`max-h-[360px] w-full object-cover ${radiusClass(theme.typography.input_radius)}`} style={{ filter: `brightness(${mediaBrightness}%)` }} /> : null}
-                  {currentStep?.settings?.video_url ? <div className={`flex items-center gap-3 border border-black/10 bg-black/5 px-5 py-6 ${radiusClass(theme.typography.input_radius)}`} style={{ filter: `brightness(${mediaBrightness}%)` }}><PlayCircle className="h-5 w-5" /><span className="text-sm">Video de apoio configurado nesta etapa</span></div> : null}
-                  {!theme.top_image_url && !currentStep?.settings?.image_url && !currentStep?.settings?.video_url ? <div className={`flex h-24 items-center justify-center border border-black/10 bg-black/5 ${radiusClass(theme.typography.input_radius)}`}><ImageIcon className="h-6 w-6 opacity-60" /></div> : null}
-                  <div className="space-y-3">
-                    <h1 className="text-3xl font-semibold sm:text-4xl" style={{ fontFamily: theme.typography.heading_font }}>{currentStep?.title}</h1>
-                    {(currentStep?.description || form.description) ? <p className="max-w-2xl text-base opacity-80">{currentStep?.description || form.description}</p> : null}
-                    {currentStep?.settings?.helper_text ? <p className="text-sm opacity-65">{currentStep.settings.helper_text}</p> : null}
-                  </div>
-                </div>
+      <div
+        className="relative min-h-screen w-full overflow-hidden"
+        style={{
+          backgroundColor: theme.panel_color,
+          color: surfaceTextColor,
+          minHeight: viewportMode === "mobile" ? 680 : 560,
+        }}
+      >
+        {surfaceHasBackground ? backgroundMediaNode : null}
+        {usesBackgroundMedia ? stepBackgroundNode : null}
+        {contentUsesOverlay ? <div className="absolute inset-0 bg-black/35" /> : null}
 
-                <div className="space-y-4">
-                  {DISPLAY_ONLY_STEP_TYPES.has(currentStep?.type || "") ? <div className={`border border-black/10 bg-black/5 px-5 py-5 text-base opacity-80 ${radiusClass(theme.typography.input_radius)}`}>{currentStep?.settings?.helper_text || "Quando voce estiver pronto, avance para continuar."}</div> : null}
-                  {currentStep && TEXT_INPUT_TYPES.has(currentStep.type) ? <Input type={currentStep.type === "email" ? "email" : currentStep.type === "date" ? "date" : currentStep.type === "number" ? "number" : "text"} inputMode={currentStep.type === "phone" ? "tel" : currentStep.type === "number" ? "numeric" : undefined} value={typeof currentValue === "string" || typeof currentValue === "number" ? String(currentValue) : ""} onChange={(event) => handleFieldInputChange(event.target.value)} placeholder={currentStep.placeholder || messages.buttons.text_hint} className={`h-14 border ${radiusClass(theme.typography.input_radius)}`} style={inputStyle} /> : null}
-                  {currentStep?.type === "long_text" ? <Textarea value={typeof currentValue === "string" ? currentValue : ""} onChange={(event) => setAnswer(event.target.value)} placeholder={currentStep.placeholder || messages.buttons.text_hint} className={`min-h-[180px] border ${radiusClass(theme.typography.input_radius)}`} style={inputStyle} /> : null}
-                  {currentStep?.type === "dropdown" ? <div className="space-y-2"><select value={typeof currentValue === "string" ? currentValue : ""} onChange={(event) => setAnswer(event.target.value)} className={`h-14 w-full border px-4 ${radiusClass(theme.typography.input_radius)}`} style={inputStyle}><option value="">{messages.buttons.dropdown_touch_hint}</option>{getStepOptions(currentStep, messages).map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}</select><p className="text-sm opacity-65">{messages.buttons.dropdown_hint}</p></div> : null}
-                  {currentStep && (currentStep.type === "single_choice" || currentStep.type === "yes_no") ? <div className="grid gap-3">{getStepOptions(currentStep, messages).map((option) => { const active = currentValue === option.value; return <button key={option.id} type="button" onClick={() => setAnswer(option.value)} className={`border px-5 py-4 text-left text-base transition-colors ${radiusClass(theme.typography.input_radius)} ${active ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: active ? theme.primary_color : undefined, color: active ? theme.button_text_color || "#FFFFFF" : theme.text_color }}>{option.label}</button>; })}</div> : null}
-                  {currentStep?.type === "multiple_choice" ? <div className="space-y-3"><p className="text-sm opacity-65">{messages.buttons.multiple_choice_hint}</p><div className="grid gap-3">{getStepOptions(currentStep, messages).map((option) => { const selected = Array.isArray(currentValue) ? currentValue.map(String).includes(option.value) : false; return <button key={option.id} type="button" onClick={() => { const list = Array.isArray(currentValue) ? currentValue.map(String) : []; setAnswer(list.includes(option.value) ? list.filter((item) => item !== option.value) : [...list, option.value]); }} className={`flex items-center gap-3 border px-5 py-4 text-left text-base transition-colors ${radiusClass(theme.typography.input_radius)} ${selected ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: selected ? theme.primary_color : undefined, color: selected ? theme.button_text_color || "#FFFFFF" : theme.text_color }}><span className={`h-5 w-5 rounded-md border ${selected ? "border-white bg-white/20" : "border-black/30"}`} /><span>{option.label}</span></button>; })}</div></div> : null}
-                  {currentStep && ["rating", "opinion_scale"].includes(currentStep.type) ? <div className="space-y-4"><div className="flex flex-wrap gap-3">{Array.from({ length: ((currentStep.settings?.max_value || (currentStep.type === "rating" ? 5 : 10)) - (currentStep.settings?.min_value || 1)) + 1 }).map((_, index) => { const min = currentStep.settings?.min_value || 1; const value = min + index; const active = Number(currentValue) === value; return <button key={value} type="button" onClick={() => setAnswer(value)} className={`flex h-14 w-14 items-center justify-center border text-base font-semibold transition-colors ${radiusClass(theme.typography.button_radius)} ${active ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: active ? theme.primary_color : undefined, color: active ? theme.button_text_color || "#FFFFFF" : theme.text_color }}>{value}</button>; })}</div><div className="flex justify-between text-sm opacity-70"><span>{currentStep.settings?.min_label || ""}</span><span>{currentStep.settings?.max_label || ""}</span></div></div> : null}
-                  {currentStep?.type === "legal" ? <label className={`flex items-start gap-3 border border-black/10 bg-black/5 px-5 py-5 text-left text-base ${radiusClass(theme.typography.input_radius)}`}><input type="checkbox" checked={Boolean(currentValue)} onChange={(event) => setAnswer(event.target.checked)} className="mt-1 h-5 w-5 rounded border-black/30" /><div className="space-y-1"><div>{currentStep.settings?.legal_consent_text || currentStep.description || messages.buttons.legal_accept_label}</div><div className="text-sm opacity-70">{currentStep.settings?.legal_required_label || messages.errors.legal_rejected}</div></div></label> : null}
+        <div className={`relative z-10 flex min-h-screen w-full flex-col ${previewSpacingClass}`}>
+              {theme.branding?.logo_url ? (
+                <div className={`flex ${theme.branding.logo_position === "left" ? "justify-start" : "justify-center"}`}>
+                  <img src={theme.branding.logo_url} alt="" className={`${getLogoSizeClass(theme.branding.logo_size)} w-auto object-contain`} />
                 </div>
+              ) : null}
 
-                {screenError ? <p className="text-sm text-rose-500">{screenError}</p> : null}
-
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <Button type="button" variant="ghost" disabled={currentStepIndex === 0 || submitting} onClick={() => setCurrentStepIndex((current) => Math.max(0, current - 1))}>Voltar</Button>
-                  <div className="flex items-center gap-3">
-                    {!DISPLAY_ONLY_STEP_TYPES.has(currentStep?.type || "") && currentStep?.type !== "multiple_choice" && currentStep?.type !== "legal" && currentStep?.type !== "long_text" ? <span className="hidden text-sm opacity-60 sm:inline">{messages.buttons.next_hint}</span> : null}
-                    <Button type="submit" disabled={submitting} className={radiusClass(theme.typography.button_radius)} style={buttonStyle}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><span>{currentStep ? getStepLabel(currentStep, isLastStep, form.final_config, messages) : messages.buttons.confirm_answer}</span><ChevronRight className="ml-2 h-4 w-4" /></>}</Button>
-                  </div>
+              {completedMessage ? (
+                <div className={`mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-4 py-10 ${columnAlignmentClass}`}>
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10"><CheckCircle2 className="h-8 w-8 text-emerald-500" /></div>
+                  <div className="space-y-2"><h1 className="text-3xl font-semibold" style={{ fontFamily: theme.typography.heading_font }}>{completedMessage.title}</h1><p className="max-w-xl text-sm opacity-80">{completedMessage.description}</p></div>
                 </div>
-              </form>
-            )}
-          </div>
+              ) : (
+                <div className="mx-auto flex w-full max-w-[900px] flex-1 flex-col items-center justify-center text-center">
+                  {usesTopMedia ? (
+                    <div className={`mb-6 w-full ${currentMediaLayout === "top-wide" ? "h-64" : "h-44"}`}>
+                      {mediaNode}
+                    </div>
+                  ) : null}
+
+                  {usesSplitMedia ? (
+                    <div className={`grid w-full flex-1 items-stretch gap-6 ${currentMediaLayout === "left-wide" || currentMediaLayout === "right-wide" ? "md:grid-cols-[1.2fr_0.8fr]" : "md:grid-cols-[1fr_1fr]"}`}>
+                      {currentMediaLayout.startsWith("left") ? (
+                        <>
+                          <div className="h-full min-h-[420px]">{mediaNode}</div>
+                          <div className="flex flex-col justify-center">{formBody}</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex flex-col justify-center">{formBody}</div>
+                          <div className="h-full min-h-[420px]">{mediaNode}</div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    formBody
+                  )}
+                </div>
+              )}
         </div>
       </div>
     </div>

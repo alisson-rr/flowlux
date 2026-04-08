@@ -36,6 +36,7 @@ export const PRE_CHECKOUT_DEFAULT_THEME: PreCheckoutForm["theme"] = {
   branding: {
     logo_url: null,
     logo_position: "center",
+    logo_size: "md",
     background_image_url: null,
     background_image_focus_x: 50,
     background_image_focus_y: 50,
