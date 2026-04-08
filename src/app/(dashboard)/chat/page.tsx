@@ -18,6 +18,7 @@ import {
   Search, Send, Paperclip, Loader2, MessageSquare, Plus, Image, Video, FileUp, FileText, X, Phone, Mail, Globe, Tag, StickyNote, ChevronRight, Music, Filter, Download, Zap, Timer, Play, Mic, Square, Trash2, CalendarClock, Clock, Pencil,
 } from "lucide-react";
 import { cn, formatPhone, getInitials, normalizePhone, phoneToJid, phoneVariants } from "@/lib/utils";
+import { buildLeadPhoneFields } from "@/lib/phone";
 import { TAG_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/contexts/auth-context";
@@ -2307,6 +2308,11 @@ export default function ChatPage() {
                           if (!selectedConv || !authUser) return;
                           const phone = selectedConv.contact_phone;
                           const name = selectedConv.contact_name || phone;
+                          const phoneFields = buildLeadPhoneFields(phone);
+                          if (!phoneFields) {
+                            toast("Telefone inválido para criar o lead.", "warning");
+                            return;
+                          }
                           // Get default funnel and stage
                           const { data: defaultFunnel } = await supabase.from("funnels").select("id").eq("user_id", authUser.id).order("created_at").limit(1).single();
                           let defaultStageId = null;
@@ -2315,7 +2321,7 @@ export default function ChatPage() {
                             defaultStageId = defaultStage?.id || null;
                           }
                           const { data, error } = await supabase.from("leads").insert({
-                            user_id: authUser.id, name, phone, source: "WhatsApp",
+                            user_id: authUser.id, name, ...phoneFields, source: "WhatsApp",
                             funnel_id: defaultFunnel?.id || null,
                             stage_id: defaultStageId,
                           }).select().single();

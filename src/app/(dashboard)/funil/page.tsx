@@ -18,6 +18,7 @@ import {
   Plus, Search, GripVertical, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Globe, StickyNote, Mail, UserPlus, Tag, X, Phone, Pencil, Archive, ArchiveRestore,
 } from "lucide-react";
 import { cn, formatPhone, formatPhoneInput, getInitials, normalizePhone } from "@/lib/utils";
+import { buildLeadPhoneFields } from "@/lib/phone";
 import { TAG_COLORS, STAGE_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/contexts/auth-context";
@@ -258,11 +259,12 @@ export default function FunilPage() {
   const handleAddLead = async () => {
     if (!newLead.name || !newLead.phone) return;
     if (!user) return;
-    const normalizedPhone = normalizePhone(newLead.phone);
+    const phoneFields = buildLeadPhoneFields(newLead.phone);
+    const normalizedPhone = phoneFields?.phone || "";
     if (!normalizedPhone) { toast("Telefone inválido.", "warning"); return; }
     const stageId = newLeadStage || funnelStages[0]?.id;
     const { data, error } = await supabase.from("leads").insert({
-      user_id: user.id, name: newLead.name, phone: normalizedPhone,
+      user_id: user.id, name: newLead.name, ...phoneFields,
       email: newLead.email || null, stage_id: stageId, source: newLead.source || null,
       funnel_id: selectedFunnelId,
     }).select("*, lead_tags(tags(*)), notes(*)").single();
