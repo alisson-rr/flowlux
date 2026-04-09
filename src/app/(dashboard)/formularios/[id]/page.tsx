@@ -174,7 +174,7 @@ const WORKFLOW_ACTION_OPTIONS: Array<{ value: PreCheckoutWorkflowAction["type"];
   { value: "send_whatsapp_internal", label: "Enviar WhatsApp interno", description: "Notifica equipe ou parceiro em um numero especifico." },
   { value: "apply_tags", label: "Aplicar tags", description: "Marca o lead no CRM para segmentacao." },
   { value: "move_stage", label: "Mover etapa do funil", description: "Leva o lead para outra etapa automaticamente." },
-  { value: "start_flow", label: "Iniciar fluxo", description: "Aciona um fluxo ja existente no FlowLux." },
+  { value: "start_flow", label: "Iniciar fluxo", description: "Aciona um fluxo ja existente no FlowUp." },
   { value: "redirect_url", label: "Redirecionar URL", description: "Sobrescreve o destino final para um link especifico." },
   { value: "webhook", label: "Enviar webhook", description: "Entrega os dados para outra ferramenta." },
 ];
@@ -2158,7 +2158,7 @@ export default function FormularioEditorPage() {
                   <div className="space-y-2 px-3 pb-4">
                     {workflows.length === 0 ? (
                       <Card className="border-dashed border-white/10 bg-[#171821] p-4 text-sm text-zinc-400">
-                        Comece criando um trigger para definir quando o FlowLux deve agir.
+                        Comece criando um trigger para definir quando o FlowUp deve agir.
                       </Card>
                     ) : (
                       workflows.map((trigger) => {
@@ -2315,7 +2315,7 @@ export default function FormularioEditorPage() {
                         <div className="mb-3 flex items-center justify-between gap-3">
                           <div>
                             <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Acoes</p>
-                            <h3 className="mt-1 text-lg font-semibold text-white">O que o FlowLux faz quando esse trigger acontecer?</h3>
+                            <h3 className="mt-1 text-lg font-semibold text-white">O que o FlowUp faz quando esse trigger acontecer?</h3>
                           </div>
                         </div>
 

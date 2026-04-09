@@ -435,7 +435,7 @@ export async function createWhatsAppGroup(input: {
 
   const remoteJid = getGroupRemoteJid(matchedGroup || created);
   if (!remoteJid) {
-    throw new Error("Grupo criado no WhatsApp, mas nao foi possivel localizar o identificador para salvar no FlowLux");
+    throw new Error("Grupo criado no WhatsApp, mas nao foi possivel localizar o identificador para salvar no FlowUp");
   }
 
   if (input.description?.trim()) {
@@ -473,7 +473,7 @@ export async function createWhatsAppGroup(input: {
     .single();
 
   if (error || !savedGroup?.id) {
-    throw new Error(error?.message || "Grupo criado no WhatsApp, mas falhou ao salvar no FlowLux");
+    throw new Error(error?.message || "Grupo criado no WhatsApp, mas falhou ao salvar no FlowUp");
   }
 
   return savedGroup;

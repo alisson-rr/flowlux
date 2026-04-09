@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 
 const ACTIVE_STATUSES = ["active", "authorized", "trial"];
-const PLAN_NAMES: Record<string, string> = { starter: "Starter", pro: "Pro", black: "FlowLux Black" };
+const PLAN_NAMES: Record<string, string> = { starter: "Starter", pro: "Pro", black: "FlowUp Black" };
 
 export default function AssinaturaSucessoPage() {
   const [loading, setLoading] = useState(true);
@@ -220,7 +220,7 @@ export default function AssinaturaSucessoPage() {
           <div>
             <h1 className="text-2xl font-bold mb-2">Assinatura Confirmada!</h1>
             <p className="text-muted-foreground">
-              Bem-vindo ao FlowLux <span className="font-semibold text-primary">{planName}</span>
+              Bem-vindo ao FlowUp <span className="font-semibold text-primary">{planName}</span>
             </p>
           </div>
 

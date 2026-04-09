@@ -1,53 +1,54 @@
-"use client";
-
-import { AlertTriangle, Clock, MessageSquareOff, ShieldX } from "lucide-react";
+import { MessagesSquare, RouteOff, Rows3 } from "lucide-react";
 
 const painItems = [
-  { icon: MessageSquareOff, text: "Leads sem resposta" },
-  { icon: Clock, text: "Mensagens repetidas o dia inteiro" },
-  { icon: ShieldX, text: "Conversas perdidas" },
-  { icon: AlertTriangle, text: "Falta de organização" },
-  { icon: Clock, text: "Demora no retorno" },
-  { icon: ShieldX, text: "Pouca automação" },
+  {
+    icon: RouteOff,
+    title: "Captacao sem contexto",
+    text: "Os leads entram, mas chegam sem historico, sem organizacao e sem uma proxima acao clara para o time.",
+  },
+  {
+    icon: Rows3,
+    title: "Vendas sem processo",
+    text: "As conversas avancam no improviso, os follow-ups se perdem e a operacao depende mais de memoria do que de metodo.",
+  },
+  {
+    icon: MessagesSquare,
+    title: "Relacionamento sem continuidade",
+    text: "Depois da venda, o contato esfria porque grupos, mensagens, historico e acompanhamento ficam espalhados.",
+  },
 ];
 
-const PainSection = () => {
+export default function PainSection() {
   return (
-    <section className="py-24 px-4">
-      <div className="max-w-5xl mx-auto">
-        <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4 text-center" style={{ textWrap: "balance" } as React.CSSProperties}>
-          Seu WhatsApp virou ferramenta de vendas ou virou <span className="text-destructive">bagunça</span>?
-        </h2>
-        <p className="text-muted-foreground text-center text-lg mb-12 max-w-2xl mx-auto">
-          Quando o atendimento cresce, começam os problemas.
-        </p>
+    <section className="px-4 py-24 md:py-28">
+      <div className="mx-auto max-w-6xl">
+        <div className="mx-auto mb-14 max-w-3xl text-center">
+          <div className="tag-mono mb-4 inline-block">Onde a operacao quebra</div>
+          <h2 className="text-3xl font-bold text-foreground md:text-5xl">
+            A operacao do infoprodutor nao cabe em ferramentas soltas.
+          </h2>
+          <p className="mt-5 text-base leading-relaxed text-muted-foreground md:text-lg">
+            Quando cada etapa vive em um lugar diferente, o lead perde contexto, o time perde
+            velocidade e a venda perde continuidade.
+          </p>
+        </div>
 
-        <div className="grid md:grid-cols-3 gap-4 mb-12">
+        <div className="grid gap-5 md:grid-cols-3">
           {painItems.map((item) => (
-            <div
-              key={item.text}
-              className="card-lux p-5 opacity-60 grayscale hover:opacity-80 hover:grayscale-0 transition-all duration-200"
-            >
-              <item.icon className="w-5 h-5 text-destructive mb-3" />
-              <p className="font-mono text-sm text-destructive/80">{item.text}</p>
-            </div>
+            <article key={item.title} className="card-lux p-6">
+              <div className="mb-5 inline-flex rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                <item.icon className="h-5 w-5 text-slate-100" />
+              </div>
+              <h3 className="mb-3 text-xl font-semibold text-white">{item.title}</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">{item.text}</p>
+            </article>
           ))}
         </div>
 
-        <div className="text-center space-y-2 max-w-xl mx-auto">
-          <p className="text-muted-foreground">
-            O problema não é falta de lead.
-          </p>
-          <p className="text-muted-foreground">
-            É falta de <span className="text-foreground font-semibold">estrutura para atender, nutrir e converter melhor.</span>
-          </p>
-          <p className="text-primary font-bold text-xl mt-6">
-            É aí que entra o FlowLux.
-          </p>
-        </div>
+        <p className="mx-auto mt-10 max-w-3xl text-center text-lg text-slate-200">
+          Com o Flow Up, sua operacao fica conectada do primeiro lead ao relacionamento continuo.
+        </p>
       </div>
     </section>
   );
-};
-
-export default PainSection;
+}

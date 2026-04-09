@@ -20,7 +20,7 @@ const AudienceSection = () => {
           Feito para quem vende no digital e precisa de velocidade
         </h2>
         <p className="text-muted-foreground text-lg max-w-3xl mb-12 leading-relaxed">
-          Se você trabalha com lançamentos, perpétuo, remarketing, recuperação, atendimento comercial ou suporte via WhatsApp, o FlowLux te ajuda a colocar ordem e automação nessa operação.
+          Se você trabalha com lançamentos, perpétuo, remarketing, recuperação, atendimento comercial ou suporte via WhatsApp, o FlowUp te ajuda a colocar ordem e automação nessa operação.
         </p>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

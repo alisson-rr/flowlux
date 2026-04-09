@@ -5,8 +5,12 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "FlowLux - CRM & WhatsApp",
-  description: "Plataforma de gestão de leads e atendimento via WhatsApp",
+  title: "Flow Up | Operacao conectada para infoprodutores",
+  description: "Capture, venda e se relacione com seus leads em um so lugar com o Flow Up.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

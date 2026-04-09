@@ -733,7 +733,7 @@ export default function GruposPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-bold">Grupos</h1>
           <p className="text-muted-foreground">
-            Organize seus grupos de WhatsApp e use o FlowLux para criar, disparar, automatizar e agendar sem depender do chat.
+            Organize seus grupos de WhatsApp e use o FlowUp para criar, disparar, automatizar e agendar sem depender do chat.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -777,7 +777,7 @@ export default function GruposPage() {
             />
           </div>
           <div className="text-xs text-muted-foreground">
-            Funcionalidade focada em envio. O FlowLux nao usa este modulo como canal de atendimento.
+            Funcionalidade focada em envio. O FlowUp nao usa este modulo como canal de atendimento.
           </div>
         </div>
 
@@ -915,7 +915,7 @@ export default function GruposPage() {
             <DialogTitle>{groupDialogMode === "create" ? "Novo grupo" : "Editar grupo"}</DialogTitle>
             <DialogDescription>
               {groupDialogMode === "create"
-                ? "Monte o grupo uma vez e depois use o FlowLux para mandar campanhas, aquecimentos e lembretes."
+                ? "Monte o grupo uma vez e depois use o FlowUp para mandar campanhas, aquecimentos e lembretes."
                 : "Ajuste o nome do grupo, a descricao e a instancia vinculada."}
             </DialogDescription>
           </DialogHeader>
@@ -1221,7 +1221,7 @@ export default function GruposPage() {
           <DialogHeader>
             <DialogTitle>{scheduleForm.id ? "Editar agendamento" : "Agendar mensagem"}</DialogTitle>
             <DialogDescription>
-              Planeje avisos para o grupo e deixe o FlowLux reenfileirar sozinho se houver falha temporaria.
+              Planeje avisos para o grupo e deixe o FlowUp reenfileirar sozinho se houver falha temporaria.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -1345,7 +1345,7 @@ export default function GruposPage() {
           <DialogHeader>
             <DialogTitle>Administrar grupo</DialogTitle>
             <DialogDescription>
-              Controle quem pode enviar mensagens, quem pode editar o grupo e gerencie administradores sem sair do FlowLux.
+              Controle quem pode enviar mensagens, quem pode editar o grupo e gerencie administradores sem sair do FlowUp.
             </DialogDescription>
           </DialogHeader>
 
