@@ -1,4 +1,4 @@
-import { AsYouType, type CountryCode, parsePhoneNumberFromString } from "libphonenumber-js";
+import { type CountryCode, parsePhoneNumberFromString } from "libphonenumber-js";
 
 const BRAZIL_COUNTRY_CODE = "55";
 const MIN_PHONE_DIGITS = 8;
@@ -200,20 +200,53 @@ export function buildLeadPhoneFields(input: string, defaultCountry: CountryCode 
   };
 }
 
+function formatBrazilNationalInput(digits: string): string {
+  const d = digits.slice(0, MAX_BRAZIL_PHONE_DIGITS);
+  if (!d) return "";
+  if (d.length <= 2) return `(${d}`;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7, 11)}`;
+}
+
+function formatInternationalInput(digits: string): string {
+  const d = digits.slice(0, MAX_PHONE_DIGITS);
+  if (d.length <= 2) return `+${d}`;
+
+  const parts: string[] = [];
+  let cursor = 0;
+  const countryLen = d.length > 11 ? 2 : 1;
+  parts.push(`+${d.slice(0, countryLen)}`);
+  cursor = countryLen;
+
+  while (cursor < d.length) {
+    const remaining = d.length - cursor;
+    const chunk = remaining > 8 ? 3 : remaining > 4 ? 3 : remaining > 2 ? 2 : remaining;
+    parts.push(d.slice(cursor, cursor + chunk));
+    cursor += chunk;
+  }
+
+  return parts.join(" ");
+}
+
 export function formatPhoneInputValue(value: string, defaultCountry: CountryCode = "BR"): string {
   const { digits, hasInternationalPrefix } = sanitizePhoneInput(value);
-  if (!digits) return "";
 
   if (hasInternationalPrefix) {
-    return new AsYouType().input(`+${digits.slice(0, MAX_PHONE_DIGITS)}`);
+    if (!digits) return "+";
+    return formatInternationalInput(digits);
   }
+
+  if (!digits) return "";
 
   if (defaultCountry === "BR") {
-    const nationalDigits = digits.startsWith(BRAZIL_COUNTRY_CODE) ? digits.slice(2) : digits;
-    return new AsYouType(defaultCountry).input(nationalDigits.slice(0, MAX_BRAZIL_PHONE_DIGITS));
+    if (digits.length <= MAX_BRAZIL_PHONE_DIGITS) {
+      return formatBrazilNationalInput(digits);
+    }
+    return formatInternationalInput(digits);
   }
 
-  return new AsYouType(defaultCountry).input(digits);
+  return digits.slice(0, MAX_PHONE_DIGITS);
 }
 
 export function formatPhoneValue(value: string, defaultCountry: CountryCode = "BR"): string {

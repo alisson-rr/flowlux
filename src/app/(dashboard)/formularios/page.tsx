@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   BarChart3,
   Copy,
-  FileText,
   ExternalLink,
-  Sparkles,
+  FileText,
   Loader2,
   PauseCircle,
   PlayCircle,
   Plus,
   Search,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -21,9 +21,21 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { PRE_CHECKOUT_DEFAULT_SESSION_SETTINGS, PRE_CHECKOUT_DEFAULT_THEME, PRE_CHECKOUT_TEMPLATE_LIST, buildFormFromTemplate } from "@/lib/pre-checkout/templates";
+import {
+  PRE_CHECKOUT_DEFAULT_SESSION_SETTINGS,
+  PRE_CHECKOUT_DEFAULT_THEME,
+  PRE_CHECKOUT_TEMPLATE_LIST,
+  buildFormFromTemplate,
+} from "@/lib/pre-checkout/templates";
 import { slugifyPreCheckoutFormName } from "@/lib/pre-checkout/forms";
 import { formatDateTime } from "@/lib/utils";
 import type { PreCheckoutForm } from "@/types";
@@ -66,17 +78,17 @@ function getTemplateDetails(templateKey: string) {
     case "application-focus":
       return {
         tag: "Mais consultivo",
-        bullets: ["Filtra melhor o lead", "Ideal para aplicacao", "Bom para vendas de ticket maior"],
+        bullets: ["Filtra melhor o lead", "Ideal para aplicação", "Bom para vendas de ticket maior"],
       };
     case "warmup-whatsapp":
       return {
-        tag: "Mais rapido para WhatsApp",
-        bullets: ["Poucos passos", "Leva para conversa", "Otimo para suporte ou fechamento"],
+        tag: "Mais rápido para WhatsApp",
+        bullets: ["Poucos passos", "Leva para conversa", "Ótimo para suporte ou fechamento"],
       };
     default:
       return {
         tag: "Mais simples e direto",
-        bullets: ["Cadastro rapido", "Bom para checkout", "Ideal para captar antes da compra"],
+        bullets: ["Cadastro rápido", "Captação direta", "Ideal para captar antes da oferta"],
       };
   }
 }
@@ -170,7 +182,7 @@ export default function FormulariosPage() {
       .order("updated_at", { ascending: false });
 
     if (error) {
-      toast("Nao foi possivel carregar os formularios.", "error");
+      toast("Não foi possível carregar os formulários.", "error");
     } else {
       setForms((data || []) as PreCheckoutForm[]);
     }
@@ -199,7 +211,7 @@ export default function FormulariosPage() {
 
     const templateData = templateKey === "blank" ? buildBlankForm() : buildFormFromTemplate(templateKey);
     if (!templateData) {
-      toast("Modelo invalido.", "error");
+      toast("Modelo inválido.", "error");
       return;
     }
 
@@ -224,7 +236,7 @@ export default function FormulariosPage() {
       .single();
 
     if (formError || !form) {
-      toast("Nao foi possivel criar o formulario.", "error");
+      toast("Não foi possível criar o formulário.", "error");
       setSaving(null);
       return;
     }
@@ -246,7 +258,7 @@ export default function FormulariosPage() {
     const { error: stepsError } = await supabase.from("pre_checkout_form_steps").insert(stepsPayload);
     if (stepsError) {
       await supabase.from("pre_checkout_forms").delete().eq("id", form.id);
-      toast("O formulario foi criado, mas os passos falharam. Tente novamente.", "error");
+      toast("O formulário foi criado, mas os passos falharam. Tente novamente.", "error");
       setSaving(null);
       return;
     }
@@ -263,6 +275,7 @@ export default function FormulariosPage() {
 
   const handleCreateWithAi = async () => {
     if (!user) return;
+
     const blank = buildBlankForm();
     setSaving("creating");
 
@@ -285,7 +298,7 @@ export default function FormulariosPage() {
       .single();
 
     if (formError || !form) {
-      toast("Nao foi possivel criar o form com IA.", "error");
+      toast("Não foi possível criar o form com IA.", "error");
       setSaving(null);
       return;
     }
@@ -307,7 +320,7 @@ export default function FormulariosPage() {
     const { error: stepsError } = await supabase.from("pre_checkout_form_steps").insert(stepsPayload);
     if (stepsError) {
       await supabase.from("pre_checkout_forms").delete().eq("id", form.id);
-      toast("Nao foi possivel preparar o form com IA.", "error");
+      toast("Não foi possível preparar o form com IA.", "error");
       setSaving(null);
       return;
     }
@@ -327,12 +340,12 @@ export default function FormulariosPage() {
     ]);
 
     if (sourceFormError || sourceStepsError || !sourceForm) {
-      toast("Nao foi possivel duplicar o formulario.", "error");
+      toast("Não foi possível duplicar o formulário.", "error");
       setSaving(null);
       return;
     }
 
-    const duplicateName = `${sourceForm.name} (copia)`;
+    const duplicateName = `${sourceForm.name} (cópia)`;
     const { data: duplicatedForm, error: duplicatedFormError } = await supabase
       .from("pre_checkout_forms")
       .insert({
@@ -352,7 +365,7 @@ export default function FormulariosPage() {
       .single();
 
     if (duplicatedFormError || !duplicatedForm) {
-      toast("Nao foi possivel duplicar o formulario.", "error");
+      toast("Não foi possível duplicar o formulário.", "error");
       setSaving(null);
       return;
     }
@@ -374,13 +387,13 @@ export default function FormulariosPage() {
     const { error: duplicatedStepsError } = await supabase.from("pre_checkout_form_steps").insert(duplicatedSteps);
     if (duplicatedStepsError) {
       await supabase.from("pre_checkout_forms").delete().eq("id", duplicatedForm.id);
-      toast("A copia falhou ao replicar os passos.", "error");
+      toast("A cópia falhou ao replicar os passos.", "error");
       setSaving(null);
       return;
     }
 
     await loadForms();
-    toast("Formulario duplicado com sucesso!", "success");
+    toast("Formulário duplicado com sucesso!", "success");
     setSaving(null);
   };
 
@@ -396,7 +409,7 @@ export default function FormulariosPage() {
     const { error } = await supabase.from("pre_checkout_forms").update(updates).eq("id", form.id);
 
     if (error) {
-      toast("Nao foi possivel atualizar o status.", "error");
+      toast("Não foi possível atualizar o status.", "error");
     } else {
       await loadForms();
       toast("Status atualizado com sucesso!", "success");
@@ -457,9 +470,7 @@ export default function FormulariosPage() {
             <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
             <div>
               <p className="font-medium">Nenhum form encontrado</p>
-              <p className="text-sm text-muted-foreground">
-                Crie seu primeiro form do zero, com IA ou a partir de um modelo.
-              </p>
+              <p className="text-sm text-muted-foreground">Crie seu primeiro form do zero, com IA ou a partir de um modelo.</p>
             </div>
             <Button onClick={() => setShowCreateDialog(true)}>
               <Plus className="mr-2 h-4 w-4" />
@@ -488,7 +499,7 @@ export default function FormulariosPage() {
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => router.push(`/formularios/${form.id}/relatorio`)}>
                       <BarChart3 className="mr-1.5 h-3.5 w-3.5" />
-                      Relatorio
+                      Relatório
                     </Button>
                     {form.status === "published" ? (
                       <Button size="sm" variant="outline" onClick={() => handleStatusChange(form, "paused")}>
@@ -508,12 +519,7 @@ export default function FormulariosPage() {
                       <Copy className="mr-1.5 h-3.5 w-3.5" />
                       Duplicar
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 px-3 text-xs"
-                      onClick={() => handleStatusChange(form, "archived")}
-                    >
+                    <Button size="sm" variant="ghost" className="h-8 px-3 text-xs" onClick={() => handleStatusChange(form, "archived")}>
                       <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                       Excluir
                     </Button>
@@ -539,10 +545,10 @@ export default function FormulariosPage() {
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-5xl">
           <DialogHeader>
-          <DialogTitle>Como você quer começar?</DialogTitle>
-          <DialogDescription>
+            <DialogTitle>Como você quer começar?</DialogTitle>
+            <DialogDescription>
               Escolha entre começar em branco, montar com IA ou usar um modelo base para acelerar.
-          </DialogDescription>
+            </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 md:grid-cols-3">
@@ -566,15 +572,22 @@ export default function FormulariosPage() {
               <div className="space-y-2">
                 <Badge variant="outline">Com IA</Badge>
                 <div className="text-lg font-semibold">Criar com IA</div>
-                <p className="text-sm text-muted-foreground">Abre o editor com o assistente pronto para gerar a estrutura do form com OpenAI.</p>
+                <p className="text-sm text-muted-foreground">Abre o editor com o assistente pronto para montar a estrutura inicial do form.</p>
               </div>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <div>• Você usa o seu token</div>
                 <div>• Geração guiada no editor</div>
+                <div>• Estrutura inicial pronta em segundos</div>
                 <div>• Ideal para montar rápido</div>
               </div>
               <Button className="w-full" disabled={saving === "creating"} onClick={handleCreateWithAi}>
-                {saving === "creating" ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Sparkles className="mr-2 h-4 w-4" />Criar com IA</>}
+                {saving === "creating" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Criar com IA
+                  </>
+                )}
               </Button>
             </Card>
 
@@ -605,11 +618,7 @@ export default function FormulariosPage() {
                   </div>
                 </div>
 
-                  <Button
-                  className="w-full"
-                  disabled={saving === "creating"}
-                  onClick={() => handleCreateFromTemplate(template.key)}
-                >
+                <Button className="w-full" disabled={saving === "creating"} onClick={() => handleCreateFromTemplate(template.key)}>
                   {saving === "creating" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usar modelo"}
                 </Button>
               </Card>

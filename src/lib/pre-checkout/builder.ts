@@ -11,8 +11,8 @@ export type PreCheckoutStepPaletteCategory =
   | "Contato"
   | "Escolha"
   | "Escala"
-  | "Conteudo"
-  | "Finalizacao";
+  | "Conteúdo"
+  | "Finalização";
 
 export interface PreCheckoutStepPaletteItem {
   type: PreCheckoutFormStepType;
@@ -22,22 +22,24 @@ export interface PreCheckoutStepPaletteItem {
 }
 
 export const PRE_CHECKOUT_STEP_PALETTE: PreCheckoutStepPaletteItem[] = [
-  { type: "welcome_screen", label: "Tela inicial", description: "Abre o form com contexto e CTA", category: "Conteudo" },
-  { type: "statement", label: "Bloco de texto", description: "Texto informativo entre perguntas", category: "Conteudo" },
+  { type: "welcome_screen", label: "Tela inicial", description: "Abre o form com contexto e CTA", category: "Conteúdo" },
+  { type: "statement", label: "Bloco de texto", description: "Texto informativo entre perguntas", category: "Conteúdo" },
   { type: "short_text", label: "Texto curto", description: "Resposta curta", category: "Contato" },
   { type: "long_text", label: "Texto longo", description: "Resposta mais aberta", category: "Contato" },
   { type: "email", label: "E-mail", description: "Valida e-mail", category: "Contato" },
   { type: "phone", label: "Telefone", description: "Telefone com máscara inteligente", category: "Contato" },
   { type: "number", label: "Número", description: "Valor numérico", category: "Contato" },
   { type: "date", label: "Data", description: "Escolha uma data", category: "Contato" },
-  { type: "single_choice", label: "Múltipla escolha", description: "Escolha única com botões", category: "Escolha" },
+  { type: "single_choice", label: "Escolha única", description: "Escolha uma opção com botões", category: "Escolha" },
+  { type: "picture_choice", label: "Escolha por imagem", description: "Escolha uma opção com imagem", category: "Escolha" },
   { type: "dropdown", label: "Dropdown", description: "Lista suspensa", category: "Escolha" },
   { type: "yes_no", label: "Sim ou não", description: "Pergunta binária", category: "Escolha" },
-  { type: "multiple_choice", label: "Checkbox", description: "Múltiplas opções", category: "Escolha" },
+  { type: "multiple_choice", label: "Múltipla escolha", description: "Marque mais de uma opção", category: "Escolha" },
   { type: "rating", label: "Avaliação", description: "Nota de 1 a 5", category: "Escala" },
   { type: "opinion_scale", label: "Escala de opinião", description: "Escala mais ampla", category: "Escala" },
-  { type: "legal", label: "Consentimento", description: "Aceite legal/termos", category: "Finalizacao" },
-  { type: "end_screen", label: "Tela final", description: "Mensagem final antes da ação", category: "Finalizacao" },
+  { type: "nps", label: "NPS", description: "Escala de 0 a 10 para recomendação", category: "Escala" },
+  { type: "legal", label: "Consentimento", description: "Aceite legal ou de termos", category: "Finalização" },
+  { type: "end_screen", label: "Tela final", description: "Mensagem final antes da ação", category: "Finalização" },
 ];
 
 function createChoiceOptions(baseKey: string): PreCheckoutStepOption[] {
@@ -45,6 +47,14 @@ function createChoiceOptions(baseKey: string): PreCheckoutStepOption[] {
     { id: `${baseKey}_1`, label: "Opção 1", value: "opcao_1" },
     { id: `${baseKey}_2`, label: "Opção 2", value: "opcao_2" },
     { id: `${baseKey}_3`, label: "Opção 3", value: "opcao_3" },
+  ];
+}
+
+function createPictureChoiceOptions(baseKey: string): PreCheckoutStepOption[] {
+  return [
+    { id: `${baseKey}_1`, label: "Opção 1", value: "opcao_1", image_url: null },
+    { id: `${baseKey}_2`, label: "Opção 2", value: "opcao_2", image_url: null },
+    { id: `${baseKey}_3`, label: "Opção 3", value: "opcao_3", image_url: null },
   ];
 }
 
@@ -121,6 +131,13 @@ export function createBuilderStep(type: PreCheckoutFormStepType, position: numbe
         title: "Selecione uma opção",
         options: createChoiceOptions(baseKey),
       };
+    case "picture_choice":
+      return {
+        ...baseStep,
+        title: "Escolha uma opção visual",
+        description: "Selecione a imagem que mais combina com você.",
+        options: createPictureChoiceOptions(baseKey),
+      };
     case "dropdown":
       return {
         ...baseStep,
@@ -151,8 +168,21 @@ export function createBuilderStep(type: PreCheckoutFormStepType, position: numbe
     case "opinion_scale":
       return {
         ...baseStep,
-        title: "Em uma escala de 1 a 10, qual a sua opinião?",
+        title: "Em uma escala de 1 a 10, qual é a sua opinião?",
         settings: { ...baseStep.settings, min_value: 1, max_value: 10, min_label: "Baixo", max_label: "Alto" },
+      };
+    case "nps":
+      return {
+        ...baseStep,
+        title: "De 0 a 10, o quanto você recomendaria isso para um amigo?",
+        description: "Escolha uma nota para indicar o quanto você recomendaria.",
+        settings: {
+          ...baseStep.settings,
+          min_value: 0,
+          max_value: 10,
+          min_label: "Nada provável",
+          max_label: "Muito provável",
+        },
       };
     case "legal":
       return {

@@ -331,7 +331,6 @@ export type PreCheckoutFormStatus = "draft" | "published" | "paused" | "archived
 export type PreCheckoutFormStepType =
   | "welcome_screen"
   | "statement"
-  | "intro"
   | "short_text"
   | "long_text"
   | "email"
@@ -339,11 +338,13 @@ export type PreCheckoutFormStepType =
   | "number"
   | "date"
   | "single_choice"
+  | "picture_choice"
   | "multiple_choice"
   | "dropdown"
   | "yes_no"
   | "rating"
   | "opinion_scale"
+  | "nps"
   | "legal"
   | "end_screen";
 
@@ -369,8 +370,6 @@ export interface PreCheckoutThemeBackground {
   image_url?: string | null;
   image_focus_x: number;
   image_focus_y: number;
-  image_overlay: number;
-  full_bleed: boolean;
 }
 
 export interface PreCheckoutThemeTypography {
@@ -382,7 +381,6 @@ export interface PreCheckoutThemeTypography {
 }
 
 export interface PreCheckoutThemeLayout {
-  width: "sm" | "md" | "lg";
   align: "left" | "center";
   spacing: "compact" | "comfortable" | "relaxed";
 }
@@ -394,7 +392,6 @@ export interface PreCheckoutThemeBranding {
   background_image_url?: string | null;
   background_image_focus_x: number;
   background_image_focus_y: number;
-  background_overlay: number;
   background_brightness?: number;
 }
 
@@ -407,7 +404,6 @@ export interface PreCheckoutTheme {
   input_background_color?: string;
   input_text_color?: string;
   input_border_color?: string;
-  top_image_url?: string | null;
   background: PreCheckoutThemeBackground;
   typography: PreCheckoutThemeTypography;
   layout: PreCheckoutThemeLayout;
@@ -430,7 +426,6 @@ export interface PreCheckoutFormStepSettings {
   min_label?: string | null;
   max_label?: string | null;
   button_label?: string | null;
-  helper_text?: string | null;
   image_url?: string | null;
   video_url?: string | null;
   media_kind?: "image" | "video" | null;
@@ -440,7 +435,6 @@ export interface PreCheckoutFormStepSettings {
   legal_consent_text?: string | null;
   legal_required_label?: string | null;
   map_to_contact_field?: "name" | "email" | "phone" | null;
-  placeholder_items?: string[] | null;
 }
 
 export interface PreCheckoutFormStep {

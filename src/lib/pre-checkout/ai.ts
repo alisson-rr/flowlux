@@ -23,11 +23,13 @@ Tipos de etapa permitidos:
 - number
 - date
 - single_choice
+- picture_choice
 - dropdown
 - yes_no
 - multiple_choice
 - rating
 - opinion_scale
+- nps
 - legal
 - end_screen
 

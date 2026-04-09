@@ -220,17 +220,19 @@ export async function GET(req: NextRequest, context: { params: Promise<{ slug: s
 
   function formatPhoneForDisplay(value) {
     var parsed = sanitizePhoneInputValue(value);
-    if (!parsed.digits) return "";
 
     if (parsed.hasInternationalPrefix) {
+      if (!parsed.digits) return "+";
       return formatInternationalPhone(parsed.digits);
     }
 
-    if (looksLikeBrazilNumber(parsed.digits)) {
+    if (!parsed.digits) return "";
+
+    if (parsed.digits.length <= 11) {
       return formatBrazilPhone(parsed.digits);
     }
 
-    return formatBrazilPhone(parsed.digits);
+    return formatInternationalPhone(parsed.digits);
   }
 
   function attachPhoneMask(input) {

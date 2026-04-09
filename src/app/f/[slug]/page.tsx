@@ -54,13 +54,49 @@ function getSystemMessages(form: PreCheckoutForm | null): PreCheckoutSystemMessa
 
 function getTheme(form: PreCheckoutForm | null) {
   if (!form) return PRE_CHECKOUT_DEFAULT_THEME;
+  const theme = form.theme || PRE_CHECKOUT_DEFAULT_THEME;
+  const background = (theme.background || PRE_CHECKOUT_DEFAULT_THEME.background) as Partial<PreCheckoutForm["theme"]["background"]>;
+  const typography = (theme.typography || PRE_CHECKOUT_DEFAULT_THEME.typography) as Partial<PreCheckoutForm["theme"]["typography"]>;
+  const layout = (theme.layout || PRE_CHECKOUT_DEFAULT_THEME.layout) as Partial<PreCheckoutForm["theme"]["layout"]>;
+  const branding = (theme.branding || PRE_CHECKOUT_DEFAULT_THEME.branding || {}) as Partial<NonNullable<PreCheckoutForm["theme"]["branding"]>>;
+
   return {
-    ...PRE_CHECKOUT_DEFAULT_THEME,
-    ...form.theme,
-    background: { ...PRE_CHECKOUT_DEFAULT_THEME.background, ...(form.theme?.background || {}) },
-    typography: { ...PRE_CHECKOUT_DEFAULT_THEME.typography, ...(form.theme?.typography || {}) },
-    layout: { ...PRE_CHECKOUT_DEFAULT_THEME.layout, ...(form.theme?.layout || {}) },
-    branding: { ...(PRE_CHECKOUT_DEFAULT_THEME.branding || {}), ...(form.theme?.branding || {}) },
+    style_key: theme.style_key || PRE_CHECKOUT_DEFAULT_THEME.style_key,
+    primary_color: theme.primary_color || PRE_CHECKOUT_DEFAULT_THEME.primary_color,
+    button_text_color: theme.button_text_color || PRE_CHECKOUT_DEFAULT_THEME.button_text_color,
+    text_color: theme.text_color || PRE_CHECKOUT_DEFAULT_THEME.text_color,
+    panel_color: theme.panel_color || PRE_CHECKOUT_DEFAULT_THEME.panel_color,
+    input_background_color: theme.input_background_color || PRE_CHECKOUT_DEFAULT_THEME.input_background_color,
+    input_text_color: theme.input_text_color || PRE_CHECKOUT_DEFAULT_THEME.input_text_color,
+    input_border_color: theme.input_border_color || PRE_CHECKOUT_DEFAULT_THEME.input_border_color,
+    background: {
+      mode: background.mode || PRE_CHECKOUT_DEFAULT_THEME.background.mode,
+      color: background.color || PRE_CHECKOUT_DEFAULT_THEME.background.color,
+      image_url: background.image_url ?? PRE_CHECKOUT_DEFAULT_THEME.background.image_url,
+      image_focus_x: background.image_focus_x ?? PRE_CHECKOUT_DEFAULT_THEME.background.image_focus_x,
+      image_focus_y: background.image_focus_y ?? PRE_CHECKOUT_DEFAULT_THEME.background.image_focus_y,
+    },
+    typography: {
+      heading_font: typography.heading_font || PRE_CHECKOUT_DEFAULT_THEME.typography.heading_font,
+      body_font: typography.body_font || PRE_CHECKOUT_DEFAULT_THEME.typography.body_font,
+      form_font: typography.form_font || PRE_CHECKOUT_DEFAULT_THEME.typography.form_font,
+      button_radius: typography.button_radius || PRE_CHECKOUT_DEFAULT_THEME.typography.button_radius,
+      input_radius: typography.input_radius || PRE_CHECKOUT_DEFAULT_THEME.typography.input_radius,
+    },
+    layout: {
+      align: layout.align || PRE_CHECKOUT_DEFAULT_THEME.layout.align,
+      spacing: layout.spacing || PRE_CHECKOUT_DEFAULT_THEME.layout.spacing,
+    },
+    branding: {
+      ...(PRE_CHECKOUT_DEFAULT_THEME.branding || {}),
+      logo_url: branding.logo_url ?? PRE_CHECKOUT_DEFAULT_THEME.branding?.logo_url ?? null,
+      logo_position: branding.logo_position || PRE_CHECKOUT_DEFAULT_THEME.branding?.logo_position || "center",
+      logo_size: branding.logo_size || PRE_CHECKOUT_DEFAULT_THEME.branding?.logo_size || "md",
+      background_image_url: branding.background_image_url ?? PRE_CHECKOUT_DEFAULT_THEME.branding?.background_image_url ?? null,
+      background_image_focus_x: branding.background_image_focus_x ?? PRE_CHECKOUT_DEFAULT_THEME.branding?.background_image_focus_x ?? 50,
+      background_image_focus_y: branding.background_image_focus_y ?? PRE_CHECKOUT_DEFAULT_THEME.branding?.background_image_focus_y ?? 50,
+      background_brightness: branding.background_brightness ?? PRE_CHECKOUT_DEFAULT_THEME.branding?.background_brightness,
+    },
   };
 }
 
@@ -258,7 +294,7 @@ export default function PublicFormPage() {
   const handleContinue = async () => {
     if (!currentStep || !form) return;
     if (currentStep.is_required && !DISPLAY_ONLY_STEP_TYPES.has(currentStep.type) && isEmptyValue(currentValue)) {
-      setScreenError(["single_choice", "dropdown", "yes_no", "multiple_choice"].includes(currentStep.type) ? messages.errors.selection_required : currentStep.type === "legal" ? messages.errors.legal_rejected : messages.errors.required);
+      setScreenError(["single_choice", "picture_choice", "dropdown", "yes_no", "multiple_choice"].includes(currentStep.type) ? messages.errors.selection_required : currentStep.type === "legal" ? messages.errors.legal_rejected : messages.errors.required);
       return;
     }
 
@@ -282,7 +318,7 @@ export default function PublicFormPage() {
       fireTrackingEvent("FlowLuxFormStart", { slug });
       startedTrackedRef.current = true;
     }
-    const answerValue: PublicAnswerValue = currentStep.type === "legal" ? Boolean(currentValue) : ["number", "rating", "opinion_scale"].includes(currentStep.type) && currentValue !== "" ? Number(currentValue) : currentValue;
+    const answerValue: PublicAnswerValue = currentStep.type === "legal" ? Boolean(currentValue) : ["number", "rating", "opinion_scale", "nps"].includes(currentStep.type) && currentValue !== "" ? Number(currentValue) : currentValue;
     const answerResponse = await fetch(`/api/pre-checkout/${slug}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -435,8 +471,9 @@ export default function PublicFormPage() {
         {currentStep?.type === "long_text" ? <Textarea value={typeof currentValue === "string" ? currentValue : ""} onChange={(event) => setAnswer(event.target.value)} placeholder={currentStep.placeholder || messages.buttons.text_hint} className={`min-h-[180px] border ${radiusClass(theme.typography.input_radius)}`} style={surfaceInputStyle} /> : null}
         {currentStep?.type === "dropdown" ? <div className="space-y-2"><select value={typeof currentValue === "string" ? currentValue : ""} onChange={(event) => setAnswer(event.target.value)} className={`h-14 w-full border px-4 ${radiusClass(theme.typography.input_radius)}`} style={surfaceInputStyle}><option value="">{messages.buttons.dropdown_touch_hint}</option>{getStepOptions(currentStep, messages).map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}</select><p className="text-sm opacity-65">{messages.buttons.dropdown_hint}</p></div> : null}
         {currentStep && (currentStep.type === "single_choice" || currentStep.type === "yes_no") ? <div className="grid gap-3">{getStepOptions(currentStep, messages).map((option) => { const active = currentValue === option.value; return <button key={option.id} type="button" onClick={() => setAnswer(option.value)} className={`border px-5 py-4 text-left text-base transition-colors ${radiusClass(theme.typography.input_radius)} ${active ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: active ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: active ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}>{option.label}</button>; })}</div> : null}
+        {currentStep?.type === "picture_choice" ? <div className="grid gap-4 sm:grid-cols-2">{getStepOptions(currentStep, messages).map((option) => { const active = currentValue === option.value; return <button key={option.id} type="button" onClick={() => setAnswer(option.value)} className={`overflow-hidden border text-left transition-colors ${radiusClass(theme.typography.input_radius)} ${active ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: active ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: active ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}><div className="aspect-[4/3] w-full overflow-hidden border-b border-white/10 bg-black/10">{option.image_url ? <img src={option.image_url} alt={option.label} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm opacity-60">Imagem da opção</div>}</div><div className="px-4 py-3 text-base font-medium">{option.label}</div></button>; })}</div> : null}
         {currentStep?.type === "multiple_choice" ? <div className="space-y-3"><p className="text-sm opacity-65">{messages.buttons.multiple_choice_hint}</p><div className="grid gap-3">{getStepOptions(currentStep, messages).map((option) => { const selected = Array.isArray(currentValue) ? currentValue.map(String).includes(option.value) : false; return <button key={option.id} type="button" onClick={() => { const list = Array.isArray(currentValue) ? currentValue.map(String) : []; setAnswer(list.includes(option.value) ? list.filter((item) => item !== option.value) : [...list, option.value]); }} className={`flex items-center gap-3 border px-5 py-4 text-left text-base transition-colors ${radiusClass(theme.typography.input_radius)} ${selected ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: selected ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: selected ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}><span className={`h-5 w-5 rounded-md border ${selected ? "border-white bg-white/20" : "border-black/30"}`} /><span>{option.label}</span></button>; })}</div></div> : null}
-        {currentStep && ["rating", "opinion_scale"].includes(currentStep.type) ? <div className="space-y-4"><div className="flex flex-wrap gap-3">{Array.from({ length: ((currentStep.settings?.max_value || (currentStep.type === "rating" ? 5 : 10)) - (currentStep.settings?.min_value || 1)) + 1 }).map((_, index) => { const min = currentStep.settings?.min_value || 1; const value = min + index; const active = Number(currentValue) === value; return <button key={value} type="button" onClick={() => setAnswer(value)} className={`flex h-14 w-14 items-center justify-center border text-base font-semibold transition-colors ${radiusClass(theme.typography.button_radius)} ${active ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: active ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: active ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}>{value}</button>; })}</div><div className="flex justify-between text-sm opacity-70"><span>{currentStep.settings?.min_label || ""}</span><span>{currentStep.settings?.max_label || ""}</span></div></div> : null}
+        {currentStep && ["rating", "opinion_scale", "nps"].includes(currentStep.type) ? <div className="space-y-4"><div className="flex flex-wrap gap-3">{Array.from({ length: ((currentStep.settings?.max_value || (currentStep.type === "rating" ? 5 : 10)) - (typeof currentStep.settings?.min_value === "number" ? currentStep.settings.min_value : currentStep.type === "nps" ? 0 : 1)) + 1 }).map((_, index) => { const min = typeof currentStep.settings?.min_value === "number" ? currentStep.settings.min_value : currentStep.type === "nps" ? 0 : 1; const value = min + index; const active = Number(currentValue) === value; return <button key={value} type="button" onClick={() => setAnswer(value)} className={`flex h-14 w-14 items-center justify-center border text-base font-semibold transition-colors ${radiusClass(theme.typography.button_radius)} ${active ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: active ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: active ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}>{value}</button>; })}</div><div className="flex justify-between text-sm opacity-70"><span>{currentStep.settings?.min_label || ""}</span><span>{currentStep.settings?.max_label || ""}</span></div></div> : null}
         {currentStep?.type === "legal" ? <label className={`flex items-start gap-3 border border-black/10 bg-black/5 px-5 py-5 text-left text-base ${radiusClass(theme.typography.input_radius)}`} style={contentUsesOverlay ? { backgroundColor: "rgba(15, 23, 42, 0.55)", borderColor: "rgba(255,255,255,0.16)" } : undefined}><input type="checkbox" checked={Boolean(currentValue)} onChange={(event) => setAnswer(event.target.checked)} className="mt-1 h-5 w-5 rounded border-black/30" /><div className="space-y-1"><div>{currentStep.settings?.legal_consent_text || currentStep.description || messages.buttons.legal_accept_label}</div><div className="text-sm opacity-70">{currentStep.settings?.legal_required_label || messages.errors.legal_rejected}</div></div></label> : null}
       </div>
 

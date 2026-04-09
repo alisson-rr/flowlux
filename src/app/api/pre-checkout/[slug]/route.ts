@@ -394,7 +394,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
       return NextResponse.json({ error: "Telefone inválido" }, { status: 400 });
     }
 
-    if (["single_choice", "dropdown", "yes_no"].includes(step.type) && value && !selectedOptionValues.includes(String(value))) {
+    if (["single_choice", "picture_choice", "dropdown", "yes_no"].includes(step.type) && value && !selectedOptionValues.includes(String(value))) {
       return NextResponse.json({ error: "Opcao invalida" }, { status: 400 });
     }
 
@@ -402,7 +402,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
       return NextResponse.json({ error: "Uma ou mais opcoes sao invalidas" }, { status: 400 });
     }
 
-    if (["number", "rating", "opinion_scale"].includes(step.type) && value !== "" && value !== null && value !== undefined) {
+    if (["number", "rating", "opinion_scale", "nps"].includes(step.type) && value !== "" && value !== null && value !== undefined) {
       const numericValue = Number(value);
       if (!Number.isFinite(numericValue)) {
         return NextResponse.json({ error: "Digite um valor numerico valido" }, { status: 400 });
@@ -437,7 +437,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ slug: 
         ? { accepted: value === true || value === "true" || value === "1" }
         : Array.isArray(value)
           ? { values: value }
-          : step.type === "number" || step.type === "rating" || step.type === "opinion_scale"
+          : step.type === "number" || step.type === "rating" || step.type === "opinion_scale" || step.type === "nps"
             ? { value: Number(value) }
             : { value: answerText };
     await supabase.from("pre_checkout_answers").upsert({

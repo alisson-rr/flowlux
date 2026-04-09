@@ -45,7 +45,7 @@ function validateFinalAction(finalAction: PreCheckoutFinalAction, form: PreCheck
   const errors: string[] = [];
 
   if (finalAction === "checkout_redirect" && !isValidAbsoluteUrl(form.final_config.redirect_url)) {
-    errors.push("Defina uma URL valida para o redirecionamento final.");
+    errors.push("Defina uma URL válida para o redirecionamento final.");
   }
 
   if (finalAction === "whatsapp_redirect") {
@@ -128,8 +128,12 @@ export function validatePreCheckoutPublish(
       errors.push(`A pergunta ${step.position + 1} precisa ter um título.`);
     }
 
-    if ((step.type === "single_choice" || step.type === "multiple_choice" || step.type === "dropdown" || step.type === "yes_no") && !step.options.length) {
+    if ((step.type === "single_choice" || step.type === "picture_choice" || step.type === "multiple_choice" || step.type === "dropdown" || step.type === "yes_no") && !step.options.length) {
       errors.push(`A pergunta "${step.title}" precisa ter opções configuradas.`);
+    }
+
+    if (step.type === "picture_choice" && step.options.some((option) => !String(option.image_url || "").trim())) {
+      errors.push(`A pergunta "${step.title}" precisa ter imagem em todas as opções.`);
     }
   });
 

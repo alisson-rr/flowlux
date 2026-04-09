@@ -179,6 +179,82 @@ const WORKFLOW_ACTION_OPTIONS: Array<{ value: PreCheckoutWorkflowAction["type"];
   { value: "webhook", label: "Enviar webhook", description: "Entrega os dados para outra ferramenta." },
 ];
 
+function sanitizeTheme(theme?: Partial<PreCheckoutForm["theme"]>): PreCheckoutForm["theme"] {
+  const defaultTheme = PRE_CHECKOUT_DEFAULT_THEME;
+  const branding = (theme?.branding || {}) as Partial<NonNullable<PreCheckoutForm["theme"]["branding"]>>;
+  const background = (theme?.background || {}) as Partial<PreCheckoutForm["theme"]["background"]>;
+  const typography = (theme?.typography || {}) as Partial<PreCheckoutForm["theme"]["typography"]>;
+  const layout = (theme?.layout || {}) as Partial<PreCheckoutForm["theme"]["layout"]>;
+
+  return {
+    style_key: theme?.style_key || defaultTheme.style_key,
+    primary_color: theme?.primary_color || defaultTheme.primary_color,
+    button_text_color: theme?.button_text_color || defaultTheme.button_text_color,
+    text_color: theme?.text_color || defaultTheme.text_color,
+    panel_color: theme?.panel_color || defaultTheme.panel_color,
+    input_background_color: theme?.input_background_color || defaultTheme.input_background_color,
+    input_text_color: theme?.input_text_color || defaultTheme.input_text_color,
+    input_border_color: theme?.input_border_color || defaultTheme.input_border_color,
+    background: {
+      mode: background.mode || defaultTheme.background.mode,
+      color: background.color || defaultTheme.background.color,
+      image_url: background.image_url ?? defaultTheme.background.image_url,
+      image_focus_x: background.image_focus_x ?? defaultTheme.background.image_focus_x,
+      image_focus_y: background.image_focus_y ?? defaultTheme.background.image_focus_y,
+    },
+    typography: {
+      heading_font: typography.heading_font || defaultTheme.typography.heading_font,
+      body_font: typography.body_font || defaultTheme.typography.body_font,
+      form_font: typography.form_font || defaultTheme.typography.form_font,
+      button_radius: typography.button_radius || defaultTheme.typography.button_radius,
+      input_radius: typography.input_radius || defaultTheme.typography.input_radius,
+    },
+    layout: {
+      align: layout.align || defaultTheme.layout.align,
+      spacing: layout.spacing || defaultTheme.layout.spacing,
+    },
+    branding: {
+      ...(defaultTheme.branding || {}),
+      logo_url: branding.logo_url ?? defaultTheme.branding?.logo_url ?? null,
+      logo_position: branding.logo_position || defaultTheme.branding?.logo_position || "center",
+      logo_size: branding.logo_size || defaultTheme.branding?.logo_size || "md",
+      background_image_url: branding.background_image_url ?? defaultTheme.branding?.background_image_url ?? null,
+      background_image_focus_x: branding.background_image_focus_x ?? defaultTheme.branding?.background_image_focus_x ?? 50,
+      background_image_focus_y: branding.background_image_focus_y ?? defaultTheme.branding?.background_image_focus_y ?? 50,
+      background_brightness: branding.background_brightness ?? defaultTheme.branding?.background_brightness,
+    },
+  };
+}
+
+function sanitizeStepSettings(settings?: PreCheckoutFormStep["settings"]): PreCheckoutFormStep["settings"] {
+  const current = settings || {};
+  return {
+    auto_focus: current.auto_focus,
+    max_length: current.max_length ?? null,
+    min_value: current.min_value ?? null,
+    max_value: current.max_value ?? null,
+    min_label: current.min_label ?? null,
+    max_label: current.max_label ?? null,
+    button_label: current.button_label ?? null,
+    image_url: current.image_url ?? null,
+    video_url: current.video_url ?? null,
+    media_kind: current.media_kind ?? null,
+    media_brightness: current.media_brightness ?? null,
+    media_layout_desktop: current.media_layout_desktop ?? null,
+    media_layout_mobile: current.media_layout_mobile ?? null,
+    legal_consent_text: current.legal_consent_text ?? null,
+    legal_required_label: current.legal_required_label ?? null,
+    map_to_contact_field: current.map_to_contact_field ?? null,
+  };
+}
+
+function sanitizeStep(step: PreCheckoutFormStep): PreCheckoutFormStep {
+  return {
+    ...step,
+    settings: sanitizeStepSettings(step.settings),
+  };
+}
+
 const SYSTEM_MESSAGE_SECTIONS = {
   buttons: {
     title: "Botões, dicas e atalhos",
@@ -250,30 +326,10 @@ const SYSTEM_MESSAGE_SECTIONS = {
 } as const;
 
 function ensureFormDefaults(form: PreCheckoutForm): PreCheckoutForm {
-  const defaultBranding = PRE_CHECKOUT_DEFAULT_THEME.branding!;
   const defaultMessages = PRE_CHECKOUT_SYSTEM_MESSAGE_DEFAULTS;
   return {
     ...form,
-    theme: {
-      ...PRE_CHECKOUT_DEFAULT_THEME,
-      ...form.theme,
-      background: {
-        ...PRE_CHECKOUT_DEFAULT_THEME.background,
-        ...(form.theme?.background || {}),
-      },
-      typography: {
-        ...PRE_CHECKOUT_DEFAULT_THEME.typography,
-        ...(form.theme?.typography || {}),
-      },
-      layout: {
-        ...PRE_CHECKOUT_DEFAULT_THEME.layout,
-        ...(form.theme?.layout || {}),
-      },
-      branding: {
-        ...defaultBranding,
-        ...(form.theme?.branding || {}),
-      },
-    },
+    theme: sanitizeTheme(form.theme),
     integrations: {
       ...form.integrations,
       workflows: form.integrations?.workflows || [],
@@ -420,11 +476,15 @@ function AutosizeTextField({
   onChange,
   placeholder,
   maxLength,
+  className,
+  style,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   maxLength?: number;
+  className?: string;
+  style?: React.CSSProperties;
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
 
@@ -446,11 +506,12 @@ function AutosizeTextField({
       maxLength={maxLength}
       placeholder={placeholder}
       rows={1}
+      style={style}
       onChange={(event) => {
         onChange(event.target.value);
         resize();
       }}
-      className="min-h-[44px] resize-none overflow-hidden"
+      className={`min-h-[44px] resize-none overflow-hidden ${className || ""}`}
     />
   );
 }
@@ -513,7 +574,7 @@ function StepCanvasPreview({
   const inputRadius = INPUT_RADIUS[form.theme.typography.input_radius];
   const buttonRadius = BUTTON_RADIUS[form.theme.typography.button_radius];
   const options = step.options || [];
-  const isChoice = ["single_choice", "multiple_choice", "dropdown", "yes_no"].includes(step.type);
+  const isChoice = ["single_choice", "picture_choice", "multiple_choice", "dropdown", "yes_no"].includes(step.type);
   const mediaBrightness = step.settings?.media_brightness ?? 100;
   const previewWidthClass = previewDevice === "mobile" ? "max-w-[390px]" : "max-w-[900px]";
   const previewSpacingClass =
@@ -611,17 +672,17 @@ function StepCanvasPreview({
         <span>{stepIndex + 1}/{totalSteps}</span>
       </div>
 
-      <Input
+      <AutosizeTextField
         value={step.title}
-        onChange={(event) => onUpdate((current) => ({ ...current, title: event.target.value }))}
+        onChange={(value) => onUpdate((current) => ({ ...current, title: value }))}
         className="border-0 px-0 text-center text-3xl font-semibold shadow-none focus-visible:ring-0"
         style={{ fontFamily: form.theme.typography.heading_font, backgroundColor: "transparent", color: contentTextColor }}
         placeholder="Digite o titulo da etapa"
       />
 
-      <Textarea
+      <AutosizeTextField
         value={textValue(step.description)}
-        onChange={(event) => onUpdate((current) => ({ ...current, description: event.target.value }))}
+        onChange={(value) => onUpdate((current) => ({ ...current, description: value }))}
         className="min-h-[72px] border-0 px-0 text-center text-base shadow-none focus-visible:ring-0"
         style={{ backgroundColor: "transparent", color: contentTextColor }}
         placeholder="Adicione um apoio opcional para esta etapa"
@@ -651,6 +712,21 @@ function StepCanvasPreview({
         <div className={`border px-5 py-4 text-base ${inputRadius}`} style={surfaceInputStyle}>
           {step.placeholder || form.session_settings.system_messages?.buttons.dropdown_hint || "Digite ou selecione uma opcao"}
         </div>
+      ) : step.type === "picture_choice" ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {options.map((option) => (
+            <div key={option.id} className={`overflow-hidden border ${inputRadius}`} style={surfaceInputStyle}>
+              <div className="aspect-[4/3] w-full overflow-hidden border-b border-white/10 bg-black/10">
+                {option.image_url ? (
+                  <img src={option.image_url} alt={option.label} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm opacity-60">Imagem da opção</div>
+                )}
+              </div>
+              <div className="px-4 py-3 text-base">{option.label}</div>
+            </div>
+          ))}
+        </div>
       ) : isChoice ? (
         <div className="grid gap-3">
           {options.map((option) => (
@@ -659,11 +735,11 @@ function StepCanvasPreview({
             </div>
           ))}
         </div>
-      ) : step.type === "rating" || step.type === "opinion_scale" ? (
+      ) : step.type === "rating" || step.type === "opinion_scale" || step.type === "nps" ? (
         <div className="flex flex-wrap justify-center gap-3">
-          {Array.from({ length: Number(step.settings?.max_value || (step.type === "rating" ? 5 : 10)) }, (_, index) => (
+          {Array.from({ length: ((step.settings?.max_value || (step.type === "rating" ? 5 : 10)) - (typeof step.settings?.min_value === "number" ? step.settings.min_value : step.type === "nps" ? 0 : 1)) + 1 }, (_, index) => (
             <div key={index} className={`flex h-12 w-12 items-center justify-center border text-sm font-semibold ${inputRadius}`} style={surfaceInputStyle}>
-              {index + 1}
+              {(typeof step.settings?.min_value === "number" ? step.settings.min_value : step.type === "nps" ? 0 : 1) + index}
             </div>
           ))}
         </div>
@@ -924,7 +1000,7 @@ export default function FormularioEditorPage() {
     }
 
     const nextForm = ensureFormDefaults(formResponse.data as PreCheckoutForm);
-    const nextSteps = normalizeBuilderSteps((stepsResponse.data || []) as PreCheckoutFormStep[]);
+    const nextSteps = normalizeBuilderSteps(((stepsResponse.data || []) as PreCheckoutFormStep[]).map(sanitizeStep));
     lastPersistedSnapshotRef.current = buildSnapshot(nextForm, nextSteps, []);
     skipAutosaveRef.current = true;
     setForm(nextForm);
@@ -970,7 +1046,7 @@ export default function FormularioEditorPage() {
 
   const handleThemeAssetUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
-    field: "logo_url" | "background_image_url" | "top_image_url",
+    field: "logo_url" | "background_image_url",
   ) => {
     if (!user || !form) return;
     const file = event.target.files?.[0];
@@ -988,26 +1064,22 @@ export default function FormularioEditorPage() {
     });
 
     if (uploadError) {
-      toast("Nao foi possivel enviar esse arquivo.", "error");
+      toast("Não foi possível enviar esse arquivo.", "error");
       setUploadingAssetKey(null);
       return;
     }
 
     const { data: urlData } = supabase.storage.from("public_bucket").getPublicUrl(filePath);
-    if (field === "top_image_url") {
-      updateForm((current) => ({ ...current, theme: { ...current.theme, top_image_url: urlData.publicUrl } }));
-    } else {
-      updateForm((current) => ({
-        ...current,
-        theme: {
-          ...current.theme,
-          branding: {
-            ...(current.theme.branding || PRE_CHECKOUT_DEFAULT_THEME.branding!),
-            [field]: urlData.publicUrl,
-          },
+    updateForm((current) => ({
+      ...current,
+      theme: {
+        ...current.theme,
+        branding: {
+          ...(current.theme.branding || PRE_CHECKOUT_DEFAULT_THEME.branding!),
+          [field]: urlData.publicUrl,
         },
-      }));
-    }
+      },
+    }));
     setUploadingAssetKey(null);
   };
 
@@ -1028,7 +1100,7 @@ export default function FormularioEditorPage() {
     });
 
     if (uploadError) {
-      toast("Nao foi possivel enviar a midia da etapa.", "error");
+      toast("Não foi possível enviar a mídia da etapa.", "error");
       setUploadingAssetKey(null);
       return;
     }
@@ -1043,6 +1115,44 @@ export default function FormularioEditorPage() {
         video_url: file.type.startsWith("video/") ? urlData.publicUrl : null,
         media_brightness: current.settings?.media_brightness ?? 100,
       },
+    }));
+    setUploadingAssetKey(null);
+  };
+
+  const handleOptionImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+    stepId: string,
+    optionId: string
+  ) => {
+    if (!user || !form) return;
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setUploadingAssetKey(`option:${stepId}:${optionId}`);
+    const extension = file.name.split(".").pop()?.toLowerCase() || "png";
+    const filePath = `forms/${user.id}/${form.id}/options/${stepId}-${optionId}-${Date.now().toString(36)}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage.from("public_bucket").upload(filePath, file, {
+      cacheControl: "3600",
+      upsert: true,
+      contentType: file.type || undefined,
+    });
+
+    if (uploadError) {
+      toast("Não foi possível enviar a imagem da opção.", "error");
+      setUploadingAssetKey(null);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from("public_bucket").getPublicUrl(filePath);
+    updateStep(stepId, (current) => ({
+      ...current,
+      options: current.options.map((option) =>
+        option.id === optionId
+          ? { ...option, image_url: urlData.publicUrl }
+          : option
+      ),
     }));
     setUploadingAssetKey(null);
   };
@@ -1114,14 +1224,14 @@ export default function FormularioEditorPage() {
 
       const { error: formError } = await supabase.from("pre_checkout_forms").update(formPayload).eq("id", form.id);
       if (formError) {
-        if (!silent) toast("Nao foi possivel salvar o form.", "error");
+        if (!silent) toast("Não foi possível salvar o form.", "error");
         return false;
       }
 
       if (deletedStepIds.length) {
         const { error: deleteError } = await supabase.from("pre_checkout_form_steps").delete().in("id", deletedStepIds);
         if (deleteError && !silent) {
-          toast("Nao foi possivel remover etapas antigas.", "error");
+          toast("Não foi possível remover etapas antigas.", "error");
           return false;
         }
       }
@@ -1143,7 +1253,7 @@ export default function FormularioEditorPage() {
             ...option,
             value: normalizeOptionValue(option.label || option.value, optionIndex),
           })),
-          settings: step.settings,
+          settings: sanitizeStepSettings(step.settings),
         }));
 
       const newSteps = normalizedSteps
@@ -1162,13 +1272,13 @@ export default function FormularioEditorPage() {
             ...option,
             value: normalizeOptionValue(option.label || option.value, optionIndex),
           })),
-          settings: step.settings,
+          settings: sanitizeStepSettings(step.settings),
         }));
 
       if (persistedSteps.length) {
         const { error: persistedError } = await supabase.from("pre_checkout_form_steps").upsert(persistedSteps);
         if (persistedError) {
-          if (!silent) toast("Nao foi possivel atualizar as etapas.", "error");
+          if (!silent) toast("Não foi possível atualizar as etapas.", "error");
           return false;
         }
       }
@@ -1181,7 +1291,7 @@ export default function FormularioEditorPage() {
           .select("*");
 
         if (newStepsError) {
-          if (!silent) toast("Nao foi possivel salvar novas etapas.", "error");
+          if (!silent) toast("Não foi possível salvar novas etapas.", "error");
           return false;
         }
 
@@ -1489,7 +1599,7 @@ export default function FormularioEditorPage() {
           <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[#171821] p-4">
             <div>
               <p className="text-sm font-medium text-white">Acao ativa</p>
-              <p className="text-xs text-zinc-400">Se desligar, ela nao sera executada.</p>
+              <p className="text-xs text-zinc-400">Se desligar, ela não será executada.</p>
             </div>
             <Switch checked={action.enabled} onCheckedChange={(checked) => updateAction(selectedTrigger.id, action.id, (current) => ({ ...current, enabled: checked }))} />
           </div>
@@ -1798,7 +1908,7 @@ export default function FormularioEditorPage() {
                               ...createBuilderStep(value, current.position),
                               ...current,
                               type: value,
-                              options: ["single_choice", "multiple_choice", "dropdown", "yes_no"].includes(value)
+                              options: ["single_choice", "picture_choice", "multiple_choice", "dropdown", "yes_no"].includes(value)
                                 ? current.options.length ? current.options : createBuilderStep(value, current.position).options
                                 : [],
                             }))
@@ -1908,7 +2018,7 @@ export default function FormularioEditorPage() {
                         ) : null}
                       </div>
 
-                      {["single_choice", "multiple_choice", "dropdown", "yes_no"].includes(selectedStep.type) ? (
+                      {["single_choice", "picture_choice", "multiple_choice", "dropdown", "yes_no"].includes(selectedStep.type) ? (
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <Label>Opcoes</Label>
@@ -1925,27 +2035,71 @@ export default function FormularioEditorPage() {
                             </Button>
                           </div>
                           {selectedStep.options.map((option) => (
-                            <div key={option.id} className="grid grid-cols-[1fr_auto] gap-2">
-                              <Input
+                            <div key={option.id} className="space-y-3 rounded-2xl border border-white/10 bg-[#171821] p-3">
+                              {selectedStep.type === "picture_choice" ? (
+                                <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#111114]">
+                                  {option.image_url ? (
+                                    <img src={option.image_url} alt={option.label} className="aspect-[4/3] w-full object-cover" />
+                                  ) : (
+                                    <div className="flex aspect-[4/3] items-center justify-center text-sm text-zinc-400">Nenhuma imagem enviada</div>
+                                  )}
+                                </div>
+                              ) : null}
+                              <AutosizeTextField
                                 value={option.label}
-                                onChange={(event) =>
+                                onChange={(value) =>
                                   updateStep(selectedStep.id, (current) => ({
                                     ...current,
                                     options: current.options.map((item, optionIndex) =>
                                       item.id === option.id
                                         ? {
                                             ...item,
-                                            label: event.target.value,
-                                            value: normalizeOptionValue(event.target.value, optionIndex),
+                                            label: value,
+                                            value: normalizeOptionValue(value, optionIndex),
                                           }
                                         : item
                                     ),
                                   }))
                                 }
                               />
-                              <Button variant="ghost" size="icon" onClick={() => updateStep(selectedStep.id, (current) => ({ ...current, options: current.options.filter((item) => item.id !== option.id) }))}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                              <div className="flex flex-wrap gap-2">
+                                {selectedStep.type === "picture_choice" ? (
+                                  <>
+                                    <Label htmlFor={`option-image-${selectedStep.id}-${option.id}`} className="cursor-pointer">
+                                      <div className="inline-flex h-10 items-center justify-center rounded-xl border border-input px-3 text-sm">
+                                        {uploadingAssetKey === `option:${selectedStep.id}:${option.id}` ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
+                                        Enviar imagem
+                                      </div>
+                                    </Label>
+                                    <input
+                                      id={`option-image-${selectedStep.id}-${option.id}`}
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={(event) => void handleOptionImageUpload(event, selectedStep.id, option.id)}
+                                    />
+                                    {option.image_url ? (
+                                      <Button
+                                        variant="ghost"
+                                        className="text-destructive"
+                                        onClick={() =>
+                                          updateStep(selectedStep.id, (current) => ({
+                                            ...current,
+                                            options: current.options.map((item) =>
+                                              item.id === option.id ? { ...item, image_url: null } : item
+                                            ),
+                                          }))
+                                        }
+                                      >
+                                        Remover imagem
+                                      </Button>
+                                    ) : null}
+                                  </>
+                                ) : null}
+                                <Button variant="ghost" size="icon" onClick={() => updateStep(selectedStep.id, (current) => ({ ...current, options: current.options.filter((item) => item.id !== option.id) }))}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -2135,9 +2289,9 @@ export default function FormularioEditorPage() {
                                         <SelectItem value="equals">igual a</SelectItem>
                                         <SelectItem value="not_equals">diferente de</SelectItem>
                                         <SelectItem value="contains">contem</SelectItem>
-                                        <SelectItem value="not_contains">nao contem</SelectItem>
+                                        <SelectItem value="not_contains">não contém</SelectItem>
                                         <SelectItem value="is_answered">foi respondida</SelectItem>
-                                        <SelectItem value="is_not_answered">nao foi respondida</SelectItem>
+                                        <SelectItem value="is_not_answered">não foi respondida</SelectItem>
                                       </SelectContent>
                                     </Select>
                                     <Input
@@ -2303,7 +2457,7 @@ export default function FormularioEditorPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Nome</Label>
-                      <Input value={form.name} onChange={(event) => updateForm((current) => ({ ...current, name: event.target.value }))} />
+                      <AutosizeTextField value={form.name} onChange={(value) => updateForm((current) => ({ ...current, name: value }))} />
                     </div>
                     <div className="space-y-2">
                       <Label>URL</Label>
@@ -2311,7 +2465,7 @@ export default function FormularioEditorPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Descrição geral</Label>
-                      <Textarea value={form.description || ""} onChange={(event) => updateForm((current) => ({ ...current, description: event.target.value }))} />
+                      <AutosizeTextField value={form.description || ""} onChange={(value) => updateForm((current) => ({ ...current, description: value }))} />
                     </div>
                   </Card>
                   <Card className="space-y-4 border-white/10 bg-[#111114] p-5">
