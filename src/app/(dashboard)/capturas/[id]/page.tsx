@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   ArrowUp,
   Copy,
-  ExternalLink,
   ImagePlus,
   Loader2,
   MonitorSmartphone,
@@ -35,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { createCaptureField, normalizeCaptureFields, slugifyCapturePopupName, validateCapturePopupForPublish } from "@/lib/capture-popups/popups";
 import { CAPTURE_POPUP_TEMPLATE_LIST } from "@/lib/capture-popups/templates";
+import { formatPhoneInputValue } from "@/lib/phone";
 import type { CapturePopup, CapturePopupField, CapturePopupFieldType } from "@/types";
 
 type FunnelOption = { id: string; name: string };
@@ -112,6 +112,8 @@ function renderPopupPreview(
   orderedFields: CapturePopupField[],
   previewBackground: React.CSSProperties,
   panelStyle: React.CSSProperties,
+  previewValues: Record<string, string>,
+  onPreviewValueChange: (field: CapturePopupField, value: string) => void,
 ) {
   const hasMainImage = Boolean(popup.theme.top_image_url);
   const layoutMode = popup.theme.layout_mode || "column";
@@ -145,6 +147,8 @@ function renderPopupPreview(
               </label>
               <textarea
                 rows={4}
+                value={previewValues[field.id] ?? ""}
+                onChange={(event) => onPreviewValueChange(field, event.target.value)}
                 placeholder={field.placeholder || ""}
                 style={{
                   background: popup.theme.field_background,
@@ -163,6 +167,8 @@ function renderPopupPreview(
               </label>
               <input
                 type={getFieldInputType(field)}
+                value={previewValues[field.id] ?? ""}
+                onChange={(event) => onPreviewValueChange(field, event.target.value)}
                 placeholder={field.placeholder || ""}
                 style={{
                   background: popup.theme.field_background,
@@ -236,6 +242,7 @@ export default function CapturaEditorPage() {
   const [origin, setOrigin] = useState("http://localhost:3000");
   const [advancedMode, setAdvancedMode] = useState(false);
   const [uploadingImageKey, setUploadingImageKey] = useState<"top_image_url" | "background_image_url" | null>(null);
+  const [previewValues, setPreviewValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (typeof window !== "undefined") setOrigin(window.location.origin);
@@ -254,11 +261,26 @@ export default function CapturaEditorPage() {
     () => CAPTURE_POPUP_TEMPLATE_LIST.find((template) => template.key === popup?.template_key),
     [popup?.template_key],
   );
-  const scriptUrl = popup ? `${origin}/api/capturas/${popup.slug}/script` : "";
   const visibleFieldTypeOptions = useMemo(
     () => (advancedMode ? FIELD_TYPE_OPTIONS : FIELD_TYPE_OPTIONS.filter((option) => ["name", "email", "phone"].includes(option.value))),
     [advancedMode],
   );
+
+  useEffect(() => {
+    setPreviewValues((current) =>
+      orderedFields.reduce<Record<string, string>>((acc, field) => {
+        acc[field.id] = current[field.id] || "";
+        return acc;
+      }, {}),
+    );
+  }, [orderedFields]);
+
+  const handlePreviewValueChange = useCallback((field: CapturePopupField, value: string) => {
+    setPreviewValues((current) => ({
+      ...current,
+      [field.id]: field.type === "phone" ? formatPhoneInputValue(value) : value,
+    }));
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!user || !popupId) return;
@@ -504,10 +526,6 @@ export default function CapturaEditorPage() {
           <Button variant="outline" onClick={() => copyText(installSnippet, "Codigo")}>
             <Copy className="mr-2 h-4 w-4" />
             Copiar codigo
-          </Button>
-          <Button variant="outline" onClick={() => window.open(scriptUrl, "_blank")} disabled={popup.status !== "published"}>
-            <ExternalLink className="mr-2 h-4 w-4" />
-            Ver codigo
           </Button>
           <Button variant="outline" onClick={() => handleSave(popup.status === "published" ? "paused" : "published")} disabled={saving}>
             {popup.status === "published" ? <PauseCircle className="mr-2 h-4 w-4" /> : <Rocket className="mr-2 h-4 w-4" />}
@@ -1011,7 +1029,6 @@ export default function CapturaEditorPage() {
               <Textarea readOnly rows={4} value={installSnippet} className="font-mono text-xs" />
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={() => copyText(installSnippet, "Codigo")}><Copy className="mr-2 h-4 w-4" />Copiar codigo</Button>
-                <Button variant="outline" onClick={() => window.open(scriptUrl, "_blank")} disabled={popup.status !== "published"}><ExternalLink className="mr-2 h-4 w-4" />Ver codigo</Button>
               </div>
             </Card>
 
@@ -1040,7 +1057,7 @@ export default function CapturaEditorPage() {
       </Tabs>
 
       <div className="space-y-4 xl:sticky xl:top-24 self-start">
-        {renderPopupPreview(popup, orderedFields, previewBackground, panelStyle)}
+        {renderPopupPreview(popup, orderedFields, previewBackground, panelStyle, previewValues, handlePreviewValueChange)}
       </div>
     </div>
     </div>

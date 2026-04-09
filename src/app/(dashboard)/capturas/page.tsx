@@ -508,17 +508,6 @@ export default function CapturasPage() {
                       <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                       Excluir
                     </Button>
-                    {popup.status === "published" && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 px-3 text-xs"
-                        onClick={() => window.open(`/api/capturas/${popup.slug}/script`, "_blank")}
-                      >
-                        <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                        Ver codigo
-                      </Button>
-                    )}
                   </div>
                 </div>
               </Card>
@@ -528,7 +517,7 @@ export default function CapturasPage() {
       </Card>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Criar pop-up a partir de um modelo</DialogTitle>
             <DialogDescription>

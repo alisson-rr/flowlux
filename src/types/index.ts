@@ -173,6 +173,94 @@ export interface ScheduledMessageAttempt {
   updated_at: string;
 }
 
+export interface WhatsAppGroup {
+  id: string;
+  user_id: string;
+  instance_id: string;
+  remote_jid: string;
+  subject: string;
+  description?: string | null;
+  picture_url?: string | null;
+  owner_jid?: string | null;
+  participants_count: number;
+  source: "sync" | "manual";
+  status: "active" | "paused" | "archived";
+  metadata?: Record<string, unknown>;
+  last_synced_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WhatsAppGroupParticipant {
+  id: string;
+  admin: "superadmin" | "admin" | null;
+  action_target?: string | null;
+}
+
+export interface GroupMessageLog {
+  id: string;
+  group_id: string;
+  user_id: string;
+  instance_id?: string | null;
+  flow_execution_id?: string | null;
+  scheduled_message_id?: string | null;
+  send_mode: "manual" | "flow" | "scheduled";
+  message_type: "text" | "image" | "video" | "audio" | "document";
+  content?: string | null;
+  media_url?: string | null;
+  file_name?: string | null;
+  status: "queued" | "sent" | "failed";
+  error_message?: string | null;
+  provider_response?: Record<string, unknown>;
+  sent_at?: string | null;
+  created_at: string;
+}
+
+export interface GroupScheduledMessage {
+  id: string;
+  user_id: string;
+  group_id: string;
+  instance_id: string;
+  remote_jid: string;
+  group_subject: string;
+  message?: string | null;
+  scheduled_at: string;
+  next_run_at?: string | null;
+  status: "pending" | "processing" | "retry_waiting" | "sent" | "failed" | "cancelled";
+  attempt_count: number;
+  max_attempts: number;
+  claimed_at?: string | null;
+  last_attempt_at?: string | null;
+  sent_at?: string | null;
+  failure_reason?: string | null;
+  provider_response?: Record<string, unknown>;
+  media_url?: string | null;
+  media_type?: "image" | "video" | "audio" | "document" | null;
+  file_name?: string | null;
+  deleted_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupScheduledMessageAttempt {
+  id: string;
+  scheduled_message_id: string;
+  user_id: string;
+  group_id: string;
+  instance_id?: string | null;
+  attempt_number: number;
+  target_group_jid: string;
+  group_subject: string;
+  instance_name?: string | null;
+  status: "processing" | "sent" | "failed" | "skipped";
+  attempted_at: string;
+  completed_at?: string | null;
+  failure_reason?: string | null;
+  provider_response?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface MessageTemplate {
   id: string;
   user_id: string;
@@ -241,13 +329,24 @@ export type PreCheckoutTemplateKey =
 export type PreCheckoutFormStatus = "draft" | "published" | "paused" | "archived";
 
 export type PreCheckoutFormStepType =
-  | "intro"
+  | "welcome_screen"
+  | "statement"
   | "short_text"
   | "long_text"
   | "email"
   | "phone"
+  | "number"
+  | "date"
   | "single_choice"
-  | "multiple_choice";
+  | "picture_choice"
+  | "multiple_choice"
+  | "dropdown"
+  | "yes_no"
+  | "rating"
+  | "opinion_scale"
+  | "nps"
+  | "legal"
+  | "end_screen";
 
 export type PreCheckoutFinalAction = "checkout_redirect" | "whatsapp_redirect" | "thank_you" | "flow_only";
 
@@ -261,7 +360,9 @@ export type PreCheckoutEventType =
   | "completed"
   | "redirect_checkout"
   | "redirect_whatsapp"
-  | "abandoned";
+  | "abandoned"
+  | "workflow_triggered"
+  | "workflow_failed";
 
 export interface PreCheckoutThemeBackground {
   mode: "solid" | "image";
@@ -269,42 +370,71 @@ export interface PreCheckoutThemeBackground {
   image_url?: string | null;
   image_focus_x: number;
   image_focus_y: number;
-  image_overlay: number;
-  full_bleed: boolean;
 }
 
 export interface PreCheckoutThemeTypography {
   heading_font: string;
   body_font: string;
+  form_font: string;
   button_radius: "sm" | "md" | "lg" | "full";
+  input_radius: "sm" | "md" | "lg" | "full";
 }
 
 export interface PreCheckoutThemeLayout {
-  width: "sm" | "md" | "lg";
   align: "left" | "center";
   spacing: "compact" | "comfortable" | "relaxed";
+}
+
+export interface PreCheckoutThemeBranding {
+  logo_url?: string | null;
+  logo_position: "center" | "left";
+  logo_size?: "sm" | "md" | "lg" | "xl";
+  background_image_url?: string | null;
+  background_image_focus_x: number;
+  background_image_focus_y: number;
+  background_brightness?: number;
 }
 
 export interface PreCheckoutTheme {
   style_key: "light" | "dark" | "accent";
   primary_color: string;
+  button_text_color?: string;
   text_color: string;
   panel_color: string;
-  top_image_url?: string | null;
+  input_background_color?: string;
+  input_text_color?: string;
+  input_border_color?: string;
   background: PreCheckoutThemeBackground;
   typography: PreCheckoutThemeTypography;
   layout: PreCheckoutThemeLayout;
+  branding?: PreCheckoutThemeBranding;
 }
 
 export interface PreCheckoutStepOption {
   id: string;
   label: string;
   value: string;
+  image_url?: string | null;
+  ending_target_id?: string | null;
 }
 
 export interface PreCheckoutFormStepSettings {
   auto_focus?: boolean;
   max_length?: number | null;
+  min_value?: number | null;
+  max_value?: number | null;
+  min_label?: string | null;
+  max_label?: string | null;
+  button_label?: string | null;
+  image_url?: string | null;
+  video_url?: string | null;
+  media_kind?: "image" | "video" | null;
+  media_brightness?: number | null;
+  media_layout_desktop?: "top" | "right" | "right-wide" | "left" | "left-wide" | "background" | null;
+  media_layout_mobile?: "top" | "top-wide" | "background" | "hidden" | null;
+  legal_consent_text?: string | null;
+  legal_required_label?: string | null;
+  map_to_contact_field?: "name" | "email" | "phone" | null;
 }
 
 export interface PreCheckoutFormStep {
@@ -330,6 +460,141 @@ export interface PreCheckoutFinalConfig {
   whatsapp_message?: string | null;
   thank_you_title?: string | null;
   thank_you_description?: string | null;
+  button_label?: string | null;
+}
+
+export type PreCheckoutWorkflowTriggerType =
+  | "any_full_response"
+  | "full_response_with_conditions"
+  | "ending_reached"
+  | "abandoned";
+
+export type PreCheckoutWorkflowActionType =
+  | "send_whatsapp_respondent"
+  | "send_whatsapp_internal"
+  | "apply_tags"
+  | "move_stage"
+  | "start_flow"
+  | "redirect_url"
+  | "webhook";
+
+export type PreCheckoutWorkflowConditionOperator =
+  | "equals"
+  | "not_equals"
+  | "contains"
+  | "not_contains"
+  | "is_answered"
+  | "is_not_answered";
+
+export interface PreCheckoutWorkflowCondition {
+  id: string;
+  step_key?: string | null;
+  operator: PreCheckoutWorkflowConditionOperator;
+  value?: string | string[] | null;
+}
+
+export interface PreCheckoutWorkflowAction {
+  id: string;
+  type: PreCheckoutWorkflowActionType;
+  enabled: boolean;
+  label?: string | null;
+  config: {
+    message?: string | null;
+    phone?: string | null;
+    tag_ids?: string[];
+    funnel_id?: string | null;
+    stage_id?: string | null;
+    flow_id?: string | null;
+    url?: string | null;
+    webhook_url?: string | null;
+    webhook_method?: "POST" | "PUT";
+    webhook_headers?: Array<{ key: string; value: string }>;
+  };
+}
+
+export interface PreCheckoutWorkflowTrigger {
+  id: string;
+  name: string;
+  type: PreCheckoutWorkflowTriggerType;
+  enabled: boolean;
+  ending_step_key?: string | null;
+  conditions: PreCheckoutWorkflowCondition[];
+  actions: PreCheckoutWorkflowAction[];
+}
+
+export interface PreCheckoutConnectConfig {
+  meta_pixel_enabled?: boolean;
+  meta_pixel_id?: string | null;
+  ga4_enabled?: boolean;
+  ga4_measurement_id?: string | null;
+  gtm_enabled?: boolean;
+  gtm_container_id?: string | null;
+}
+
+export interface PreCheckoutSystemMessagesButtons {
+  confirm_answer: string;
+  next_hint: string;
+  multiple_choice_hint: string;
+  dropdown_hint: string;
+  dropdown_touch_hint: string;
+  other_label: string;
+  other_placeholder: string;
+  exact_selection_step_1: string;
+  exact_selection_step_2: string;
+  range_max_step_1: string;
+  range_max_step_2: string;
+  range_between: string;
+  range_min_step_1: string;
+  range_min_step_2: string;
+  text_hint: string;
+  option_key_hint: string;
+  yes_label: string;
+  no_label: string;
+  yes_shortcut: string;
+  no_shortcut: string;
+  legal_accept_label: string;
+  legal_reject_label: string;
+  review_label: string;
+  submit_label: string;
+  continue_label: string;
+}
+
+export interface PreCheckoutSystemMessagesErrors {
+  required: string;
+  selection_required: string;
+  value_required: string;
+  legal_rejected: string;
+  invalid_email: string;
+  invalid_url: string;
+  invalid_number_range: string;
+  invalid_number_low: string;
+  invalid_number_high: string;
+  dropdown_not_found: string;
+  invalid_phone: string;
+}
+
+export interface PreCheckoutSystemMessagesCompletion {
+  success: string;
+  no_connection: string;
+  server_error: string;
+  unavailable: string;
+}
+
+export interface PreCheckoutSystemMessagesOther {
+  unsupported_device: string;
+  line_break_hint: string;
+  file_required: string;
+  file_button: string;
+  file_drop_hint: string;
+  file_too_big: string;
+  file_uploading: string;
+}
+
+export interface PreCheckoutSystemMessages {
+  buttons: PreCheckoutSystemMessagesButtons;
+  errors: PreCheckoutSystemMessagesErrors;
+  completion: PreCheckoutSystemMessagesCompletion;
+  other: PreCheckoutSystemMessagesOther;
 }
 
 export interface PreCheckoutIntegrationsConfig {
@@ -340,11 +605,14 @@ export interface PreCheckoutIntegrationsConfig {
   flow_on_abandon_id?: string | null;
   pixel_id?: string | null;
   pixel_enabled?: boolean;
+  workflows?: PreCheckoutWorkflowTrigger[];
+  connect?: PreCheckoutConnectConfig;
 }
 
 export interface PreCheckoutSessionSettings {
   resume_window_minutes: number;
   abandonment_window_minutes: number;
+  system_messages?: PreCheckoutSystemMessages;
 }
 
 export interface PreCheckoutForm {
@@ -428,6 +696,8 @@ export interface PreCheckoutTemplateDefinition {
     backgroundImage: boolean;
     redirect: boolean;
     pixel: boolean;
+    workflow: boolean;
+    ai: boolean;
   };
   lockedFields: string[];
   form: Pick<

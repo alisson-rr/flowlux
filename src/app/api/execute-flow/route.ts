@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   try {
     parsedBody = await req.json();
     const body = parsedBody;
-    const { flow_id, user_id, instance_id, instance_name, remote_jid, conversation_id } = body;
+    const { flow_id, user_id, instance_id, instance_name, remote_jid, conversation_id, metadata } = body;
 
     if (!flow_id || !user_id || !instance_name || !remote_jid) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -39,7 +39,8 @@ export async function POST(req: NextRequest) {
       remoteJid: remote_jid,
       conversationId: conversation_id || null,
       metadata: {
-        enqueue_source: "manual",
+        ...(metadata || {}),
+        enqueue_source: metadata?.enqueue_source || "manual",
       },
     });
 

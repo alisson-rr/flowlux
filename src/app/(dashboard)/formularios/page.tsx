@@ -2,22 +2,46 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Copy, PauseCircle, PlayCircle, Archive, Plus, Search, Loader2, ExternalLink } from "lucide-react";
+import {
+  BarChart3,
+  Copy,
+  ExternalLink,
+  FileText,
+  Loader2,
+  PauseCircle,
+  PlayCircle,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { PRE_CHECKOUT_TEMPLATE_LIST, buildFormFromTemplate } from "@/lib/pre-checkout/templates";
+import {
+  PRE_CHECKOUT_DEFAULT_SESSION_SETTINGS,
+  PRE_CHECKOUT_DEFAULT_THEME,
+  PRE_CHECKOUT_TEMPLATE_LIST,
+  buildFormFromTemplate,
+} from "@/lib/pre-checkout/templates";
 import { slugifyPreCheckoutFormName } from "@/lib/pre-checkout/forms";
 import { formatDateTime } from "@/lib/utils";
 import type { PreCheckoutForm } from "@/types";
 
 function buildUniqueSlug(name: string) {
-  const base = slugifyPreCheckoutFormName(name) || "pre-checkout";
+  const base = slugifyPreCheckoutFormName(name) || "form";
   return `${base}-${Date.now().toString(36)}`;
 }
 
@@ -32,6 +56,107 @@ function getStatusVariant(status: PreCheckoutForm["status"]) {
     default:
       return "outline";
   }
+}
+
+function getStatusLabel(status: PreCheckoutForm["status"] | "all") {
+  switch (status) {
+    case "draft":
+      return "Rascunho";
+    case "published":
+      return "Publicado";
+    case "paused":
+      return "Pausado";
+    case "archived":
+      return "Arquivado";
+    default:
+      return "Todos";
+  }
+}
+
+function getTemplateDetails(templateKey: string) {
+  switch (templateKey) {
+    case "application-focus":
+      return {
+        tag: "Mais consultivo",
+        bullets: ["Filtra melhor o lead", "Ideal para aplicação", "Bom para vendas de ticket maior"],
+      };
+    case "warmup-whatsapp":
+      return {
+        tag: "Mais rápido para WhatsApp",
+        bullets: ["Poucos passos", "Leva para conversa", "Ótimo para suporte ou fechamento"],
+      };
+    default:
+      return {
+        tag: "Mais simples e direto",
+        bullets: ["Cadastro rápido", "Captação direta", "Ideal para captar antes da oferta"],
+      };
+  }
+}
+
+function buildBlankForm() {
+  return {
+    form: {
+      name: "Novo form",
+      description: "",
+      template_key: "lead-capture-classic",
+      template_version: 1,
+      theme: PRE_CHECKOUT_DEFAULT_THEME,
+      final_config: {
+        action: "thank_you" as const,
+        thank_you_title: "Tudo certo",
+        thank_you_description: "Recebemos sua resposta.",
+        button_label: "Enviar",
+      },
+      integrations: {
+        tag_ids: [],
+        workflows: [],
+        connect: {
+          meta_pixel_enabled: false,
+          meta_pixel_id: "",
+          ga4_enabled: false,
+          ga4_measurement_id: "",
+          gtm_enabled: false,
+          gtm_container_id: "",
+        },
+      },
+      session_settings: PRE_CHECKOUT_DEFAULT_SESSION_SETTINGS,
+    },
+    steps: [
+      {
+        step_key: "boas_vindas",
+        position: 0,
+        type: "welcome_screen" as const,
+        title: "Vamos começar",
+        description: "Apresente o contexto antes da primeira pergunta.",
+        placeholder: "",
+        is_required: false,
+        options: [],
+        settings: { button_label: "Começar" },
+      },
+      {
+        step_key: "pergunta_1",
+        position: 1,
+        type: "short_text" as const,
+        title: "Digite sua resposta",
+        description: "",
+        placeholder: "Sua resposta",
+        is_required: true,
+        options: [],
+        settings: { auto_focus: true, max_length: 160, map_to_contact_field: null },
+      },
+      {
+        step_key: "final",
+        position: 2,
+        type: "end_screen" as const,
+        title: "Tudo certo",
+        description: "Agora siga para a próxima ação.",
+        placeholder: "",
+        is_required: false,
+        options: [],
+        settings: { button_label: "Finalizar" },
+      },
+    ],
+  };
 }
 
 export default function FormulariosPage() {
@@ -69,21 +194,24 @@ export default function FormulariosPage() {
     loadForms();
   }, [loadForms]);
 
-  const filteredForms = useMemo(() => {
-    return forms.filter((form) => {
-      const matchesStatus = statusFilter === "all" || form.status === statusFilter;
-      const searchable = `${form.name} ${form.slug} ${form.template_key}`.toLowerCase();
-      const matchesSearch = searchable.includes(searchTerm.toLowerCase());
-      return matchesStatus && matchesSearch;
-    });
-  }, [forms, searchTerm, statusFilter]);
+  const filteredForms = useMemo(
+    () =>
+      forms.filter((form) => {
+        if (form.status === "archived") return false;
+        const matchesStatus = statusFilter === "all" || form.status === statusFilter;
+        const searchable = `${form.name} ${form.slug} ${form.template_key}`.toLowerCase();
+        const matchesSearch = searchable.includes(searchTerm.toLowerCase());
+        return matchesStatus && matchesSearch;
+      }),
+    [forms, searchTerm, statusFilter]
+  );
 
   const handleCreateFromTemplate = async (templateKey: string) => {
     if (!user) return;
 
-    const templateData = buildFormFromTemplate(templateKey);
+    const templateData = templateKey === "blank" ? buildBlankForm() : buildFormFromTemplate(templateKey);
     if (!templateData) {
-      toast("Template inválido.", "error");
+      toast("Modelo inválido.", "error");
       return;
     }
 
@@ -130,15 +258,76 @@ export default function FormulariosPage() {
     const { error: stepsError } = await supabase.from("pre_checkout_form_steps").insert(stepsPayload);
     if (stepsError) {
       await supabase.from("pre_checkout_forms").delete().eq("id", form.id);
-      toast("O formulário foi criado, mas as perguntas falharam. Tente novamente.", "error");
+      toast("O formulário foi criado, mas os passos falharam. Tente novamente.", "error");
       setSaving(null);
       return;
     }
 
-    toast("Formulário criado com sucesso!", "success");
+    toast("Form criado com sucesso!", "success");
     setShowCreateDialog(false);
     setSaving(null);
-    router.push(`/formularios/${form.id}`);
+    router.push(`/formularios/${form.id}${templateKey === "ai" ? "?source=ai" : ""}`);
+  };
+
+  const handleCreateBlank = async () => {
+    await handleCreateFromTemplate("blank");
+  };
+
+  const handleCreateWithAi = async () => {
+    if (!user) return;
+
+    const blank = buildBlankForm();
+    setSaving("creating");
+
+    const slug = buildUniqueSlug(blank.form.name);
+    const { data: form, error: formError } = await supabase
+      .from("pre_checkout_forms")
+      .insert({
+        user_id: user.id,
+        name: "Novo form com IA",
+        slug,
+        description: "",
+        template_key: blank.form.template_key,
+        template_version: blank.form.template_version,
+        theme: blank.form.theme,
+        final_config: blank.form.final_config,
+        integrations: blank.form.integrations,
+        session_settings: blank.form.session_settings,
+      })
+      .select("*")
+      .single();
+
+    if (formError || !form) {
+      toast("Não foi possível criar o form com IA.", "error");
+      setSaving(null);
+      return;
+    }
+
+    const stepsPayload = blank.steps.map((step) => ({
+      form_id: form.id,
+      user_id: user.id,
+      step_key: step.step_key,
+      position: step.position,
+      type: step.type,
+      title: step.title,
+      description: step.description || "",
+      placeholder: step.placeholder || "",
+      is_required: step.is_required,
+      options: step.options,
+      settings: step.settings,
+    }));
+
+    const { error: stepsError } = await supabase.from("pre_checkout_form_steps").insert(stepsPayload);
+    if (stepsError) {
+      await supabase.from("pre_checkout_forms").delete().eq("id", form.id);
+      toast("Não foi possível preparar o form com IA.", "error");
+      setSaving(null);
+      return;
+    }
+
+    setShowCreateDialog(false);
+    setSaving(null);
+    router.push(`/formularios/${form.id}?source=ai`);
   };
 
   const handleDuplicate = async (formId: string) => {
@@ -198,7 +387,7 @@ export default function FormulariosPage() {
     const { error: duplicatedStepsError } = await supabase.from("pre_checkout_form_steps").insert(duplicatedSteps);
     if (duplicatedStepsError) {
       await supabase.from("pre_checkout_forms").delete().eq("id", duplicatedForm.id);
-      toast("A cópia falhou ao replicar as perguntas.", "error");
+      toast("A cópia falhou ao replicar os passos.", "error");
       setSaving(null);
       return;
     }
@@ -217,10 +406,7 @@ export default function FormulariosPage() {
       archived_at: status === "archived" ? new Date().toISOString() : null,
     };
 
-    const { error } = await supabase
-      .from("pre_checkout_forms")
-      .update(updates)
-      .eq("id", form.id);
+    const { error } = await supabase.from("pre_checkout_forms").update(updates).eq("id", form.id);
 
     if (error) {
       toast("Não foi possível atualizar o status.", "error");
@@ -234,124 +420,121 @@ export default function FormulariosPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[60vh]">
+      <div className="flex h-[60vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+    <div className="animate-fade-in space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Formulários</h1>
-          <p className="text-muted-foreground">
-            Crie pre-checkouts, qualifique leads e leve o tráfego para a próxima etapa com contexto.
-          </p>
+          <h1 className="text-2xl font-bold">Forms</h1>
+          <p className="text-muted-foreground">Crie forms conversacionais, acompanhe respostas e automatize o próximo passo.</p>
         </div>
         <Button onClick={() => setShowCreateDialog(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo formulário
+          <Plus className="mr-2 h-4 w-4" />
+          Novo form
         </Button>
       </div>
 
-      <Card className="p-4 space-y-4">
-        <div className="flex gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[240px]">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+      <Card className="space-y-4 p-4">
+        <div className="flex flex-wrap gap-3">
+          <div className="relative min-w-[240px] flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Buscar por nome, slug ou template"
+              placeholder="Buscar por nome, identificador ou modelo"
               className="pl-9"
             />
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {(["all", "draft", "published", "paused", "archived"] as const).map((status) => (
+
+          <div className="flex flex-wrap gap-2">
+            {(["all", "draft", "published", "paused"] as const).map((status) => (
               <Button
                 key={status}
                 variant={statusFilter === status ? "default" : "outline"}
                 size="sm"
                 onClick={() => setStatusFilter(status)}
               >
-                {status === "all" ? "Todos" : status}
+                {getStatusLabel(status)}
               </Button>
             ))}
           </div>
         </div>
 
         {filteredForms.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border p-10 text-center space-y-3">
-            <FileText className="h-8 w-8 mx-auto text-muted-foreground" />
+          <div className="space-y-3 rounded-xl border border-dashed border-border p-10 text-center">
+            <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
             <div>
-              <p className="font-medium">Nenhum formulário encontrado</p>
-              <p className="text-sm text-muted-foreground">
-                Crie o primeiro pre-checkout a partir de um template e comece a capturar contexto antes do checkout.
-              </p>
+              <p className="font-medium">Nenhum form encontrado</p>
+              <p className="text-sm text-muted-foreground">Crie seu primeiro form do zero, com IA ou a partir de um modelo.</p>
             </div>
             <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="mr-2 h-4 w-4" />
               Criar agora
             </Button>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filteredForms.map((form) => (
-              <Card key={form.id} className="p-5 space-y-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="font-semibold truncate">{form.name}</h2>
-                      <Badge variant={getStatusVariant(form.status)}>{form.status}</Badge>
+              <Card key={form.id} className="border-border/60 bg-card/80">
+                <div className="space-y-4 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="truncate text-lg font-semibold">{form.name}</h2>
+                        <Badge variant={getStatusVariant(form.status)}>{getStatusLabel(form.status)}</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">Atualizado {formatDateTime(form.updated_at)}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">/{form.slug}</p>
+                    {saving === form.id ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : null}
                   </div>
-                  {saving === form.id && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
-                </div>
 
-                <div className="space-y-2 text-sm">
-                  <p className="text-muted-foreground line-clamp-2">
-                    {form.description || "Sem descrição ainda."}
-                  </p>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Template: {form.template_key}</span>
-                    <span>Atualizado em {formatDateTime(form.updated_at)}</span>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <Button size="sm" onClick={() => router.push(`/formularios/${form.id}`)}>
+                      Editar
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => router.push(`/formularios/${form.id}/relatorio`)}>
+                      <BarChart3 className="mr-1.5 h-3.5 w-3.5" />
+                      Relatório
+                    </Button>
+                    {form.status === "published" ? (
+                      <Button size="sm" variant="outline" onClick={() => handleStatusChange(form, "paused")}>
+                        <PauseCircle className="mr-1.5 h-3.5 w-3.5" />
+                        Pausar
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => handleStatusChange(form, "published")}>
+                        <PlayCircle className="mr-1.5 h-3.5 w-3.5" />
+                        Publicar
+                      </Button>
+                    )}
                   </div>
-                </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => router.push(`/formularios/${form.id}`)}>
-                    Editar
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleDuplicate(form.id)}>
-                    <Copy className="h-3.5 w-3.5 mr-1.5" />
-                    Duplicar
-                  </Button>
-                  {form.status === "published" ? (
-                    <Button size="sm" variant="outline" onClick={() => handleStatusChange(form, "paused")}>
-                      <PauseCircle className="h-3.5 w-3.5 mr-1.5" />
-                      Pausar
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="ghost" className="h-8 px-3 text-xs" onClick={() => handleDuplicate(form.id)}>
+                      <Copy className="mr-1.5 h-3.5 w-3.5" />
+                      Duplicar
                     </Button>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => handleStatusChange(form, "published")}>
-                      <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
-                      Publicar
+                    <Button size="sm" variant="ghost" className="h-8 px-3 text-xs" onClick={() => handleStatusChange(form, "archived")}>
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                      Excluir
                     </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={() => handleStatusChange(form, "archived")}>
-                    <Archive className="h-3.5 w-3.5 mr-1.5" />
-                    Arquivar
-                  </Button>
-                  {form.status === "published" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => window.open(`/f/${form.slug}`, "_blank")}
-                    >
-                      <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                      Abrir
-                    </Button>
-                  )}
+                    {form.status === "published" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => window.open(`/f/${form.slug}`, "_blank")}
+                      >
+                        <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                        Abrir
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </Card>
             ))}
@@ -360,43 +543,83 @@ export default function FormulariosPage() {
       </Card>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-5xl">
           <DialogHeader>
-            <DialogTitle>Criar formulário a partir de template</DialogTitle>
+            <DialogTitle>Como você quer começar?</DialogTitle>
             <DialogDescription>
-              Escolha um ponto de partida para montar seu pre-checkout sem começar do zero.
+              Escolha entre começar em branco, montar com IA ou usar um modelo base para acelerar.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 md:grid-cols-3">
-            {PRE_CHECKOUT_TEMPLATE_LIST.map((template) => (
-              <Card key={template.key} className="p-4 space-y-4">
-                <div
-                  className="h-28 rounded-xl border border-border"
-                  style={{
-                    background:
-                      template.key === "lead-capture-classic"
-                        ? "linear-gradient(135deg, #8B5CF6 0%, #17171C 100%)"
-                        : template.key === "application-focus"
-                          ? "linear-gradient(135deg, #FFFFFF 0%, #DCE4FF 100%)"
-                          : "linear-gradient(135deg, #22C55E 0%, #0B0B10 100%)",
-                  }}
-                />
+            <Card className="space-y-4 border-border/60 p-4">
+              <div className="space-y-2">
+                <Badge variant="outline">Em branco</Badge>
+                <div className="text-lg font-semibold">Começar do zero</div>
+                <p className="text-sm text-muted-foreground">Cria um form limpo para você montar a estrutura do seu jeito.</p>
+              </div>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <div>• Estrutura mínima pronta</div>
+                <div>• Ideal para criação manual</div>
+                <div>• Mais controle desde o início</div>
+              </div>
+              <Button className="w-full" disabled={saving === "creating"} onClick={handleCreateBlank}>
+                {saving === "creating" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar em branco"}
+              </Button>
+            </Card>
 
+            <Card className="space-y-4 border-border/60 p-4">
+              <div className="space-y-2">
+                <Badge variant="outline">Com IA</Badge>
+                <div className="text-lg font-semibold">Criar com IA</div>
+                <p className="text-sm text-muted-foreground">Abre o editor com o assistente pronto para montar a estrutura inicial do form.</p>
+              </div>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <div>• Geração guiada no editor</div>
+                <div>• Estrutura inicial pronta em segundos</div>
+                <div>• Ideal para montar rápido</div>
+              </div>
+              <Button className="w-full" disabled={saving === "creating"} onClick={handleCreateWithAi}>
+                {saving === "creating" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Criar com IA
+                  </>
+                )}
+              </Button>
+            </Card>
+
+            {PRE_CHECKOUT_TEMPLATE_LIST.map((template) => (
+              <Card key={template.key} className="space-y-4 overflow-hidden border-border/60 p-4">
                 <div className="space-y-2">
-                  <div>
-                    <p className="font-semibold">{template.name}</p>
-                    <p className="text-xs text-muted-foreground">{template.category}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{template.name}</p>
+                      <p className="text-xs text-muted-foreground">{template.category}</p>
+                    </div>
+                    <Badge variant="outline" className="shrink-0">
+                      {getTemplateDetails(template.key).tag}
+                    </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground min-h-[60px]">{template.description}</p>
+
+                  <p className="min-h-[44px] text-sm leading-relaxed text-muted-foreground">{template.description}</p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {getTemplateDetails(template.key).bullets.map((bullet) => (
+                      <span
+                        key={bullet}
+                        className="rounded-full border border-border/60 bg-muted/20 px-2.5 py-1 text-[11px] text-muted-foreground"
+                      >
+                        {bullet}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
-                <Button
-                  className="w-full"
-                  disabled={saving === "creating"}
-                  onClick={() => handleCreateFromTemplate(template.key)}
-                >
-                  {saving === "creating" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usar template"}
+                <Button className="w-full" disabled={saving === "creating"} onClick={() => handleCreateFromTemplate(template.key)}>
+                  {saving === "creating" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usar modelo"}
                 </Button>
               </Card>
             ))}

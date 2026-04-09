@@ -163,10 +163,15 @@ export async function GET(req: NextRequest, context: { params: Promise<{ slug: s
   function sanitizePhoneInputValue(value) {
     var trimmed = String(value || "").trim();
     var hasPlus = trimmed.indexOf("+") === 0;
+    var hasZeroZeroPrefix = trimmed.indexOf("00") === 0;
     var digits = trimmed.replace(/\\D/g, "");
+    if (hasZeroZeroPrefix) {
+      digits = digits.slice(2);
+    }
     return {
       digits: digits,
-      hasPlus: hasPlus
+      hasPlus: hasPlus,
+      hasInternationalPrefix: hasPlus || hasZeroZeroPrefix
     };
   }
 
@@ -215,20 +220,19 @@ export async function GET(req: NextRequest, context: { params: Promise<{ slug: s
 
   function formatPhoneForDisplay(value) {
     var parsed = sanitizePhoneInputValue(value);
-    if (!parsed.digits) return "";
 
-    if (!parsed.hasPlus && looksLikeBrazilNumber(parsed.digits)) {
-      return formatBrazilPhone(parsed.digits);
-    }
-
-    if (parsed.hasPlus || parsed.digits.length > 11) {
-      if (parsed.digits.indexOf("55") === 0 && (parsed.digits.length === 12 || parsed.digits.length === 13)) {
-        return "+55 " + formatBrazilPhone(parsed.digits).replace(/^\\(/, "(");
-      }
+    if (parsed.hasInternationalPrefix) {
+      if (!parsed.digits) return "+";
       return formatInternationalPhone(parsed.digits);
     }
 
-    return formatBrazilPhone(parsed.digits);
+    if (!parsed.digits) return "";
+
+    if (parsed.digits.length <= 11) {
+      return formatBrazilPhone(parsed.digits);
+    }
+
+    return formatInternationalPhone(parsed.digits);
   }
 
   function attachPhoneMask(input) {

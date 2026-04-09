@@ -14,7 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { TERMOS_DE_USO, POLITICA_DE_PRIVACIDADE } from "@/lib/legal-texts";
-import { formatPhoneInput } from "@/lib/utils";
+import { formatPhoneInput, normalizePhone } from "@/lib/utils";
 
 export default function CadastroPage() {
   const router = useRouter();
@@ -59,7 +59,7 @@ export default function CadastroPage() {
       email: form.email,
       password: form.password,
       options: {
-        data: { name: form.name, phone: form.phone },
+        data: { name: form.name, phone: normalizePhone(form.phone) },
       },
     });
 
@@ -75,7 +75,7 @@ export default function CadastroPage() {
         id: data.user.id,
         name: form.name,
         email: form.email,
-        phone: form.phone,
+        phone: normalizePhone(form.phone),
       });
 
       // Create default funnel with stages for the new user
