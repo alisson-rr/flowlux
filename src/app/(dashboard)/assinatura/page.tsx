@@ -10,6 +10,7 @@ import {
   Crown,
   Check,
   Zap,
+  FolderOpen,
   MessageSquare,
   Users,
   BarChart3,
@@ -51,22 +52,35 @@ interface Subscription {
 const PLAN_NAMES: Record<string, string> = {
   starter: "Starter",
   pro: "Pro",
-  black: "FlowLux Black",
+  black: "Black",
 };
 
 const PLANS = [
   {
     id: "starter",
     name: "Starter",
-    price: "49",
-    oldPrice: "89",
-    priceNum: 49,
+    badge: "Para organizar sua base",
+    price: "59",
+    oldPrice: "",
+    priceNum: 59,
     period: "/mês",
     description: "Comece a organizar seus leads e responder mais rápido",
     icon: Zap,
-    color: "from-green-500 to-emerald-500",
-    borderColor: "border-green-500/30",
-    bgColor: "bg-green-500/10",
+    color: "from-[#2563EB] to-[#7C3AED]",
+    borderColor: "border-blue-500/25",
+    bgColor: "bg-blue-500/10",
+    displayDescription: "Para o infoprodutor que quer sair da gambiarra e centralizar captacao, atendimento e follow-up.",
+    displayFeatures: [
+      { text: "500 leads", icon: Users },
+      { text: "1 numero de WhatsApp", icon: MessageSquare },
+      { text: "500 disparos por mes", icon: Send },
+      { text: "5 GB de armazenamento", icon: HardDrive },
+      { text: "Chat + CRM + funil", icon: Kanban },
+      { text: "Formularios e popup de captura", icon: FileText },
+      { text: "Tags, notas e templates", icon: Tag },
+      { text: "Biblioteca de midias", icon: FolderOpen },
+      { text: "Integracao Hotmart", icon: ShieldCheck },
+    ],
     popular: false,
     recommended: false,
     link: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=2a69ac12835b4077bbf7279faa7d61c6",
@@ -87,17 +101,29 @@ const PLANS = [
   {
     id: "pro",
     name: "Pro",
-    price: "69",
-    oldPrice: "129",
-    priceNum: 69,
+    price: "99",
+    oldPrice: "",
+    priceNum: 99,
     period: "/mês",
     description: "Automatize seu atendimento e aumente suas vendas no WhatsApp",
-    icon: Star,
-    color: "from-purple-500 to-violet-500",
-    borderColor: "border-purple-500/30",
-    bgColor: "bg-purple-500/10",
-    popular: false,
-    recommended: false,
+    icon: Sparkles,
+    color: "from-[#22D3EE] to-[#2DD4BF]",
+    borderColor: "border-cyan-400/35",
+    bgColor: "bg-cyan-400/10",
+    badge: "Mais escolhido",
+    displayDescription: "Para quem ja validou a operacao e quer automatizar etapas, ganhar escala e operar com mais controle.",
+    displayFeatures: [
+      { text: "5.000 leads", icon: Users },
+      { text: "3 numeros de WhatsApp", icon: MessageSquare },
+      { text: "5.000 disparos por mes", icon: Send },
+      { text: "10 GB de armazenamento", icon: HardDrive },
+      { text: "Tudo do Starter", icon: Check },
+      { text: "Automacoes e disparos em escala", icon: Workflow },
+      { text: "Gestao de grupos e continuidade", icon: UsersRound },
+      { text: "Mais volume para crescer com previsibilidade", icon: BarChart3 },
+    ],
+    popular: true,
+    recommended: true,
     link: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=d9bbcdeb8cdd488994afa7c88d94f75e",
     features: [
       { text: "Até 3 números WhatsApp", icon: MessageSquare },
@@ -115,18 +141,30 @@ const PLANS = [
   },
   {
     id: "black",
-    name: "FlowLux Black",
-    price: "59",
-    oldPrice: "99",
-    priceNum: 59,
-    period: "12x",
+    name: "Black",
+    price: "149",
+    oldPrice: "",
+    priceNum: 149,
+    period: "/mes",
     description: "O plano definitivo para escalar seu negócio no WhatsApp",
-    icon: Flame,
-    color: "from-orange-500 to-red-500",
-    borderColor: "border-orange-500/30",
-    bgColor: "bg-orange-500/10",
+    icon: Crown,
+    color: "from-[#7C3AED] to-[#A855F7]",
+    borderColor: "border-purple-400/30",
+    bgColor: "bg-purple-400/10",
+    badge: "Operacao avancada",
+    displayDescription: "Para operacoes maduras que precisam de mais volume, prioridade e acesso a camadas premium.",
+    displayFeatures: [
+      { text: "Leads ilimitados", icon: Users },
+      { text: "5 numeros de WhatsApp", icon: MessageSquare },
+      { text: "15.000 disparos por mes", icon: Megaphone },
+      { text: "20 GB de armazenamento", icon: HardDrive },
+      { text: "Tudo do Pro", icon: Check },
+      { text: "Suporte prioritario", icon: Rocket },
+      { text: "Mais estrutura para time e operacao", icon: Crown },
+      { text: "Acesso antecipado a IA e expansoes", icon: Bot },
+    ],
     popular: false,
-    recommended: true,
+    recommended: false,
     link: "https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=e54d3d648c9045d3ac50101e493e8e84",
     features: [
       { text: "Até 5 números WhatsApp", icon: MessageSquare },
@@ -368,13 +406,13 @@ export default function AssinaturaPage() {
       {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold">
-          {isAlterarMode ? "Alterar Plano" : "Escolha seu Plano"}
+          {isAlterarMode ? "Alterar plano" : "Escolha seu plano"}
         </h1>
         <p className="text-muted-foreground text-lg">
           {hadTrial ? (
-            "Escolha o plano ideal para o seu negócio"
+            "Escolha o plano ideal para o momento da sua operacao"
           ) : (
-            <>Comece com <span className="text-primary font-semibold">7 dias grátis</span> e escale seu negócio</>
+            <>Comece com <span className="text-primary font-semibold">7 dias gratis</span> e veja como o Flow Up encaixa na sua rotina</>
           )}
         </p>
       </div>
@@ -423,9 +461,9 @@ export default function AssinaturaPage() {
               <Sparkles className="h-4 w-4 text-primary" />
               <span className="text-sm font-medium text-primary">Oferta Especial</span>
             </div>
-            <h2 className="text-2xl font-bold mb-1">7 Dias Grátis para Testar</h2>
+            <h2 className="text-2xl font-bold mb-1">7 dias gratis para testar</h2>
             <p className="text-muted-foreground">
-              Teste todas as funcionalidades sem compromisso. Cancele quando quiser.
+              Teste a operacao completa antes de decidir o melhor plano para continuar.
             </p>
           </div>
         </div>
@@ -436,21 +474,23 @@ export default function AssinaturaPage() {
         {PLANS.map((plan) => {
           const isCurrentPlan = subscription?.plan_id === plan.id && 
             ["active", "authorized", "trial"].includes(subscription?.status || "");
+          const planFeatures = plan.displayFeatures || plan.features;
+          const planDescription = plan.displayDescription || plan.description;
           
           return (
             <Card
               key={plan.id}
               className={cn(
-                "relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5",
-                plan.recommended ? "border-orange-500/50 shadow-lg shadow-orange-500/10 scale-[1.02]" : "border-border",
+                "relative overflow-hidden border-border/70 bg-card/70 transition-all duration-300 hover:-translate-y-1 hover:border-primary/35 hover:shadow-xl hover:shadow-primary/5",
+                plan.recommended && "border-cyan-400/45 shadow-lg shadow-cyan-400/10 md:scale-[1.02]",
                 isCurrentPlan && "ring-2 ring-primary"
               )}
             >
               {/* Recommended Badge */}
               {plan.recommended && (
                 <div className="absolute top-0 right-0">
-                  <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold px-4 py-1.5 rounded-bl-xl">
-                    RECOMENDADO
+                  <div className="rounded-bl-xl bg-gradient-to-r from-[#22D3EE] to-[#2DD4BF] px-4 py-1.5 text-xs font-bold text-[#05070D]">
+                    MAIS ESCOLHIDO
                   </div>
                 </div>
               )}
@@ -462,9 +502,12 @@ export default function AssinaturaPage() {
                   </div>
                   <div>
                     <CardTitle className="text-xl">{plan.name}</CardTitle>
+                    {!plan.recommended && plan.badge && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">{plan.badge}</p>
+                    )}
                   </div>
                 </div>
-                <CardDescription className="text-sm">{plan.description}</CardDescription>
+                <CardDescription className="text-sm leading-relaxed">{planDescription}</CardDescription>
 
                 {/* Price */}
                 <div className="pt-4">
@@ -479,7 +522,7 @@ export default function AssinaturaPage() {
                       <>
                         <span className="text-sm text-muted-foreground">R$</span>
                         <span className="text-4xl font-bold">{plan.price}</span>
-                        <span className="text-muted-foreground">{plan.period}</span>
+                        <span className="text-muted-foreground">/mes</span>
                       </>
                     )}
                     {plan.oldPrice && (
@@ -488,16 +531,10 @@ export default function AssinaturaPage() {
                       </span>
                     )}
                   </div>
-                  {!hadTrial && plan.id !== "black" && (
+                  {!hadTrial && (
                     <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
                       <Check className="h-3 w-3" />
-                      7 dias grátis inclusos
-                    </p>
-                  )}
-                  {plan.id === "black" && (
-                    <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
-                      <Check className="h-3 w-3" />
-                      Parcele em até 12x no cartão
+                      7 dias gratis para testar
                     </p>
                   )}
                 </div>
@@ -506,10 +543,10 @@ export default function AssinaturaPage() {
               <CardContent className="space-y-4">
                 {/* Features */}
                 <div className="space-y-2.5">
-                  {plan.features.map((feature, idx) => (
+                  {planFeatures.map((feature, idx) => (
                     <div key={idx} className="flex items-center gap-3">
                       <div className={cn("p-1 rounded-md shrink-0", plan.bgColor)}>
-                        <feature.icon className="h-3.5 w-3.5 text-primary" />
+                        <feature.icon className="h-3.5 w-3.5 text-cyan-300" />
                       </div>
                       <span className="text-sm">{feature.text}</span>
                     </div>
@@ -528,7 +565,7 @@ export default function AssinaturaPage() {
                       className={cn(
                         "w-full group",
                         plan.recommended
-                          ? "bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                          ? "bg-gradient-to-r from-[#22D3EE] to-[#2DD4BF] text-[#05070D] hover:brightness-105"
                           : ""
                       )}
                       onClick={() => (isAlterarMode && subscription && subscription.status !== "cancelled") ? handleChangePlan(plan) : handleSelectPlan(plan)}
@@ -537,7 +574,7 @@ export default function AssinaturaPage() {
                       {selectingPlan === plan.id ? (
                         <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processando...</>
                       ) : (
-                        <>{(hadTrial || plan.id === "black") ? "Assinar Agora" : "Começar Teste Grátis"}<ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
+                        <>{hadTrial ? "Assinar agora" : "Comecar teste gratis"}<ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" /></>
                       )}
                     </Button>
                   )}

@@ -1,36 +1,47 @@
-"use client";
-
 import Link from "next/link";
+import { ArrowRight, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
 
-const ClosingSection = () => {
+export default function ClosingSection() {
   return (
-    <section className="py-24 px-4">
-      <div className="max-w-3xl mx-auto text-center">
-        <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-6" style={{ textWrap: "balance" } as React.CSSProperties}>
-          Seu WhatsApp pode continuar no improviso ou começar a trabalhar de forma{" "}
-          <span className="text-gradient-primary">mais inteligente</span>
-        </h2>
-        <p className="text-lg text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
-          Com mais controle, mais velocidade e mais automação, você ganha estrutura para vender melhor sem precisar aumentar o caos da operação.
-        </p>
+    <section className="px-4 pb-24 pt-10 md:pb-28">
+      <div className="mx-auto max-w-4xl">
+        <div className="card-lux gradient-hotmart overflow-hidden px-6 py-10 text-center md:px-10 md:py-14">
+          <div className="tag-mono mb-4 inline-block">Fechamento</div>
+          <h2 className="mx-auto max-w-3xl text-3xl font-bold leading-tight text-white md:text-5xl">
+            Capture, venda e se relacione com seus leads em um so lugar.
+          </h2>
+          <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground md:text-lg">
+            Se a sua operacao cresceu mais do que o seu processo, o proximo passo e organizar os dois no
+            mesmo lugar.
+          </p>
+          <p className="mx-auto mt-3 max-w-2xl text-base leading-relaxed text-slate-200/90">
+            Pare de operar no improviso com ferramentas soltas e comece a centralizar captacao, vendas e
+            relacionamento em um sistema pensado para infoprodutores.
+          </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link href="/login">
-            <Button variant="hero" size="xl">
-              Começar agora <ArrowRight className="ml-2 w-5 h-5" />
-            </Button>
-          </Link>
-          <a href="#planos">
-            <Button variant="heroOutline" size="xl">
-              Escolher meu plano
-            </Button>
-          </a>
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <Link href="/login">
+              <Button variant="hero" size="xl" className="landing-button-primary w-full text-white sm:w-auto">
+                Testar gratis por 7 dias <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </Link>
+            <a href="#como-funciona">
+              <Button
+                variant="heroOutline"
+                size="xl"
+                className="landing-button-secondary w-full text-white sm:w-auto"
+              >
+                Ver demonstracao <PlayCircle className="ml-2 h-5 w-5" />
+              </Button>
+            </a>
+          </div>
+
+          <p className="mt-4 text-sm text-slate-300/80">
+            Comece no plano certo para o momento da sua operacao e evolua sem trocar de sistema depois.
+          </p>
         </div>
       </div>
     </section>
   );
-};
-
-export default ClosingSection;
+}

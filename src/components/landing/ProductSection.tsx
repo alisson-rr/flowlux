@@ -13,7 +13,7 @@ const ProductSection = () => {
           Um painel pensado para facilitar seu dia a dia no WhatsApp
         </h2>
         <p className="text-muted-foreground text-lg max-w-3xl mb-12 leading-relaxed">
-          Nada de ferramenta confusa, travada ou cheia de coisa inútil. No FlowLux, você tem uma estrutura simples de usar, mas poderosa por trás.
+          Nada de ferramenta confusa, travada ou cheia de coisa inútil. No FlowUp, você tem uma estrutura simples de usar, mas poderosa por trás.
         </p>
 
         {/* Bento Grid Mockup */}
@@ -64,7 +64,7 @@ const ProductSection = () => {
         <div className="text-center">
           <Link href="/login">
             <Button variant="hero" size="lg">
-              Quero conhecer o FlowLux <ArrowRight className="ml-2 w-4 h-4" />
+              Quero conhecer o FlowUp <ArrowRight className="ml-2 w-4 h-4" />
             </Button>
           </Link>
         </div>

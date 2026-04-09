@@ -18,7 +18,7 @@ const DifferentiatorSection = () => {
           <span className="text-gradient-primary">Não é só automação.</span>
         </h2>
         <p className="text-lg text-muted-foreground mb-12 max-w-2xl mx-auto">
-          O FlowLux une atendimento, organização e ação em um único sistema. Você não precisa de uma ferramenta para conversar, outra para organizar, outra para automatizar e outra para integrar sua venda.
+          O FlowUp une atendimento, organização e ação em um único sistema. Você não precisa de uma ferramenta para conversar, outra para organizar, outra para automatizar e outra para integrar sua venda.
         </p>
 
         <div className="flex flex-wrap justify-center gap-3 mb-8">

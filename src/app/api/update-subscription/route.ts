@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     // Block changes TO Black plan (requires new checkout, not a subscription update)
     if (CHECKOUT_PLANS.includes(new_plan_id)) {
       return NextResponse.json({
-        error: "Para mudar para o plano FlowLux Black, cancele sua assinatura atual e assine o novo plano.",
+        error: "Para mudar para o plano FlowUp Black, cancele sua assinatura atual e assine o novo plano.",
         requires_new_checkout: true,
       }, { status: 400 });
     }
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     // Block changes FROM Black plan (it uses Checkout Pro, no preapproval to update)
     if (CHECKOUT_PLANS.includes(subscription.plan_id)) {
       return NextResponse.json({
-        error: "Para mudar do plano FlowLux Black, cancele sua assinatura atual e assine o novo plano.",
+        error: "Para mudar do plano FlowUp Black, cancele sua assinatura atual e assine o novo plano.",
         requires_new_checkout: true,
       }, { status: 400 });
     }

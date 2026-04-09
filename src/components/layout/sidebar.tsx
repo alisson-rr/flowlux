@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn, getInitials } from "@/lib/utils";
 import {
@@ -26,6 +27,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/auth-context";
 import { useDashboardData } from "@/contexts/dashboard-context";
 import { isPreCheckoutLabEnabledInBrowser } from "@/lib/feature-access";
+import logoMark from "../../../assets/logo.png";
 
 const coreNavItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -74,12 +76,20 @@ export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
     >
       <div className="relative flex h-16 items-center border-b border-border px-4">
         <Link href="/dashboard" className="flex items-center gap-2 overflow-hidden">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary">
-            <span className="text-sm font-bold text-white">FL</span>
+          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg">
+            <Image
+              src={logoMark}
+              alt="Flow Up"
+              fill
+              priority
+              sizes="32px"
+              className="object-contain"
+            />
           </div>
           {!collapsed && (
-            <span className="whitespace-nowrap bg-gradient-to-r from-primary to-secondary bg-clip-text text-lg font-bold text-transparent">
-              FlowLux
+            <span className="whitespace-nowrap text-xl font-semibold tracking-tight">
+              <span className="brand-flow">Flow</span>{" "}
+              <span className="brand-up">Up</span>
             </span>
           )}
         </Link>
@@ -144,7 +154,7 @@ export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
         </Link>
 
         <a
-          href="https://wa.me/5551994408307?text=Ola! Preciso de suporte com o FlowLux."
+          href="https://wa.me/5551994408307?text=Ola! Preciso de suporte com o FlowUp."
           target="_blank"
           rel="noopener noreferrer"
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-green-400 transition-colors hover:bg-sidebar-hover"

@@ -60,7 +60,7 @@ const FeaturesSection = () => {
       <div className="max-w-5xl mx-auto">
         <div className="tag-mono mb-4 inline-block">Como funciona na prática</div>
         <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-16" style={{ textWrap: "balance" } as React.CSSProperties}>
-          Recursos que fazem o FlowLux trabalhar por você
+          Recursos que fazem o FlowUp trabalhar por você
         </h2>
 
         <div className="space-y-16">
@@ -73,7 +73,7 @@ const FeaturesSection = () => {
               <div className="flex-1 md:sticky md:top-24">
                 {f.highlight && (
                   <span className="tag-mono bg-primary/20 text-primary mb-4 inline-block">
-                    Diferencial do FlowLux
+                    Diferencial do FlowUp
                   </span>
                 )}
                 <div className="flex items-center gap-3 mb-3">

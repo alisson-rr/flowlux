@@ -1,89 +1,89 @@
 import Link from "next/link";
+import { ArrowRight, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, MessageSquare, Users, GitBranch, Zap } from "lucide-react";
+import VideoMockup from "@/components/landing/VideoMockup";
 
-const HeroSection = () => {
+const heroChecklist = [
+  "mostrar a entrada do lead por formulario ou popup",
+  "mostrar o lead caindo no CRM ou kanban",
+  "mostrar uma conversa conectada ao contexto desse lead",
+  "mostrar um fluxo ou automacao dando continuidade ao processo",
+];
+
+export default function HeroSection() {
   return (
-    <section className="relative min-h-screen flex flex-col items-center justify-center px-4 pt-24 pb-16 overflow-hidden">
-      {/* Subtle glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
+    <section id="top" className="relative overflow-hidden px-4 pb-24 pt-28 md:pb-28 md:pt-36">
+      <div className="absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.18),transparent_42%)]" />
+      <div className="absolute right-0 top-24 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.18),transparent_62%)] blur-3xl" />
+      <div className="absolute left-0 top-40 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(34,211,238,0.12),transparent_65%)] blur-3xl" />
 
-      <div
-        className="relative z-10 max-w-4xl mx-auto text-center animate-fade-in"
-      >
-        <span className="tag-mono mb-6 inline-block">Plataforma de vendas no WhatsApp</span>
+      <div className="relative z-10 mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">
+        <div className="max-w-2xl">
+          <div className="tag-mono mb-5 inline-block">Operacao conectada para infoprodutores</div>
 
-        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.1] mb-6 text-foreground" style={{ textWrap: "balance" } as React.CSSProperties}>
-          Organize, responda e venda pelo WhatsApp{" "}
-          <span className="text-gradient-primary">sem virar escravo do atendimento</span>
-        </h1>
+          <h1 className="text-4xl font-bold leading-[1.04] text-foreground md:text-6xl">
+            Capture, venda e se <span className="text-gradient-primary">relacione</span> com seus leads em um{" "}
+            <span className="text-gradient-up">so lugar.</span>
+          </h1>
 
-        <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-          O FlowLux reúne chat, CRM, automações, funis, disparos e integração com Hotmart em um só lugar, para transformar conversas em vendas com mais velocidade, organização e escala.
-        </p>
+          <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground md:text-xl">
+            Centralize formularios, CRM, automacoes, WhatsApp, grupos e funis em uma operacao feita
+            para infoprodutores que precisam captar melhor, vender com mais controle e manter o
+            relacionamento vivo.
+          </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
-          <Link href="/login">
-            <Button variant="hero" size="xl">
-              Começar agora <ArrowRight className="ml-2 w-5 h-5" />
-            </Button>
-          </Link>
-          <a href="#planos">
-            <Button variant="heroOutline" size="xl">
-              Ver planos
-            </Button>
-          </a>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Link href="/login">
+              <Button variant="hero" size="xl" className="landing-button-primary w-full text-white sm:w-auto">
+                Testar gratis por 7 dias <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </Link>
+            <a href="#como-funciona" className="sm:w-auto">
+              <Button
+                variant="heroOutline"
+                size="xl"
+                className="landing-button-secondary w-full text-white sm:w-auto"
+              >
+                Ver demonstracao <PlayCircle className="ml-2 h-5 w-5" />
+              </Button>
+            </a>
+          </div>
+
+          <p className="mt-4 text-sm text-slate-300/80">
+            Comece seu teste gratis e veja sua operacao funcionando do primeiro contato ao pos-venda.
+          </p>
+
+          <ul className="mt-8 grid gap-3 text-sm text-slate-100/90 sm:grid-cols-3 sm:gap-4">
+            <li className="rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3">
+              Capture leads com formularios e popup integrados
+            </li>
+            <li className="rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3">
+              Organize atendimento, vendas e follow-up em um so fluxo
+            </li>
+            <li className="rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3">
+              Automatize etapas sem perder o contexto do lead
+            </li>
+          </ul>
         </div>
 
-        <p className="text-sm text-muted-foreground max-w-lg mx-auto">
-          Ideal para infoprodutores que querem responder mais rápido, organizar seus leads e automatizar o processo comercial no WhatsApp.
-        </p>
-      </div>
+        <div className="relative">
+          {/* TODO: Gravar um video principal mostrando captacao + CRM + atendimento + automacao no Flow Up. */}
+          <VideoMockup
+            label="Mockup principal"
+            title="Video principal da hero"
+            description="Aqui entra a gravacao principal da landing mostrando a operacao conectada do Flow Up."
+            checklist={heroChecklist}
+          />
 
-      {/* Dashboard Preview Mockup */}
-      <div
-        className="relative z-10 mt-16 w-full max-w-5xl mx-auto animate-fade-in"
-        style={{ animationDelay: "0.3s", animationFillMode: "backwards" }}
-      >
-        <div className="card-lux p-1 md:p-2">
-          <div className="bg-surface-elevated rounded-[20px] p-4 md:p-6">
-            {/* Mock Dashboard */}
-            <div className="flex items-center gap-3 mb-4 border-b border-foreground/5 pb-4">
-              <div className="w-3 h-3 rounded-full bg-destructive/60" />
-              <div className="w-3 h-3 rounded-full bg-secondary/60" />
-              <div className="w-3 h-3 rounded-full bg-primary/60" />
-              <span className="ml-4 text-xs text-muted-foreground font-mono">flowlux.app/dashboard</span>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              {[
-                { icon: MessageSquare, label: "Conversas", value: "247" },
-                { icon: Users, label: "Leads", value: "1.832" },
-                { icon: GitBranch, label: "No funil", value: "89" },
-                { icon: Zap, label: "Automações", value: "12" },
-              ].map((item) => (
-                <div key={item.label} className="bg-background/50 rounded-xl p-3 border border-foreground/5">
-                  <item.icon className="w-4 h-4 text-primary mb-2" />
-                  <p className="text-2xl font-bold text-foreground font-mono tabular-nums">{item.value}</p>
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                </div>
-              ))}
-            </div>
-            {/* Funnel stages */}
-            <div className="flex gap-2 overflow-hidden">
-              {["Novo", "Qualificado", "Proposta", "Negociação", "Pago"].map((stage, i) => (
-                <div key={stage} className="flex-1 min-w-0">
-                  <div className={`h-1.5 rounded-full mb-2 ${i < 3 ? "bg-primary/60" : i === 3 ? "bg-secondary/60" : "bg-primary"}`} />
-                  <p className="text-[11px] font-mono text-muted-foreground truncate">{stage}</p>
-                </div>
-              ))}
-            </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {["Captacao centralizada", "Vendas organizadas", "Relacionamento continuo"].map((label) => (
+              <div key={label} className="rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.06] px-4 py-3 text-sm font-medium text-cyan-100">
+                {label}
+              </div>
+            ))}
           </div>
         </div>
-        {/* Bottom fade */}
-        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent pointer-events-none" />
       </div>
     </section>
   );
-};
-
-export default HeroSection;
+}

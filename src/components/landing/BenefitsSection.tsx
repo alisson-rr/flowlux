@@ -41,7 +41,7 @@ const BenefitsSection = () => {
       <div className="max-w-5xl mx-auto">
         <div className="tag-mono mb-4 inline-block">Benefícios</div>
         <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-12" style={{ textWrap: "balance" } as React.CSSProperties}>
-          O que muda na prática quando você usa o FlowLux
+          O que muda na prática quando você usa o FlowUp
         </h2>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
