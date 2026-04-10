@@ -560,7 +560,7 @@ export default function CapturaEditorPage() {
         </Card>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(520px,1fr)]">
       <Tabs defaultValue="basico" className="space-y-4">
         <TabsList className="h-auto flex-wrap justify-start">
           <TabsTrigger value="basico">Basico</TabsTrigger>

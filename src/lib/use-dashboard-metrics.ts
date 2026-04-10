@@ -15,7 +15,7 @@ interface WeekData {
   received: number;
 }
 
-interface DashboardMetricsData {
+export interface DashboardMetricsData {
   totalLeads: number;
   newLeadsWeek: number;
   totalConversations: number;
@@ -25,6 +25,22 @@ interface DashboardMetricsData {
   messageErrorsWeek: number;
   scheduledProcessedWeek: number;
   averageFlowExecutionMs: number;
+}
+
+export interface DashboardActivationSignals {
+  whatsappInstances: number;
+  connectedWhatsappInstances: number;
+  activeFlows: number;
+  totalFlows: number;
+  massMessages: number;
+  scheduledMessages: number;
+  messageTemplates: number;
+  mediaFiles: number;
+  capturePopups: number;
+  publishedCapturePopups: number;
+  forms: number;
+  publishedForms: number;
+  groups: number;
 }
 
 interface FailedFlowStepData {
@@ -54,6 +70,22 @@ const DEFAULT_METRICS: DashboardMetricsData = {
   averageFlowExecutionMs: 0,
 };
 
+const DEFAULT_ACTIVATION_SIGNALS: DashboardActivationSignals = {
+  whatsappInstances: 0,
+  connectedWhatsappInstances: 0,
+  activeFlows: 0,
+  totalFlows: 0,
+  massMessages: 0,
+  scheduledMessages: 0,
+  messageTemplates: 0,
+  mediaFiles: 0,
+  capturePopups: 0,
+  publishedCapturePopups: 0,
+  forms: 0,
+  publishedForms: 0,
+  groups: 0,
+};
+
 export function useDashboardMetrics() {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<DashboardMetricsData>(DEFAULT_METRICS);
@@ -61,6 +93,7 @@ export function useDashboardMetrics() {
   const [weekData, setWeekData] = useState<WeekData[]>([]);
   const [failedFlowSteps, setFailedFlowSteps] = useState<FailedFlowStepData[]>([]);
   const [recentOperationalAlerts, setRecentOperationalAlerts] = useState<OperationalAlert[]>([]);
+  const [activationSignals, setActivationSignals] = useState<DashboardActivationSignals>(DEFAULT_ACTIVATION_SIGNALS);
 
   const reload = useCallback(async () => {
     try {
@@ -82,6 +115,15 @@ export function useDashboardMetrics() {
         flowExecutionsRes,
         failedFlowStepsRes,
         recentAlertsRes,
+        instancesRes,
+        flowsRes,
+        massMessagesRes,
+        scheduledMessagesRes,
+        templatesRes,
+        mediaRes,
+        capturePopupsRes,
+        formsRes,
+        groupsRes,
       ] = await Promise.all([
         supabase.from("leads").select("id", { count: "exact", head: true }).eq("archived", false),
         supabase.from("leads").select("id", { count: "exact", head: true }).gte("created_at", weekAgo),
@@ -96,6 +138,15 @@ export function useDashboardMetrics() {
         supabase.from("flow_executions").select("flow_id, started_at, completed_at").gte("started_at", weekAgo).not("completed_at", "is", null),
         supabase.from("flow_execution_steps").select("flow_id, step_order, step_type, updated_at").eq("status", "failed").gte("updated_at", weekAgo),
         supabase.from("operational_events").select("id, severity, source, event_type, message, created_at").in("severity", ["warning", "error"]).gte("created_at", weekAgo).order("created_at", { ascending: false }).limit(8),
+        supabase.from("whatsapp_instances").select("id, status").is("deleted_at", null),
+        supabase.from("flows").select("id, is_active"),
+        supabase.from("mass_messages").select("id", { count: "exact", head: true }).is("deleted_at", null),
+        supabase.from("scheduled_messages").select("id", { count: "exact", head: true }).is("deleted_at", null),
+        supabase.from("message_templates").select("id", { count: "exact", head: true }),
+        supabase.from("media").select("id", { count: "exact", head: true }),
+        supabase.from("capture_popups").select("id, status").neq("status", "archived"),
+        supabase.from("pre_checkout_forms").select("id, status").neq("status", "archived"),
+        supabase.from("whatsapp_groups").select("id", { count: "exact", head: true }).eq("status", "active"),
       ]);
 
       const totalLeads = leadsRes.count || 0;
@@ -201,6 +252,11 @@ export function useDashboardMetrics() {
         createdAt: alert.created_at,
       }));
 
+      const instances = instancesRes.data || [];
+      const flows = flowsRes.data || [];
+      const capturePopups = capturePopupsRes.data || [];
+      const forms = formsRes.data || [];
+
       setMetrics({
         totalLeads,
         newLeadsWeek: newLeadsRes.count || 0,
@@ -216,8 +272,24 @@ export function useDashboardMetrics() {
       setWeekData(nextWeekData);
       setFailedFlowSteps(nextFailedFlowSteps);
       setRecentOperationalAlerts(nextRecentOperationalAlerts);
+      setActivationSignals({
+        whatsappInstances: instances.length,
+        connectedWhatsappInstances: instances.filter((instance: any) => instance.status === "connected").length,
+        activeFlows: flows.filter((flow: any) => flow.is_active).length,
+        totalFlows: flows.length,
+        massMessages: massMessagesRes.count || 0,
+        scheduledMessages: scheduledMessagesRes.count || 0,
+        messageTemplates: templatesRes.count || 0,
+        mediaFiles: mediaRes.count || 0,
+        capturePopups: capturePopups.length,
+        publishedCapturePopups: capturePopups.filter((popup: any) => popup.status === "published").length,
+        forms: forms.length,
+        publishedForms: forms.filter((form: any) => form.status === "published").length,
+        groups: groupsRes.count || 0,
+      });
     } catch (error) {
       console.error("Dashboard load error:", error);
+      setActivationSignals(DEFAULT_ACTIVATION_SIGNALS);
     } finally {
       setLoading(false);
     }
@@ -234,6 +306,7 @@ export function useDashboardMetrics() {
     weekData,
     failedFlowSteps,
     recentOperationalAlerts,
+    activationSignals,
     reload,
   };
 }

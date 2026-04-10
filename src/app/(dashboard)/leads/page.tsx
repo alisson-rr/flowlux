@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Plus, Search, Phone, Mail, StickyNote, Tag, X, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Pencil, Globe, Archive, ArchiveRestore, Filter, SortAsc, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download,
+  Plus, Search, Phone, Mail, StickyNote, Tag, X, Loader2, Trash2, Settings2, ArrowUp, ArrowDown, Pencil, Globe, Archive, ArchiveRestore, Filter, SortAsc, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Download, Users,
 } from "lucide-react";
 import { cn, formatPhone, formatPhoneInput, getInitials, normalizePhone, phoneVariants } from "@/lib/utils";
 import { buildLeadPhoneFields } from "@/lib/phone";
@@ -26,6 +26,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useIncrementalDisplay } from "@/lib/use-incremental-display";
 import { usePersistedState } from "@/lib/use-persisted-state";
+import { GuidedEmptyState } from "@/components/dashboard/guided-empty-state";
 import Link from "next/link";
 
 interface Lead {
@@ -362,10 +363,10 @@ export default function LeadsPage() {
 
     if (!user) { setImportLoading(false); return; }
 
-    // Fetch all existing phones for this user to detect duplicates
+    // Busca chaves normalizadas para bloquear duplicidade com/sem 9 e internacional.
     const { data: existingLeads } = await supabase
       .from("leads")
-      .select("phone")
+      .select("phone, phone_search_keys")
       .eq("user_id", user.id);
 
     const existingPhones = new Set<string>();
@@ -374,6 +375,12 @@ export default function LeadsPage() {
         if (lead.phone) {
           for (const v of phoneVariants(lead.phone)) existingPhones.add(v);
         }
+        if (Array.isArray((lead as any).phone_search_keys)) {
+          for (const key of (lead as any).phone_search_keys) {
+            const normalizedKey = String(key || "").replace(/\D/g, "");
+            if (normalizedKey) existingPhones.add(normalizedKey);
+          }
+        }
       }
     }
 
@@ -381,7 +388,18 @@ export default function LeadsPage() {
     const uniqueData = importData.filter((row) => {
       const normalized = normalizePhone(row.phone);
       if (!normalized) return false;
-      return !phoneVariants(normalized).some((v) => existingPhones.has(v));
+      const candidateKeys = new Set(phoneVariants(normalized));
+      const phoneFields = buildLeadPhoneFields(normalized);
+      for (const key of phoneFields?.phone_search_keys || []) {
+        const normalizedKey = String(key || "").replace(/\D/g, "");
+        if (normalizedKey) candidateKeys.add(normalizedKey);
+      }
+
+      const alreadyExists = Array.from(candidateKeys).some((v) => existingPhones.has(v));
+      if (!alreadyExists) {
+        Array.from(candidateKeys).forEach((key) => existingPhones.add(key));
+      }
+      return !alreadyExists;
     });
     const skipped = importData.length - uniqueData.length;
 
@@ -561,21 +579,36 @@ export default function LeadsPage() {
             <tbody>
               {filteredLeadCount === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                    <Search className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                    <p>Nenhum lead encontrado</p>
-                    {(debouncedSearchTerm || filterTag) && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mt-3"
-                        onClick={() => {
-                          setSearchTerm("");
-                          setFilterTag("");
-                        }}
-                      >
-                        Limpar filtros
-                      </Button>
+                  <td colSpan={8} className="p-4">
+                    {(debouncedSearchTerm || filterTag) ? (
+                      <div className="p-8 text-center text-muted-foreground">
+                        <Search className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                        <p>Nenhum lead encontrado para esse filtro</p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mt-3"
+                          onClick={() => {
+                            setSearchTerm("");
+                            setFilterTag("");
+                          }}
+                        >
+                          Limpar filtros
+                        </Button>
+                      </div>
+                    ) : (
+                      <GuidedEmptyState
+                        icon={Users}
+                        title="Sua base ainda esta vazia"
+                        description="Cadastre poucos leads reais primeiro. Assim voce valida funil, atendimento e follow-up antes de importar uma lista grande."
+                        steps={[
+                          "Adicione 5 a 10 leads de teste.",
+                          "Separe por origem, tag ou etapa.",
+                          "Abra o funil e simule a jornada.",
+                        ]}
+                        primaryAction={{ label: "Novo lead", onClick: () => setShowAddLead(true) }}
+                        secondaryAction={{ label: "Criar formulario", href: "/formularios" }}
+                      />
                     )}
                   </td>
                 </tr>

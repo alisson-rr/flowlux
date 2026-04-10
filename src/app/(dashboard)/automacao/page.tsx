@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useSubscription } from "@/lib/use-subscription";
 import { useAuth } from "@/contexts/auth-context";
+import { GuidedEmptyState } from "@/components/dashboard/guided-empty-state";
 import Link from "next/link";
 
 interface Flow {
@@ -1177,11 +1178,18 @@ export default function AutomacaoPage() {
           </div>
           <div className="grid gap-3">
             {flows.length === 0 ? (
-              <Card className="p-8 text-center text-muted-foreground">
-                <Zap className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>Nenhum fluxo configurado</p>
-                <p className="text-sm mt-1">Crie um fluxo com sequência de mensagens</p>
-              </Card>
+              <GuidedEmptyState
+                icon={Zap}
+                title="Crie um fluxo simples antes de automatizar tudo"
+                description="O primeiro fluxo deve provar que a jornada funciona. Comece com boas-vindas, follow-up curto ou recuperacao de interesse."
+                steps={[
+                  "Defina o gatilho.",
+                  "Escreva 2 ou 3 mensagens.",
+                  "Teste com um lead real.",
+                ]}
+                primaryAction={{ label: "Novo fluxo", onClick: () => openFlowEditor() }}
+                secondaryAction={{ label: "Criar mensagens prontas", href: "/midia" }}
+              />
             ) : (
               flows.map((flow) => (
                 <Card key={flow.id} className="hover:border-primary/30 transition-colors">
@@ -1280,10 +1288,27 @@ export default function AutomacaoPage() {
           </div>
           <div className="grid gap-3">
             {massMessages.length === 0 ? (
-              <Card className="p-8 text-center text-muted-foreground">
-                <Megaphone className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>Nenhum disparo em massa configurado</p>
-              </Card>
+              <GuidedEmptyState
+                icon={Megaphone}
+                title="Crie uma campanha segmentada"
+                description="Disparo em massa funciona melhor quando a base tem contexto. Use tags, etapas ou origem para falar com o grupo certo."
+                steps={[
+                  "Escolha um segmento.",
+                  "Use uma mensagem curta.",
+                  "Envie um teste antes do disparo.",
+                ]}
+                primaryAction={{
+                  label: "Novo disparo",
+                  onClick: () => {
+                    if (usageLimitReached) {
+                      toast(`Limite de ${limits.max_mass_messages_per_month.toLocaleString("pt-BR")} disparos/mes atingido. Faca upgrade do plano.`, "warning");
+                      return;
+                    }
+                    setShowAddMass(true);
+                  },
+                }}
+                secondaryAction={{ label: "Organizar leads", href: "/leads" }}
+              />
             ) : (
               massMessages.map((mm) => (
                 <Card key={mm.id}>
@@ -1366,10 +1391,27 @@ export default function AutomacaoPage() {
           </div>
           <div className="grid gap-3">
             {scheduledMessages.length === 0 ? (
-              <Card className="p-8 text-center text-muted-foreground">
-                <CalendarClock className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>Nenhuma mensagem agendada</p>
-              </Card>
+              <GuidedEmptyState
+                icon={CalendarClock}
+                title="Agende follow-ups para nao depender da memoria"
+                description="Agendamentos sao ideais para retorno combinado, lembrete de aula, proposta enviada e reativacao de lead parado."
+                steps={[
+                  "Escolha o lead.",
+                  "Escreva a proxima acao.",
+                  "Marque data e horario.",
+                ]}
+                primaryAction={{
+                  label: "Agendar mensagem",
+                  onClick: () => {
+                    if (usageLimitReached) {
+                      toast(`Limite de ${limits.max_mass_messages_per_month.toLocaleString("pt-BR")} disparos/mes atingido. Faca upgrade do plano.`, "warning");
+                      return;
+                    }
+                    setShowAddScheduled(true);
+                  },
+                }}
+                secondaryAction={{ label: "Ver chat", href: "/chat" }}
+              />
             ) : (
               scheduledMessages.map((sm) => (
                 <Card key={sm.id}>

@@ -30,6 +30,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn, formatDateTime } from "@/lib/utils";
+import { GuidedEmptyState } from "@/components/dashboard/guided-empty-state";
 import type {
   GroupScheduledMessage,
   Lead,
@@ -789,13 +790,18 @@ export default function GruposPage() {
 
           <TabsContent value="grupos" className="space-y-3">
             {filteredGroups.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border p-10 text-center">
-                <MessagesSquare className="mx-auto h-8 w-8 text-muted-foreground" />
-                <p className="mt-3 font-medium">Nenhum grupo encontrado</p>
-                <p className="text-sm text-muted-foreground">
-                  Crie um novo grupo ou sincronize os grupos ja existentes da sua instancia.
-                </p>
-              </div>
+              <GuidedEmptyState
+                icon={MessagesSquare}
+                title="Centralize seus grupos importantes"
+                description="Use grupos para aquecimento, avisos, suporte ou comunidade. Sincronize os grupos da instancia ou crie um registro manual para organizar a operacao."
+                steps={[
+                  "Conecte ou selecione a instancia.",
+                  "Sincronize os grupos existentes.",
+                  "Agende avisos e mensagens de aquecimento.",
+                ]}
+                primaryAction={{ label: "Novo grupo", onClick: openCreateGroup }}
+                secondaryAction={{ label: "Sincronizar", onClick: handleSyncGroups }}
+              />
             ) : (
               <div className="grid gap-3">
                 {filteredGroups.map((group) => {
@@ -865,13 +871,18 @@ export default function GruposPage() {
           <TabsContent value="agendamentos" className="space-y-3">
             <div className="grid gap-3">
               {scheduledMessages.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border p-10 text-center">
-                  <CalendarClock className="mx-auto h-8 w-8 text-muted-foreground" />
-                  <p className="mt-3 font-medium">Nenhum agendamento ainda</p>
-                  <p className="text-sm text-muted-foreground">
-                    Use os grupos para programar avisos, aquecimentos ou sequencias antes de uma oferta.
-                  </p>
-                </div>
+                <GuidedEmptyState
+                  icon={CalendarClock}
+                  title="Programe a comunicacao do grupo"
+                  description="Agendamentos ajudam voce a manter aquecimento, lembretes e fechamento sem depender de mandar tudo manualmente no dia."
+                  steps={[
+                    "Escolha o grupo certo.",
+                    "Escreva o aviso ou anexe midia.",
+                    "Agende antes da aula, oferta ou entrega.",
+                  ]}
+                  primaryAction={{ label: "Agendar mensagem", onClick: () => openScheduleDialog() }}
+                  secondaryAction={{ label: "Criar mensagem pronta", href: "/midia" }}
+                />
               ) : (
                 scheduledMessages.map((item) => (
                   <Card key={item.id} className="border-border/60 bg-card/80">

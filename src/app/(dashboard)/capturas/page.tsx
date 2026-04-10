@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { GuidedEmptyState } from "@/components/dashboard/guided-empty-state";
 import { CAPTURE_POPUP_TEMPLATE_LIST, buildPopupFromTemplate } from "@/lib/capture-popups/templates";
 import { slugifyCapturePopupName } from "@/lib/capture-popups/popups";
 import { formatDateTime } from "@/lib/utils";
@@ -439,19 +440,18 @@ export default function CapturasPage() {
         </div>
 
         {filteredPopups.length === 0 ? (
-          <div className="space-y-3 rounded-xl border border-dashed border-border p-10 text-center">
-            <PanelsTopLeft className="mx-auto h-8 w-8 text-muted-foreground" />
-            <div>
-              <p className="font-medium">Nenhum pop-up encontrado</p>
-              <p className="text-sm text-muted-foreground">
-                Crie seu primeiro modal de captura e instale com um snippet na landing page.
-              </p>
-            </div>
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Criar agora
-            </Button>
-          </div>
+          <GuidedEmptyState
+            icon={PanelsTopLeft}
+            title="Crie seu primeiro ponto de captura"
+            description="O popup precisa transformar visita fria em lead organizado. Depois de publicar, instale o snippet na landing page e acompanhe os cadastros."
+            steps={[
+              "Escolha um modelo simples.",
+              "Use uma promessa clara para o lead frio.",
+              "Publique e instale na LP.",
+            ]}
+            primaryAction={{ label: "Criar agora", onClick: () => setShowCreateDialog(true) }}
+            secondaryAction={{ label: "Usar formulario", href: "/formularios" }}
+          />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filteredPopups.map((popup) => (

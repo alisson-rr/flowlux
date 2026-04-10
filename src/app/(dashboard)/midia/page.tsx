@@ -25,6 +25,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useIncrementalDisplay } from "@/lib/use-incremental-display";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { cn } from "@/lib/utils";
+import { GuidedEmptyState } from "@/components/dashboard/guided-empty-state";
 import Link from "next/link";
 
 interface Template { id: string; name: string; content: string; category: string; }
@@ -446,23 +447,45 @@ export default function MidiaPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {totalTemplates === 0 ? (
-              <Card className="p-8 text-center text-muted-foreground col-span-2">
-                <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>Nenhuma mensagem pronta cadastrada</p>
-                {(debouncedTemplateSearch || templateCategory !== "all") && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => {
-                      setTemplateSearch("");
-                      setTemplateCategory("all");
+              <div className="col-span-2">
+                {(debouncedTemplateSearch || templateCategory !== "all") ? (
+                  <Card className="p-8 text-center text-muted-foreground">
+                    <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p>Nenhuma mensagem pronta encontrada para esse filtro</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => {
+                        setTemplateSearch("");
+                        setTemplateCategory("all");
+                      }}
+                    >
+                      Limpar filtros
+                    </Button>
+                  </Card>
+                ) : (
+                  <GuidedEmptyState
+                    icon={FileText}
+                    title="Crie suas primeiras mensagens prontas"
+                    description="Templates reduzem improviso e deixam o atendimento mais consistente. Comece com primeiro contato, follow-up e pos-venda."
+                    steps={[
+                      "Primeiro contato com lead frio.",
+                      "Follow-up para interessado.",
+                      "Boas-vindas para comprador.",
+                    ]}
+                    primaryAction={{
+                      label: "Nova mensagem",
+                      onClick: () => {
+                        setEditingTemplateId(null);
+                        setNewTemplate({ name: "", content: "", category: "geral" });
+                        setShowAddTemplate(true);
+                      },
                     }}
-                  >
-                    Limpar filtros
-                  </Button>
+                    secondaryAction={{ label: "Ver automacoes", href: "/automacao" }}
+                  />
                 )}
-              </Card>
+              </div>
             ) : (
               visibleTemplates.map((tpl) => (
                 <Card key={tpl.id} className="hover:border-primary/30 transition-colors">
@@ -601,10 +624,10 @@ export default function MidiaPage() {
           )}
 
           {totalMedia === 0 ? (
-            <Card className="p-8 text-center text-muted-foreground">
+            (debouncedMediaSearch || filterType !== "all") ? (
+              <Card className="p-8 text-center text-muted-foreground">
               <FolderOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>Nenhum arquivo encontrado</p>
-              {(debouncedMediaSearch || filterType !== "all") && (
+              <p>Nenhum arquivo encontrado para esse filtro</p>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -616,9 +639,30 @@ export default function MidiaPage() {
                 >
                   Limpar filtros
                 </Button>
-              )}
-              <p className="text-sm mt-1">Faça upload de imagens, vídeos, áudios ou documentos</p>
-            </Card>
+              </Card>
+            ) : (
+              <GuidedEmptyState
+                icon={FolderOpen}
+                title="Monte uma biblioteca para vender sem improviso"
+                description="Suba os ativos que voce usa em captacao, atendimento e relacionamento: imagens, videos, audios, PDFs e provas."
+                steps={[
+                  "Comece com provas e prints autorizados.",
+                  "Adicione video curto de apresentacao.",
+                  "Separe audios e PDFs de apoio.",
+                ]}
+                primaryAction={{
+                  label: "Fazer upload",
+                  onClick: () => {
+                    if (isOverStorage) {
+                      toast(`Limite de ${maxStorageGB} GB atingido. Faca upgrade do plano ou exclua arquivos.`, "warning");
+                      return;
+                    }
+                    fileInputRef.current?.click();
+                  },
+                }}
+                secondaryAction={{ label: "Criar mensagem pronta", href: "/midia" }}
+              />
+            )
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {visibleMedia.map((item) => (

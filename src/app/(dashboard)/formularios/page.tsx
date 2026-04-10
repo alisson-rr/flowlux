@@ -36,6 +36,7 @@ import {
   PRE_CHECKOUT_TEMPLATE_LIST,
   buildFormFromTemplate,
 } from "@/lib/pre-checkout/templates";
+import { GuidedEmptyState } from "@/components/dashboard/guided-empty-state";
 import { slugifyPreCheckoutFormName } from "@/lib/pre-checkout/forms";
 import { formatDateTime } from "@/lib/utils";
 import type { PreCheckoutForm } from "@/types";
@@ -466,17 +467,18 @@ export default function FormulariosPage() {
         </div>
 
         {filteredForms.length === 0 ? (
-          <div className="space-y-3 rounded-xl border border-dashed border-border p-10 text-center">
-            <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
-            <div>
-              <p className="font-medium">Nenhum form encontrado</p>
-              <p className="text-sm text-muted-foreground">Crie seu primeiro form do zero, com IA ou a partir de um modelo.</p>
-            </div>
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Criar agora
-            </Button>
-          </div>
+          <GuidedEmptyState
+            icon={FileText}
+            title="Crie um formulario para qualificar melhor"
+            description="Use formularios quando voce precisa entender contexto, dor, nivel de interesse ou perfil antes de vender."
+            steps={[
+              "Escolha modelo ou IA.",
+              "Pergunte apenas o essencial.",
+              "Conecte a resposta ao lead.",
+            ]}
+            primaryAction={{ label: "Criar agora", onClick: () => setShowCreateDialog(true) }}
+            secondaryAction={{ label: "Criar popup", href: "/capturas" }}
+          />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filteredForms.map((form) => (

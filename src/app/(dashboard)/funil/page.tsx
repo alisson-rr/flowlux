@@ -25,6 +25,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { useIncrementalDisplay } from "@/lib/use-incremental-display";
+import { GuidedEmptyState } from "@/components/dashboard/guided-empty-state";
 
 interface Lead { id: string; name: string; phone: string; email?: string; stage_id: string; source?: string; archived: boolean; created_at: string; tags: { id: string; name: string; color: string }[]; notes: { id: string; content: string; created_at: string }[]; }
 interface Stage { id: string; name: string; color: string; order: number; }
@@ -387,10 +388,18 @@ export default function FunilPage() {
 
       {/* Kanban Board */}
       {funnelStages.length === 0 ? (
-        <Card className="p-8 text-center text-muted-foreground">
-          <p>Nenhuma etapa configurada neste funil.</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={openFunnelConfig}><Settings2 className="h-4 w-4 mr-1" /> Configurar Etapas</Button>
-        </Card>
+        <GuidedEmptyState
+          icon={Settings2}
+          title="Crie as etapas antes de trazer volume"
+          description="Um funil simples evita que leads frios fiquem soltos. Comece com poucas etapas e ajuste depois que a operacao rodar."
+          steps={[
+            "Novo lead",
+            "Em conversa",
+            "Oferta enviada",
+          ]}
+          primaryAction={{ label: "Configurar etapas", onClick: openFunnelConfig }}
+          secondaryAction={{ label: "Adicionar lead", onClick: () => setShowAddLead(true) }}
+        />
       ) : loadingBoard ? (
         <div className="flex gap-4 overflow-x-auto pb-4">
           {funnelStages.map((stage) => (
