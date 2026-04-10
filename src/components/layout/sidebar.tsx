@@ -27,7 +27,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/auth-context";
 import { useDashboardData } from "@/contexts/dashboard-context";
-import { isEvolveProductEnabledInBrowser, isPreCheckoutLabEnabledInBrowser } from "@/lib/feature-access";
+import { isEvolveProductEnabledInBrowser } from "@/lib/feature-access";
 import logoMark from "../../../assets/logo.png";
 
 const coreNavItems = [
@@ -41,22 +41,18 @@ const coreNavItems = [
 export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
-  const [showPreCheckoutLab, setShowPreCheckoutLab] = React.useState(false);
   const [showEvolveProduct, setShowEvolveProduct] = React.useState(false);
   const { user: authUser } = useAuth();
   const dashboardData = useDashboardData();
   const profile = dashboardData?.profile;
 
   React.useEffect(() => {
-    setShowPreCheckoutLab(isPreCheckoutLabEnabledInBrowser());
     setShowEvolveProduct(isEvolveProductEnabledInBrowser());
   }, []);
 
   const navItems = React.useMemo(() => {
     const items = [...coreNavItems];
-    if (showPreCheckoutLab) {
-      items.push({ label: "Form", href: "/formularios", icon: FileText });
-    }
+    items.push({ label: "Form", href: "/formularios", icon: FileText });
     items.push({ label: "Pop-ups", href: "/capturas", icon: PanelsTopLeft });
     items.push({ label: "Grupos", href: "/grupos", icon: MessagesSquare });
     items.push({ label: "Automacao", href: "/automacao", icon: Zap });
@@ -65,7 +61,7 @@ export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
       items.push({ label: "Evolua seu Produto", href: "/evolua", icon: Rocket });
     }
     return items;
-  }, [showEvolveProduct, showPreCheckoutLab]);
+  }, [showEvolveProduct]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

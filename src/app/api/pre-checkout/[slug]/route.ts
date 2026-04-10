@@ -5,7 +5,6 @@ import { buildLeadPhoneFields, getPhoneIdentity } from "@/lib/phone";
 import { runPreCheckoutWorkflows } from "@/lib/pre-checkout/runtime";
 import { phoneToJid } from "@/lib/utils";
 import { enqueueFlowExecution, kickFlowExecution } from "@/lib/flow-executions";
-import { isPreCheckoutLabEnabledForHost } from "@/lib/feature-access";
 import type {
   PreCheckoutFinalConfig,
   PreCheckoutFormStepType,
@@ -265,10 +264,6 @@ async function maybeEnqueueFlow(input: {
 }
 
 export async function GET(_: NextRequest, context: { params: Promise<{ slug: string }> }) {
-  if (!isPreCheckoutLabEnabledForHost(_.headers.get("host"))) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
   const { slug } = await context.params;
   const bundle = await getPublishedForm(slug);
   if (!bundle) {
@@ -282,10 +277,6 @@ export async function GET(_: NextRequest, context: { params: Promise<{ slug: str
 }
 
 export async function POST(req: NextRequest, context: { params: Promise<{ slug: string }> }) {
-  if (!isPreCheckoutLabEnabledForHost(req.headers.get("host"))) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
   const { slug } = await context.params;
   const body = await parseBody(req);
   const action = body?.action;
