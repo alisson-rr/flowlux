@@ -24,3 +24,13 @@ export function isPreCheckoutLabEnabledInBrowser() {
   if (typeof window === "undefined") return false;
   return isPreCheckoutLabEnabledForHost(window.location.host);
 }
+
+export function isEvolveProductEnabledForHost(input?: string | null) {
+  if (process.env.NEXT_PUBLIC_ENABLE_EVOLVE_PRODUCT === "true") return true;
+  return isLocalhostHost(input);
+}
+
+export function isEvolveProductEnabledInBrowser() {
+  if (typeof window === "undefined") return false;
+  return isEvolveProductEnabledForHost(window.location.host);
+}

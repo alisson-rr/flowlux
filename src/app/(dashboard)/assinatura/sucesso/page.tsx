@@ -260,9 +260,9 @@ export default function AssinaturaSucessoPage() {
 
           {/* Action Buttons */}
           <div className="flex flex-col gap-3 pt-2">
-            <Link href="/dashboard">
+            <Link href="/inicio">
               <Button className="w-full bg-gradient-to-r from-primary to-secondary hover:opacity-90">
-                Ir para o Dashboard
+                Ir para o Inicio
                 <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
             </Link>

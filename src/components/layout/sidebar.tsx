@@ -12,6 +12,7 @@ import {
   FileText,
   FolderOpen,
   Headset,
+  Home,
   Kanban,
   LayoutDashboard,
   LogOut,
@@ -26,41 +27,45 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/auth-context";
 import { useDashboardData } from "@/contexts/dashboard-context";
-import { isPreCheckoutLabEnabledInBrowser } from "@/lib/feature-access";
+import { isEvolveProductEnabledInBrowser, isPreCheckoutLabEnabledInBrowser } from "@/lib/feature-access";
 import logoMark from "../../../assets/logo.png";
 
 const coreNavItems = [
+  { label: "Inicio", href: "/inicio", icon: Home },
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Chat", href: "/chat", icon: MessageSquare },
   { label: "Funil", href: "/funil", icon: Kanban },
   { label: "Leads", href: "/leads", icon: Users },
-  { label: "Grupos", href: "/grupos", icon: MessagesSquare },
-  { label: "Pop-ups", href: "/capturas", icon: PanelsTopLeft },
-  { label: "Automacao", href: "/automacao", icon: Zap },
-  { label: "Midia", href: "/midia", icon: FolderOpen },
-  { label: "Evolua seu Produto", href: "/evolua", icon: Rocket },
-  { label: "Assinatura", href: "/assinatura", icon: Crown },
-  { label: "Integracoes", href: "/configuracoes", icon: Plug },
 ];
 
 export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
   const [showPreCheckoutLab, setShowPreCheckoutLab] = React.useState(false);
+  const [showEvolveProduct, setShowEvolveProduct] = React.useState(false);
   const { user: authUser } = useAuth();
   const dashboardData = useDashboardData();
   const profile = dashboardData?.profile;
 
   React.useEffect(() => {
     setShowPreCheckoutLab(isPreCheckoutLabEnabledInBrowser());
+    setShowEvolveProduct(isEvolveProductEnabledInBrowser());
   }, []);
 
-  const navItems = React.useMemo(
-    () => (showPreCheckoutLab
-      ? [...coreNavItems, { label: "Labs: Quiz", href: "/formularios", icon: FileText }]
-      : coreNavItems),
-    [showPreCheckoutLab],
-  );
+  const navItems = React.useMemo(() => {
+    const items = [...coreNavItems];
+    if (showPreCheckoutLab) {
+      items.push({ label: "Form", href: "/formularios", icon: FileText });
+    }
+    items.push({ label: "Pop-ups", href: "/capturas", icon: PanelsTopLeft });
+    items.push({ label: "Grupos", href: "/grupos", icon: MessagesSquare });
+    items.push({ label: "Automacao", href: "/automacao", icon: Zap });
+    items.push({ label: "Midia", href: "/midia", icon: FolderOpen });
+    if (showEvolveProduct) {
+      items.push({ label: "Evolua seu Produto", href: "/evolua", icon: Rocket });
+    }
+    return items;
+  }, [showEvolveProduct, showPreCheckoutLab]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -75,7 +80,7 @@ export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
       )}
     >
       <div className="relative flex h-16 items-center border-b border-border px-4">
-        <Link href="/dashboard" className="flex items-center gap-2 overflow-hidden">
+        <Link href="/inicio" className="flex items-center gap-2 overflow-hidden">
           <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg">
             <Image
               src={logoMark}
@@ -151,6 +156,32 @@ export function Sidebar({ failedCount = 0 }: { failedCount?: number }) {
             </div>
           )}
           {!collapsed && <span className="truncate">{profile?.name || "Meu Perfil"}</span>}
+        </Link>
+
+        <Link
+          href="/assinatura"
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+            pathname === "/assinatura" || pathname?.startsWith("/assinatura/")
+              ? "bg-primary/15 text-primary"
+              : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-foreground",
+          )}
+        >
+          <Crown className="h-5 w-5 shrink-0" />
+          {!collapsed && <span>Assinatura</span>}
+        </Link>
+
+        <Link
+          href="/configuracoes"
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+            pathname === "/configuracoes"
+              ? "bg-primary/15 text-primary"
+              : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-foreground",
+          )}
+        >
+          <Plug className="h-5 w-5 shrink-0" />
+          {!collapsed && <span>Integrações</span>}
         </Link>
 
         <a

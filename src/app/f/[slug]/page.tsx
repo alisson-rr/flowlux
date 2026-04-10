@@ -59,6 +59,7 @@ function getTheme(form: PreCheckoutForm | null) {
   const typography = (theme.typography || PRE_CHECKOUT_DEFAULT_THEME.typography) as Partial<PreCheckoutForm["theme"]["typography"]>;
   const layout = (theme.layout || PRE_CHECKOUT_DEFAULT_THEME.layout) as Partial<PreCheckoutForm["theme"]["layout"]>;
   const branding = (theme.branding || PRE_CHECKOUT_DEFAULT_THEME.branding || {}) as Partial<NonNullable<PreCheckoutForm["theme"]["branding"]>>;
+  const normalizeFont = (value?: string | null) => value === "Inter, sans-serif" ? "Inter" : value || "";
 
   return {
     style_key: theme.style_key || PRE_CHECKOUT_DEFAULT_THEME.style_key,
@@ -77,9 +78,9 @@ function getTheme(form: PreCheckoutForm | null) {
       image_focus_y: background.image_focus_y ?? PRE_CHECKOUT_DEFAULT_THEME.background.image_focus_y,
     },
     typography: {
-      heading_font: typography.heading_font || PRE_CHECKOUT_DEFAULT_THEME.typography.heading_font,
-      body_font: typography.body_font || PRE_CHECKOUT_DEFAULT_THEME.typography.body_font,
-      form_font: typography.form_font || PRE_CHECKOUT_DEFAULT_THEME.typography.form_font,
+      heading_font: normalizeFont(typography.heading_font) || PRE_CHECKOUT_DEFAULT_THEME.typography.heading_font,
+      body_font: normalizeFont(typography.body_font) || PRE_CHECKOUT_DEFAULT_THEME.typography.body_font,
+      form_font: normalizeFont(typography.form_font) || PRE_CHECKOUT_DEFAULT_THEME.typography.form_font,
       button_radius: typography.button_radius || PRE_CHECKOUT_DEFAULT_THEME.typography.button_radius,
       input_radius: typography.input_radius || PRE_CHECKOUT_DEFAULT_THEME.typography.input_radius,
     },
@@ -361,7 +362,11 @@ export default function PublicFormPage() {
     });
   };
 
-  const inputStyle: React.CSSProperties = { backgroundColor: theme.input_background_color || "#FFFFFF", color: theme.input_text_color || "#111827", borderColor: theme.input_border_color || "#D8DDE7" };
+  const inputStyle: React.CSSProperties = {
+    backgroundColor: "transparent",
+    color: theme.input_text_color || "#111827",
+    borderColor: theme.input_border_color || "#C7CEDA",
+  };
   const buttonStyle: React.CSSProperties = { backgroundColor: theme.primary_color, color: theme.button_text_color || "#FFFFFF" };
   const previewSpacingClass =
     theme.layout.spacing === "compact"
@@ -392,8 +397,8 @@ export default function PublicFormPage() {
   const surfaceMetaColor = contentUsesOverlay ? "rgba(255,255,255,0.72)" : "#8C92A4";
   const surfaceInputStyle: React.CSSProperties = contentUsesOverlay
     ? {
-        backgroundColor: "rgba(15, 23, 42, 0.55)",
-        borderColor: "rgba(255,255,255,0.16)",
+        backgroundColor: "transparent",
+        borderColor: "rgba(255,255,255,0.7)",
         color: "#FFFFFF",
       }
     : inputStyle;
@@ -456,7 +461,7 @@ export default function PublicFormPage() {
   ) : null;
 
   const formBody = (
-    <form className={`mx-auto w-full max-w-[720px] space-y-6 ${theme.layout.align === "left" ? "text-left" : "text-center"}`} onSubmit={(event) => { event.preventDefault(); void handleContinue(); }}>
+    <form key={currentStep?.id || "completed"} className={`flowlux-form-step-in mx-auto w-full max-w-[720px] space-y-6 ${theme.layout.align === "left" ? "text-left" : "text-center"}`} onSubmit={(event) => { event.preventDefault(); void handleContinue(); }}>
       <div className="space-y-4">
         <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em]" style={{ color: surfaceMetaColor }}><span>{form?.name}</span><span>{currentStepIndex + 1}/{steps.length}</span></div>
         <div className="h-2 overflow-hidden rounded-full bg-black/10"><div className="h-full rounded-full transition-all" style={{ width: `${((currentStepIndex + 1) / steps.length) * 100}%`, backgroundColor: theme.primary_color }} /></div>
@@ -467,9 +472,9 @@ export default function PublicFormPage() {
       </div>
 
       <div className="space-y-4">
-        {currentStep && TEXT_INPUT_TYPES.has(currentStep.type) ? <Input type={currentStep.type === "email" ? "email" : currentStep.type === "date" ? "date" : currentStep.type === "number" ? "number" : "text"} inputMode={currentStep.type === "phone" ? "tel" : currentStep.type === "number" ? "numeric" : undefined} value={typeof currentValue === "string" || typeof currentValue === "number" ? String(currentValue) : ""} onChange={(event) => handleFieldInputChange(event.target.value)} placeholder={currentStep.placeholder || messages.buttons.text_hint} className={`h-14 border ${radiusClass(theme.typography.input_radius)}`} style={surfaceInputStyle} /> : null}
-        {currentStep?.type === "long_text" ? <Textarea value={typeof currentValue === "string" ? currentValue : ""} onChange={(event) => setAnswer(event.target.value)} placeholder={currentStep.placeholder || messages.buttons.text_hint} className={`min-h-[180px] border ${radiusClass(theme.typography.input_radius)}`} style={surfaceInputStyle} /> : null}
-        {currentStep?.type === "dropdown" ? <div className="space-y-2"><select value={typeof currentValue === "string" ? currentValue : ""} onChange={(event) => setAnswer(event.target.value)} className={`h-14 w-full border px-4 ${radiusClass(theme.typography.input_radius)}`} style={surfaceInputStyle}><option value="">{messages.buttons.dropdown_touch_hint}</option>{getStepOptions(currentStep, messages).map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}</select><p className="text-sm opacity-65">{messages.buttons.dropdown_hint}</p></div> : null}
+        {currentStep && TEXT_INPUT_TYPES.has(currentStep.type) ? <Input type={currentStep.type === "email" ? "email" : currentStep.type === "date" ? "date" : currentStep.type === "number" ? "number" : "text"} inputMode={currentStep.type === "phone" ? "tel" : currentStep.type === "number" ? "numeric" : undefined} value={typeof currentValue === "string" || typeof currentValue === "number" ? String(currentValue) : ""} onChange={(event) => handleFieldInputChange(event.target.value)} placeholder={currentStep.placeholder || messages.buttons.text_hint} className="h-14 rounded-none border-0 border-b bg-transparent px-0 text-xl shadow-none focus-visible:ring-0" style={surfaceInputStyle} /> : null}
+        {currentStep?.type === "long_text" ? <Textarea value={typeof currentValue === "string" ? currentValue : ""} onChange={(event) => setAnswer(event.target.value)} placeholder={currentStep.placeholder || messages.buttons.text_hint} className="min-h-[180px] rounded-none border-0 border-b bg-transparent px-0 text-xl shadow-none focus-visible:ring-0" style={surfaceInputStyle} /> : null}
+        {currentStep?.type === "dropdown" ? <div className="space-y-2"><select value={typeof currentValue === "string" ? currentValue : ""} onChange={(event) => setAnswer(event.target.value)} className="h-14 w-full rounded-none border-0 border-b bg-transparent px-0 text-xl outline-none" style={surfaceInputStyle}><option value="">{messages.buttons.dropdown_touch_hint}</option>{getStepOptions(currentStep, messages).map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}</select><p className="text-sm opacity-65">{messages.buttons.dropdown_hint}</p></div> : null}
         {currentStep && (currentStep.type === "single_choice" || currentStep.type === "yes_no") ? <div className="grid gap-3">{getStepOptions(currentStep, messages).map((option) => { const active = currentValue === option.value; return <button key={option.id} type="button" onClick={() => setAnswer(option.value)} className={`border px-5 py-4 text-left text-base transition-colors ${radiusClass(theme.typography.input_radius)} ${active ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: active ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: active ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}>{option.label}</button>; })}</div> : null}
         {currentStep?.type === "picture_choice" ? <div className="grid gap-4 sm:grid-cols-2">{getStepOptions(currentStep, messages).map((option) => { const active = currentValue === option.value; return <button key={option.id} type="button" onClick={() => setAnswer(option.value)} className={`overflow-hidden border text-left transition-colors ${radiusClass(theme.typography.input_radius)} ${active ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: active ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: active ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}><div className="aspect-[4/3] w-full overflow-hidden border-b border-white/10 bg-black/10">{option.image_url ? <img src={option.image_url} alt={option.label} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm opacity-60">Imagem da opção</div>}</div><div className="px-4 py-3 text-base font-medium">{option.label}</div></button>; })}</div> : null}
         {currentStep?.type === "multiple_choice" ? <div className="space-y-3"><p className="text-sm opacity-65">{messages.buttons.multiple_choice_hint}</p><div className="grid gap-3">{getStepOptions(currentStep, messages).map((option) => { const selected = Array.isArray(currentValue) ? currentValue.map(String).includes(option.value) : false; return <button key={option.id} type="button" onClick={() => { const list = Array.isArray(currentValue) ? currentValue.map(String) : []; setAnswer(list.includes(option.value) ? list.filter((item) => item !== option.value) : [...list, option.value]); }} className={`flex items-center gap-3 border px-5 py-4 text-left text-base transition-colors ${radiusClass(theme.typography.input_radius)} ${selected ? "border-transparent" : "border-black/10 bg-black/5 hover:bg-black/10"}`} style={{ backgroundColor: selected ? theme.primary_color : contentUsesOverlay ? "rgba(15, 23, 42, 0.55)" : undefined, color: selected ? theme.button_text_color || "#FFFFFF" : surfaceTextColor }}><span className={`h-5 w-5 rounded-md border ${selected ? "border-white bg-white/20" : "border-black/30"}`} /><span>{option.label}</span></button>; })}</div></div> : null}
@@ -494,6 +499,28 @@ export default function PublicFormPage() {
 
   return (
     <div className="min-h-screen" style={pageStyle}>
+      <style jsx global>{`
+        @keyframes flowluxFormStepIn {
+          from {
+            opacity: 0;
+            transform: translateY(14px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .flowlux-form-step-in > * {
+          opacity: 0;
+          animation: flowluxFormStepIn 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .flowlux-form-step-in > *:nth-child(1) { animation-delay: 40ms; }
+        .flowlux-form-step-in > *:nth-child(2) { animation-delay: 110ms; }
+        .flowlux-form-step-in > *:nth-child(3) { animation-delay: 180ms; }
+        .flowlux-form-step-in > *:nth-child(4) { animation-delay: 250ms; }
+      `}</style>
       {!previewMode && connectConfig.meta_pixel_enabled && connectConfig.meta_pixel_id && <Script id={`pixel-${form.id}`} strategy="afterInteractive">{`!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init', '${connectConfig.meta_pixel_id}');fbq('track', 'PageView');`}</Script>}
       {!previewMode && connectConfig.ga4_enabled && connectConfig.ga4_measurement_id && <><Script src={`https://www.googletagmanager.com/gtag/js?id=${connectConfig.ga4_measurement_id}`} strategy="afterInteractive" /><Script id={`ga4-${form.id}`} strategy="afterInteractive">{`window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}window.gtag = gtag;gtag('js', new Date());gtag('config', '${connectConfig.ga4_measurement_id}');`}</Script></>}
       {!previewMode && connectConfig.gtm_enabled && connectConfig.gtm_container_id && <><Script id={`gtm-${form.id}`} strategy="afterInteractive">{`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${connectConfig.gtm_container_id}');`}</Script><noscript><iframe src={`https://www.googletagmanager.com/ns.html?id=${connectConfig.gtm_container_id}`} height="0" width="0" style={{ display: "none", visibility: "hidden" }} /></noscript></>}

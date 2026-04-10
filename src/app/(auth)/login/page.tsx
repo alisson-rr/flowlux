@@ -63,7 +63,7 @@ export default function LoginPage() {
       }
     }
 
-    router.push("/dashboard");
+    router.push("/inicio");
   };
 
   return (

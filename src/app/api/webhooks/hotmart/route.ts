@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import { normalizePhone, phoneVariants } from "@/lib/utils";
 import { buildLeadPhoneFields } from "@/lib/phone";
 
 export async function POST(req: NextRequest) {
@@ -41,29 +40,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, processed: false, reason: !userId ? "no_user" : "no_phone" });
     }
 
-    const cleanPhone = normalizePhone(buyerPhone);
-    if (!cleanPhone) {
+    const phoneFields = buildLeadPhoneFields(buyerPhone);
+    if (!phoneFields) {
       return NextResponse.json({ success: true, processed: false, reason: "invalid_phone" });
     }
     const cfg = eventConfig[event] || {};
 
-    // Check if lead exists using all phone variants for robust matching
-    const variants = phoneVariants(cleanPhone);
-    const orFilter = variants.map((v) => `phone.eq.${v}`).join(",");
+    // Valida por telefone normalizado para evitar duplicar Brasil com/sem 9 e numeros internacionais.
     const { data: existingLead } = await supabase
       .from("leads")
-      .select("id")
+      .select("id, name, email")
       .eq("user_id", userId)
-      .or(orFilter)
+      .overlaps("phone_search_keys", phoneFields.phone_search_keys)
       .is("deleted_at", null)
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (existingLead) {
       // Update existing lead with new stage/funnel if configured
       const updates: Record<string, any> = {};
       if (cfg.stage_id) updates.stage_id = cfg.stage_id;
       if (cfg.funnel_id) updates.funnel_id = cfg.funnel_id;
+      Object.assign(updates, {
+        ...phoneFields,
+        source: `Hotmart - ${productName}`,
+      });
+      if (buyerEmail) updates.email = buyerEmail;
+      if (buyerName) updates.name = buyerName;
       if (Object.keys(updates).length > 0) {
         await supabase.from("leads").update(updates).eq("id", existingLead.id);
       }
@@ -76,11 +79,6 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // Create new lead
-      const phoneFields = buildLeadPhoneFields(cleanPhone);
-      if (!phoneFields) {
-        return NextResponse.json({ success: true, processed: false, reason: "invalid_phone_fields" });
-      }
-
       const { data: newLead } = await supabase.from("leads").insert({
         user_id: userId,
         name: buyerName || "Lead Hotmart",

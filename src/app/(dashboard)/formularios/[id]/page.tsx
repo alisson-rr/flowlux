@@ -127,7 +127,7 @@ const RADIUS_OPTIONS: Array<{ value: PreCheckoutForm["theme"]["typography"]["inp
 ];
 
 const FONT_OPTIONS = [
-  { label: "Inter", value: "Inter, sans-serif" },
+  { label: "Inter", value: "Inter" },
   { label: "DM Sans", value: "'DM Sans', sans-serif" },
   { label: "Manrope", value: "Manrope, sans-serif" },
   { label: "Poppins", value: "Poppins, sans-serif" },
@@ -185,6 +185,7 @@ function sanitizeTheme(theme?: Partial<PreCheckoutForm["theme"]>): PreCheckoutFo
   const background = (theme?.background || {}) as Partial<PreCheckoutForm["theme"]["background"]>;
   const typography = (theme?.typography || {}) as Partial<PreCheckoutForm["theme"]["typography"]>;
   const layout = (theme?.layout || {}) as Partial<PreCheckoutForm["theme"]["layout"]>;
+  const normalizeFont = (value?: string | null) => value === "Inter, sans-serif" ? "Inter" : value || "";
 
   return {
     style_key: theme?.style_key || defaultTheme.style_key,
@@ -203,9 +204,9 @@ function sanitizeTheme(theme?: Partial<PreCheckoutForm["theme"]>): PreCheckoutFo
       image_focus_y: background.image_focus_y ?? defaultTheme.background.image_focus_y,
     },
     typography: {
-      heading_font: typography.heading_font || defaultTheme.typography.heading_font,
-      body_font: typography.body_font || defaultTheme.typography.body_font,
-      form_font: typography.form_font || defaultTheme.typography.form_font,
+      heading_font: normalizeFont(typography.heading_font) || defaultTheme.typography.heading_font,
+      body_font: normalizeFont(typography.body_font) || defaultTheme.typography.body_font,
+      form_font: normalizeFont(typography.form_font) || defaultTheme.typography.form_font,
       button_radius: typography.button_radius || defaultTheme.typography.button_radius,
       input_radius: typography.input_radius || defaultTheme.typography.input_radius,
     },
@@ -607,6 +608,11 @@ function StepCanvasPreview({
         borderColor: form.theme.input_border_color || "#D8DDE7",
         color: form.theme.input_text_color || "#111827",
       };
+  const underlineInputStyle: React.CSSProperties = {
+    backgroundColor: "transparent",
+    borderColor: contentUsesOverlay ? "rgba(255,255,255,0.7)" : form.theme.input_border_color || "#C7CEDA",
+    color: contentUsesOverlay ? "#FFFFFF" : form.theme.input_text_color || "#111827",
+  };
 
   const mediaNode = stepHasVisual ? (
     <div className="relative h-full w-full overflow-hidden rounded-[28px] border border-white/10 bg-[#0B0B12]">
@@ -704,12 +710,12 @@ function StepCanvasPreview({
         <Textarea
           value={textValue(step.placeholder)}
           onChange={(event) => onUpdate((current) => ({ ...current, placeholder: event.target.value }))}
-          className={`min-h-[160px] border px-5 py-4 text-base shadow-none ${inputRadius}`}
-          style={surfaceInputStyle}
+          className="min-h-[120px] rounded-none border-0 border-b px-0 py-3 text-base shadow-none focus-visible:ring-0"
+          style={underlineInputStyle}
           placeholder="Texto de ajuda dentro do campo"
         />
       ) : step.type === "dropdown" ? (
-        <div className={`border px-5 py-4 text-base ${inputRadius}`} style={surfaceInputStyle}>
+        <div className="border-0 border-b px-0 py-4 text-base" style={underlineInputStyle}>
           {step.placeholder || form.session_settings.system_messages?.buttons.dropdown_hint || "Digite ou selecione uma opcao"}
         </div>
       ) : step.type === "picture_choice" ? (
@@ -751,8 +757,8 @@ function StepCanvasPreview({
         <Input
           value={textValue(step.placeholder)}
           onChange={(event) => onUpdate((current) => ({ ...current, placeholder: event.target.value }))}
-          className={`h-14 border px-5 text-base shadow-none ${inputRadius}`}
-          style={surfaceInputStyle}
+          className="h-14 rounded-none border-0 border-b px-0 text-base shadow-none focus-visible:ring-0"
+          style={underlineInputStyle}
           placeholder="Texto de ajuda dentro do campo"
         />
       )}
@@ -845,10 +851,20 @@ export default function FormularioEditorPage() {
   );
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiMessages, setAiMessages] = useState<Array<{ role: "assistant" | "user"; content: string; created_at?: string }>>([]);
+  const [showAiSidebar, setShowAiSidebar] = useState(false);
+  const [aiHistoryLoading, setAiHistoryLoading] = useState(false);
   const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastPersistedSnapshotRef = useRef("");
   const skipAutosaveRef = useRef(true);
+  const skipNextAiHistoryLoadRef = useRef(false);
   const isPersistingRef = useRef(false);
+  const hasQueuedSaveRef = useRef(false);
+  const latestStateRef = useRef<{
+    form: PreCheckoutForm | null;
+    steps: PreCheckoutFormStep[];
+    deletedStepIds: string[];
+  }>({ form: null, steps: [], deletedStepIds: [] });
 
   const orderedSteps = useMemo(() => normalizeBuilderSteps(steps), [steps]);
   const selectedStep = useMemo(
@@ -868,6 +884,10 @@ export default function FormularioEditorPage() {
   );
   const previewStorageKey = useMemo(() => (form ? `flowlux-form-preview:${form.id}` : ""), [form]);
   const previewHref = useMemo(() => (form ? `/f/${form.slug || `preview-${form.id}`}?preview=1&formId=${form.id}&editorPreviewKey=${encodeURIComponent(previewStorageKey)}` : "#"), [form, previewStorageKey]);
+
+  useEffect(() => {
+    latestStateRef.current = { form, steps, deletedStepIds };
+  }, [deletedStepIds, form, steps]);
 
   const buildSnapshot = useCallback(
     (targetForm: PreCheckoutForm, targetSteps: PreCheckoutFormStep[], targetDeletedIds: string[] = []) =>
@@ -908,6 +928,18 @@ export default function FormularioEditorPage() {
     }));
   }, [updateTrigger]);
 
+  const handleSelectStep = useCallback((stepId: string) => {
+    setSelectedStepId(stepId);
+    setShowAiSidebar(false);
+  }, []);
+
+  const handleOpenAiSidebar = useCallback((options?: { skipReload?: boolean }) => {
+    if (options?.skipReload) {
+      skipNextAiHistoryLoadRef.current = true;
+    }
+    setShowAiSidebar(true);
+  }, []);
+
   const handleStepDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -920,6 +952,27 @@ export default function FormularioEditorPage() {
     }));
     setSteps(reorderedSteps);
   }, [orderedSteps]);
+
+  const movePersistedStepPositionsToSafeRange = useCallback(async (targetFormId: string, targetSteps: PreCheckoutFormStep[]) => {
+    const persistedTargets = targetSteps.filter((step) => !step.id.startsWith("temp-"));
+    if (persistedTargets.length < 2) return null;
+
+    const offset = 100_000 + Math.floor(Date.now() % 100_000);
+    for (let index = 0; index < persistedTargets.length; index += 1) {
+      const step = persistedTargets[index];
+      const { error } = await supabase
+        .from("pre_checkout_form_steps")
+        .update({ position: offset + index })
+        .eq("id", step.id)
+        .eq("form_id", targetFormId);
+
+      if (error) {
+        return error;
+      }
+    }
+
+    return null;
+  }, []);
 
   const updateSystemMessage = useCallback(
     <TGroup extends keyof PreCheckoutSystemMessages, TKey extends keyof PreCheckoutSystemMessages[TGroup]>(
@@ -1044,6 +1097,35 @@ export default function FormularioEditorPage() {
     );
   }, [form, orderedSteps, previewStorageKey]);
 
+  const loadAiHistory = useCallback(async () => {
+    if (!form?.id || !user) return;
+    setAiHistoryLoading(true);
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) {
+      setAiHistoryLoading(false);
+      return;
+    }
+
+    const response = await fetch(`/api/pre-checkout/ai?formId=${encodeURIComponent(form.id)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && Array.isArray(payload.messages)) {
+      setAiMessages(payload.messages);
+    }
+    setAiHistoryLoading(false);
+  }, [form?.id, user]);
+
+  useEffect(() => {
+    if (!showAiSidebar) return;
+    if (skipNextAiHistoryLoadRef.current) {
+      skipNextAiHistoryLoadRef.current = false;
+      return;
+    }
+    void loadAiHistory();
+  }, [loadAiHistory, showAiSidebar]);
+
   const handleThemeAssetUpload = async (
     event: React.ChangeEvent<HTMLInputElement>,
     field: "logo_url" | "background_image_url",
@@ -1165,6 +1247,7 @@ export default function FormularioEditorPage() {
     const next = createBuilderStep(type, orderedSteps.length);
     setSteps((current) => [...normalizeBuilderSteps(current), next]);
     setSelectedStepId(next.id);
+    setShowAiSidebar(false);
     setShowAddDialog(false);
   };
 
@@ -1175,19 +1258,35 @@ export default function FormularioEditorPage() {
     const nextSteps = normalizeBuilderSteps(orderedSteps.filter((step) => step.id !== stepId));
     setSteps(nextSteps);
     setSelectedStepId(nextSteps[0]?.id || null);
+    setShowAiSidebar(false);
   };
 
   const persistFormState = useCallback(async ({ nextStatus, silent = false }: { nextStatus?: PreCheckoutForm["status"]; silent?: boolean } = {}) => {
-    if (!user || !form || isPersistingRef.current) return false;
+    const state = latestStateRef.current;
+    const targetForm = state.form;
+    const targetSteps = state.steps;
+    const targetDeletedStepIds = state.deletedStepIds;
 
-    const normalizedSlug = slugifyPreCheckoutFormName(form.slug || form.name);
+    if (!user || !targetForm) return false;
+
+    const snapshotBeingSaved = buildSnapshot(targetForm, targetSteps, targetDeletedStepIds);
+
+    if (isPersistingRef.current) {
+      hasQueuedSaveRef.current = true;
+      setSaveState("dirty");
+      return false;
+    }
+
+    const normalizedSlug = slugifyPreCheckoutFormName(targetForm.slug || targetForm.name);
     if (!normalizedSlug) {
       if (!silent) toast("Defina um identificador valido para o form.", "warning");
       return false;
     }
 
-    if (nextStatus === "published" && !validation.isValid) {
-      if (!silent) toast(validation.errors[0] || "Revise as configuracoes obrigatorias antes de publicar.", "warning");
+    const normalizedStepsForValidation = normalizeBuilderSteps(targetSteps);
+    const publishValidation = validatePreCheckoutPublish(targetForm, normalizedStepsForValidation);
+    if (nextStatus === "published" && !publishValidation.isValid) {
+      if (!silent) toast(publishValidation.errors[0] || "Revise as configuracoes obrigatorias antes de publicar.", "warning");
       return false;
     }
 
@@ -1195,26 +1294,27 @@ export default function FormularioEditorPage() {
     setSaveState("saving");
     if (!silent) setSaving(true);
     if (nextStatus === "published") setPublishing(true);
+    let completedSuccessfully = false;
 
     try {
-      const normalizedSteps = normalizeBuilderSteps(steps);
+      const normalizedSteps = normalizedStepsForValidation;
       const formPayload = {
-        name: form.name.trim(),
+        name: targetForm.name.trim(),
         slug: normalizedSlug,
-        description: form.description || "",
-        status: nextStatus || form.status,
-        theme: form.theme,
-        final_config: form.final_config,
-        integrations: form.integrations,
-        session_settings: form.session_settings,
-        published_at: nextStatus === "published" ? (form.published_at || new Date().toISOString()) : form.published_at,
+        description: targetForm.description || "",
+        status: nextStatus || targetForm.status,
+        theme: targetForm.theme,
+        final_config: targetForm.final_config,
+        integrations: targetForm.integrations,
+        session_settings: targetForm.session_settings,
+        published_at: nextStatus === "published" ? (targetForm.published_at || new Date().toISOString()) : targetForm.published_at,
       };
 
       const { data: slugConflict } = await supabase
         .from("pre_checkout_forms")
         .select("id")
         .eq("slug", normalizedSlug)
-        .neq("id", form.id)
+        .neq("id", targetForm.id)
         .limit(1);
 
       if (slugConflict && slugConflict.length > 0) {
@@ -1222,14 +1322,14 @@ export default function FormularioEditorPage() {
         return false;
       }
 
-      const { error: formError } = await supabase.from("pre_checkout_forms").update(formPayload).eq("id", form.id);
+      const { error: formError } = await supabase.from("pre_checkout_forms").update(formPayload).eq("id", targetForm.id);
       if (formError) {
         if (!silent) toast("Não foi possível salvar o form.", "error");
         return false;
       }
 
-      if (deletedStepIds.length) {
-        const { error: deleteError } = await supabase.from("pre_checkout_form_steps").delete().in("id", deletedStepIds);
+      if (targetDeletedStepIds.length) {
+        const { error: deleteError } = await supabase.from("pre_checkout_form_steps").delete().in("id", targetDeletedStepIds);
         if (deleteError && !silent) {
           toast("Não foi possível remover etapas antigas.", "error");
           return false;
@@ -1240,7 +1340,7 @@ export default function FormularioEditorPage() {
         .filter((step) => !step.id.startsWith("temp-"))
         .map((step) => ({
           id: step.id,
-          form_id: form.id,
+          form_id: targetForm.id,
           user_id: user.id,
           step_key: step.step_key,
           position: step.position,
@@ -1259,7 +1359,7 @@ export default function FormularioEditorPage() {
       const newSteps = normalizedSteps
         .filter((step) => step.id.startsWith("temp-"))
         .map((step) => ({
-          form_id: form.id,
+          form_id: targetForm.id,
           user_id: user.id,
           step_key: step.step_key,
           position: step.position,
@@ -1276,6 +1376,12 @@ export default function FormularioEditorPage() {
         }));
 
       if (persistedSteps.length) {
+        const safeRangeError = await movePersistedStepPositionsToSafeRange(targetForm.id, normalizedSteps);
+        if (safeRangeError) {
+          if (!silent) toast("NÃ£o foi possÃ­vel reorganizar as etapas.", "error");
+          return false;
+        }
+
         const { error: persistedError } = await supabase.from("pre_checkout_form_steps").upsert(persistedSteps);
         if (persistedError) {
           if (!silent) toast("Não foi possível atualizar as etapas.", "error");
@@ -1284,6 +1390,7 @@ export default function FormularioEditorPage() {
       }
 
       let nextSteps = normalizedSteps;
+      let insertedMap = new Map<string, PreCheckoutFormStep>();
       if (newSteps.length) {
         const { data: insertedSteps, error: newStepsError } = await supabase
           .from("pre_checkout_form_steps")
@@ -1296,7 +1403,7 @@ export default function FormularioEditorPage() {
         }
 
         if (insertedSteps?.length) {
-          const insertedMap = new Map(insertedSteps.map((step) => [step.step_key, step as PreCheckoutFormStep]));
+          insertedMap = new Map(insertedSteps.map((step) => [step.step_key, step as PreCheckoutFormStep]));
           nextSteps = normalizedSteps.map((step) => insertedMap.get(step.step_key) || step);
           if (selectedStepId?.startsWith("temp-")) {
             const replacement = nextSteps.find((step) => step.step_key === normalizedSteps.find((item) => item.id === selectedStepId)?.step_key);
@@ -1306,13 +1413,42 @@ export default function FormularioEditorPage() {
       }
 
       const nextFormState = ensureFormDefaults({
-        ...form,
+        ...targetForm,
         ...formPayload,
       } as PreCheckoutForm);
 
-      setForm(nextFormState);
-      setSteps(normalizeBuilderSteps(nextSteps));
-      setDeletedStepIds([]);
+      const latest = latestStateRef.current;
+      const latestSnapshot = latest.form ? buildSnapshot(latest.form, latest.steps, latest.deletedStepIds) : "";
+      const currentStillMatchesSavedState = latestSnapshot === snapshotBeingSaved;
+
+      if (currentStillMatchesSavedState) {
+        setForm(nextFormState);
+        setSteps(normalizeBuilderSteps(nextSteps));
+        setDeletedStepIds([]);
+      } else {
+        hasQueuedSaveRef.current = true;
+        setForm((current) =>
+          current
+            ? ensureFormDefaults({
+                ...current,
+                status: nextFormState.status,
+                published_at: nextFormState.published_at,
+              } as PreCheckoutForm)
+            : current,
+        );
+        if (insertedMap.size) {
+          setSteps((current) => normalizeBuilderSteps(current.map((step) => {
+            if (!step.id.startsWith("temp-")) return step;
+            const inserted = insertedMap.get(step.step_key);
+            return inserted
+              ? { ...step, id: inserted.id, form_id: inserted.form_id, created_at: inserted.created_at, updated_at: inserted.updated_at }
+              : step;
+          })));
+        }
+        if (targetDeletedStepIds.length) {
+          setDeletedStepIds((current) => current.filter((id) => !targetDeletedStepIds.includes(id)));
+        }
+      }
 
       const nextSnapshot = buildSnapshot(nextFormState, nextSteps, []);
       lastPersistedSnapshotRef.current = nextSnapshot;
@@ -1326,17 +1462,32 @@ export default function FormularioEditorPage() {
         );
       }
 
-      setSaveState("saved");
+      setSaveState(currentStillMatchesSavedState ? "saved" : "dirty");
       if (!silent) {
         toast(nextStatus === "published" ? "Form publicado com sucesso!" : "Form salvo com sucesso!", "success");
       }
+      completedSuccessfully = true;
       return true;
+    } catch (error) {
+      console.error("Form autosave error:", error);
+      if (!silent) toast("NÃ£o foi possÃ­vel salvar o form agora.", "error");
+      return false;
     } finally {
       isPersistingRef.current = false;
       setSaving(false);
       setPublishing(false);
+      if (!completedSuccessfully && !hasQueuedSaveRef.current) {
+        setSaveState("dirty");
+      }
+      if (hasQueuedSaveRef.current) {
+        hasQueuedSaveRef.current = false;
+        if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = setTimeout(() => {
+          void persistFormState({ silent: true });
+        }, 120);
+      }
     }
-  }, [buildSnapshot, deletedStepIds, form, previewStorageKey, steps, toast, user, validation]);
+  }, [buildSnapshot, movePersistedStepPositionsToSafeRange, previewStorageKey, selectedStepId, toast, user]);
 
   useEffect(() => {
     if (!form) return;
@@ -1363,16 +1514,24 @@ export default function FormularioEditorPage() {
       toast("Descreva o objetivo do form para a IA.", "warning");
       return;
     }
-    const aiModel = "gpt-4.1-mini";
-
+    const promptForHistory = aiPrompt.trim();
+    handleOpenAiSidebar({ skipReload: true });
+    setAiMessages((current) => [
+      ...current,
+      { role: "user", content: promptForHistory, created_at: new Date().toISOString() },
+    ]);
     setAiLoading(true);
+    const { data: sessionData } = await supabase.auth.getSession();
     const response = await fetch("/api/pre-checkout/ai", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(sessionData.session?.access_token ? { Authorization: `Bearer ${sessionData.session.access_token}` } : {}),
+      },
       body: JSON.stringify({
-        model: aiModel,
+        formId: form.id,
         businessContext: form.name,
-        goal: aiPrompt,
+        goal: promptForHistory,
         audience: form.description,
         destination: form.final_config.action,
         preferredStyle: form.theme.style_key,
@@ -1382,6 +1541,10 @@ export default function FormularioEditorPage() {
     const payload = await response.json().catch(() => ({}));
     setAiLoading(false);
     if (!response.ok || !payload?.result) {
+      setAiMessages((current) => [
+        ...current,
+        { role: "assistant", content: payload?.error || "A IA nÃ£o conseguiu montar o form.", created_at: new Date().toISOString() },
+      ]);
       toast(payload?.error || "A IA não conseguiu montar o form.", "error");
       return;
     }
@@ -1467,8 +1630,18 @@ export default function FormularioEditorPage() {
       setSelectedStepId(aiSteps[0]?.id || null);
     }
     setAiPrompt("");
+    setAiMessages((current) => [
+      ...current,
+      { role: "assistant", content: payload.message || `Montei uma estrutura com ${aiSteps.length} etapas para este form.`, created_at: new Date().toISOString() },
+    ]);
     toast("Estrutura gerada com IA e aplicada ao form.", "success");
   };
+
+  const handleAiPromptKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    void handleGenerateWithAi();
+  }, [handleGenerateWithAi]);
 
   const handleAddTrigger = (type: PreCheckoutWorkflowTrigger["type"]) => {
     const nextTrigger = createDefaultWorkflowTrigger(type);
@@ -1758,6 +1931,56 @@ export default function FormularioEditorPage() {
       </div>
     );
   };
+
+  const renderAiComposer = (variant: "center" | "sidebar") => (
+    <div
+      className={
+        variant === "sidebar"
+          ? "space-y-3 rounded-3xl border border-white/10 bg-[#171821] p-4"
+          : "rounded-[24px] border border-white/10 bg-[#171821] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.35)]"
+      }
+    >
+      <div className={`flex ${variant === "sidebar" ? "items-start gap-3" : "items-end gap-3"}`}>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          {aiLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Bot className="h-5 w-5" />}
+        </div>
+        <div className="min-w-0 flex-1 space-y-2">
+          <Textarea
+            value={aiPrompt}
+            onChange={(event) => setAiPrompt(event.target.value)}
+            onKeyDown={handleAiPromptKeyDown}
+            placeholder="Descreva o form que a IA deve criar: objetivo, oferta, publico e destino final."
+            className={`resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 ${
+              variant === "sidebar" ? "min-h-[120px]" : "min-h-[64px]"
+            }`}
+          />
+          <p className="text-xs text-zinc-400">A IA e interna do app e monta a estrutura para voce.</p>
+        </div>
+        {variant === "center" ? (
+          <Button onClick={handleGenerateWithAi} disabled={aiLoading}>
+            {aiLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            Criar com IA
+          </Button>
+        ) : null}
+      </div>
+      {variant === "sidebar" ? (
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setShowAiSidebar(false)}
+            className="text-xs font-medium text-zinc-400 transition-colors hover:text-white"
+          >
+            Voltar para a etapa
+          </button>
+          <Button onClick={handleGenerateWithAi} disabled={aiLoading}>
+            {aiLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            Criar com IA
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <>
       <div className="flex min-h-screen flex-col bg-[#09090D] text-zinc-100">
@@ -1805,7 +2028,7 @@ export default function FormularioEditorPage() {
             <div className="flex items-center gap-2">
               <span className="hidden w-[160px] shrink-0 justify-end text-right text-xs text-zinc-400 md:flex">
                 <span className={saveState === "idle" ? "opacity-0" : "opacity-100"}>
-                  {saveState === "saving" ? "Salvando..." : saveState === "saved" ? "Salvo" : saveState === "dirty" ? "Alteracoes pendentes" : "."}
+                  {saveState === "saving" ? "Salvando..." : saveState === "saved" ? "Salvo" : saveState === "dirty" ? "Alterações pendentes" : "."}
                 </span>
               </span>
               <Button variant="outline" onClick={openPreview}>
@@ -1849,7 +2072,7 @@ export default function FormularioEditorPage() {
                             step={step}
                             index={index}
                             selected={selectedStep?.id === step.id}
-                            onClick={() => setSelectedStepId(step.id)}
+                            onClick={() => handleSelectStep(step.id)}
                           />
                         ))}
                       </div>
@@ -1892,7 +2115,50 @@ export default function FormularioEditorPage() {
                 </section>
 
                 <aside className="bg-[#111114] px-5 py-6">
-                  {selectedStep ? (
+                  {showAiSidebar ? (
+                    <div className="flex h-full flex-col gap-4 transition-all duration-300 ease-out">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-white">Chat da IA</p>
+                        <p className="text-xs text-zinc-400">Converse com a IA do form sem poluir o editor.</p>
+                      </div>
+
+                      <div className="flex-1 overflow-hidden rounded-3xl border border-white/10 bg-[#171821]">
+                        <div className="h-full max-h-[calc(100vh-360px)] overflow-y-auto p-4">
+                          {aiHistoryLoading ? (
+                            <div className="flex h-full min-h-[180px] items-center justify-center text-sm text-zinc-400">
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Carregando historico...
+                            </div>
+                          ) : aiMessages.length === 0 ? (
+                            <div className="flex h-full min-h-[180px] items-center justify-center text-center text-sm leading-relaxed text-zinc-400">
+                              Ainda nao ha mensagens com a IA neste form.
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {aiMessages.map((message, index) => (
+                                <div
+                                  key={`${message.created_at || index}-${index}`}
+                                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                                >
+                                  <div
+                                    className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                                      message.role === "user"
+                                        ? "bg-primary text-white"
+                                        : "bg-[#222433] text-zinc-100"
+                                    }`}
+                                  >
+                                    {message.content}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {renderAiComposer("sidebar")}
+                    </div>
+                  ) : selectedStep ? (
                     <div className="space-y-6">
                       <div className="space-y-1">
                         <p className="text-sm font-semibold text-white">Configuracoes da etapa</p>
@@ -2114,8 +2380,49 @@ export default function FormularioEditorPage() {
                 </aside>
               </div>
 
+              <div
+                className={`sticky bottom-0 overflow-hidden border-t bg-[#111114]/95 backdrop-blur transition-all duration-300 ease-out ${
+                  showAiSidebar
+                    ? "max-h-0 border-transparent py-0 opacity-0"
+                    : "max-h-[240px] border-white/10 py-4 opacity-100"
+                }`}
+              >
+                  <div className="mx-auto max-w-[860px] px-4">
+                    <div className="translate-y-0 transition-transform duration-300 ease-out">
+                      {renderAiComposer("center")}
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAiSidebar()}
+                          className="text-xs font-medium text-zinc-400 transition-colors hover:text-white"
+                        >
+                          Historico{aiMessages.length ? ` (${aiMessages.length})` : ""}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {false ? (
               <div className="sticky bottom-0 border-t border-white/10 bg-[#111114]/95 p-4 backdrop-blur">
-                <div className="mx-auto flex max-w-[960px] items-end gap-3 rounded-[24px] border border-white/10 bg-[#171821] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
+                <div className="mx-auto max-w-[960px]">
+                  {false ? (
+                    <div className="mb-3 max-h-56 overflow-y-auto rounded-3xl border border-white/10 bg-[#171821]/95 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.28)]">
+                      {aiMessages.length === 0 ? (
+                        <p className="text-sm text-zinc-400">Ainda nÃ£o hÃ¡ conversas com a IA neste form.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {aiMessages.slice(-12).map((message, index) => (
+                            <div key={`${message.created_at || index}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                              <div className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user" ? "bg-primary text-white" : "bg-[#222433] text-zinc-100"}`}>
+                                {message.content}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                <div className="flex items-end gap-3 rounded-[24px] border border-white/10 bg-[#171821] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <Bot className="h-5 w-5" />
                   </div>
@@ -2128,12 +2435,17 @@ export default function FormularioEditorPage() {
                     />
                     <p className="text-xs text-zinc-400">A IA e interna do app e monta a estrutura para voce.</p>
                   </div>
+                  <Button variant="outline" onClick={() => handleOpenAiSidebar()}>
+                    Historico{aiMessages.length ? ` (${aiMessages.length})` : ""}
+                  </Button>
                   <Button onClick={handleGenerateWithAi} disabled={aiLoading}>
                     {aiLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                     Criar com IA
                   </Button>
                 </div>
+                </div>
               </div>
+              ) : null}
             </TabsContent>
             <TabsContent value={TAB_WORKFLOW} className="m-0">
               <div className="grid min-h-[calc(100vh-64px)] grid-cols-[280px_minmax(0,1fr)_340px] gap-0">
@@ -2536,8 +2848,7 @@ export default function FormularioEditorPage() {
           <div className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2"><Label>Cor principal</Label><Input type="color" value={form.theme.primary_color} onChange={(event) => updateForm((current) => ({ ...current, theme: { ...current.theme, primary_color: event.target.value } }))} /></div>
-              <div className="space-y-2"><Label>Cor do fundo</Label><Input type="color" value={form.theme.background.color} onChange={(event) => updateForm((current) => ({ ...current, theme: { ...current.theme, background: { ...current.theme.background, color: event.target.value } } }))} /></div>
-              <div className="space-y-2"><Label>Cor do painel</Label><Input type="color" value={form.theme.panel_color} onChange={(event) => updateForm((current) => ({ ...current, theme: { ...current.theme, panel_color: event.target.value } }))} /></div>
+              <div className="space-y-2"><Label>Cor de fundo</Label><Input type="color" value={form.theme.panel_color} onChange={(event) => updateForm((current) => ({ ...current, theme: { ...current.theme, panel_color: event.target.value } }))} /></div>
               <div className="space-y-2"><Label>Cor do texto</Label><Input type="color" value={form.theme.text_color} onChange={(event) => updateForm((current) => ({ ...current, theme: { ...current.theme, text_color: event.target.value } }))} /></div>
               <div className="space-y-2"><Label>Botao</Label><Input type="color" value={form.theme.button_text_color || "#FFFFFF"} onChange={(event) => updateForm((current) => ({ ...current, theme: { ...current.theme, button_text_color: event.target.value } }))} /></div>
               <div className="space-y-2"><Label>Texto do input</Label><Input type="color" value={form.theme.input_text_color || "#111827"} onChange={(event) => updateForm((current) => ({ ...current, theme: { ...current.theme, input_text_color: event.target.value } }))} /></div>
@@ -2552,13 +2863,6 @@ export default function FormularioEditorPage() {
                 <Select value={form.theme.layout.spacing} onValueChange={(value: PreCheckoutForm["theme"]["layout"]["spacing"]) => updateForm((current) => ({ ...current, theme: { ...current.theme, layout: { ...current.theme.layout, spacing: value } } }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{LAYOUT_SPACING_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Arredondamento dos inputs</Label>
-                <Select value={form.theme.typography.input_radius} onValueChange={(value: PreCheckoutForm["theme"]["typography"]["input_radius"]) => updateForm((current) => ({ ...current, theme: { ...current.theme, typography: { ...current.theme.typography, input_radius: value } } }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{RADIUS_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
