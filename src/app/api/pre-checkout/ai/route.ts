@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUserId } from "@/lib/api-auth";
-import { isPreCheckoutLabEnabledForHost } from "@/lib/feature-access";
 import { buildPreCheckoutAiUserPrompt, PRE_CHECKOUT_AI_SYSTEM_PROMPT } from "@/lib/pre-checkout/ai";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
@@ -183,10 +182,6 @@ async function saveFormAiMessages(input: {
 }
 
 export async function GET(req: NextRequest) {
-  if (!isPreCheckoutLabEnabledForHost(req.headers.get("host"))) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
   const userId = await getAuthenticatedUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
@@ -217,10 +212,6 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isPreCheckoutLabEnabledForHost(req.headers.get("host"))) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
   const userId = await getAuthenticatedUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
